@@ -66,7 +66,7 @@ jobs:
             test -n "$app"
             test -s "$app/Contents/Resources/app.asar"
             if [ "$arch" = x64 ]; then native_arch=x86_64; else native_arch=arm64; fi
-            lipo -verify_arch "$native_arch" "$app/Contents/MacOS/scislide"
+            lipo "$app/Contents/MacOS/scislide" -verify_arch "$native_arch"
           done
           node -e "require('fs').appendFileSync(process.env.GITHUB_ENV, 'SCISLIDE_VERSION=' + require('./package.json').version + '\n')"
 
