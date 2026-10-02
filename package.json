@@ -12,7 +12,8 @@
     "desktop": "pnpm build && electron .",
     "desktop:dev": "node scripts/desktop-dev.mjs",
     "desktop:package": "pnpm build && node scripts/package-desktop.mjs",
-    "test:desktop": "node --test --test-isolation=none desktop/host-utils.test.cjs tests/desktop-tex.test.mjs"
+    "test:desktop": "node --test --test-isolation=none desktop/host-utils.test.cjs tests/desktop-tex.test.mjs tests/desktop-package.test.mjs",
+    "desktop:package:mac": "pnpm build && node scripts/package-macos.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.0",
@@ -39,7 +40,8 @@
     "prettier": "^3.9.9",
     "typescript": "^5.8.0",
     "vite": "^6.3.0",
-    "vitest": "^3.1.0"
+    "vitest": "^3.1.0",
+    "@electron/osx-sign": "2.7.1"
   },
   "packageManager": "pnpm@11.25.0",
   "main": "desktop/main.cjs",

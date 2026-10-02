@@ -1,0 +1,93 @@
+name: macOS development installers
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/macos-package.yml
+      - scripts/package-desktop.mjs
+      - scripts/package-macos.mjs
+      - desktop/MACOS.md
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Set up pinned pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.25.0
+          run_install: false
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check editor and desktop host
+        run: |
+          pnpm test
+          pnpm test:desktop
+          pnpm build
+
+      - name: Build Apple Silicon and Intel installers with native Apple tools
+        run: node scripts/package-macos.mjs --arch=all --implementation=native
+
+      - name: Verify installer payloads and architecture
+        run: |
+          for arch in arm64 x64; do
+            pkg="release/SciSlide-$(node -p "require('./package.json').version")-macos-${arch}-unsigned.pkg"
+            shasum -a 256 -c "${pkg}.sha256"
+            pkgutil --expand-full "$pkg" "release/verify-${arch}"
+            app=$(find "release/verify-${arch}" -type d -name SciSlide.app -print -quit)
+            test -n "$app"
+            test -s "$app/Contents/Resources/app.asar"
+            if [ "$arch" = x64 ]; then native_arch=x86_64; else native_arch=arm64; fi
+            lipo -verify_arch "$native_arch" "$app/Contents/MacOS/scislide"
+          done
+          node -e "require('fs').appendFileSync(process.env.GITHUB_ENV, 'SCISLIDE_VERSION=' + require('./package.json').version + '\n')"
+
+      - name: Upload Apple Silicon development installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: SciSlide-${{ env.SCISLIDE_VERSION }}-macos-arm64-unsigned
+          path: |
+            release/SciSlide-*-macos-arm64-unsigned.pkg
+            release/SciSlide-*-macos-arm64-unsigned.pkg.sha256
+            release/MACOS-INSTALL.md
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload Intel development installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: SciSlide-${{ env.SCISLIDE_VERSION }}-macos-x64-unsigned
+          path: |
+            release/SciSlide-*-macos-x64-unsigned.pkg
+            release/SciSlide-*-macos-x64-unsigned.pkg.sha256
+            release/MACOS-INSTALL.md
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30

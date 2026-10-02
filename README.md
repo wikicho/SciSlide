@@ -37,9 +37,23 @@ pnpm preview
 pnpm desktop:package
 ```
 
-현재 OS와 CPU 아키텍처용 앱을 프로젝트 옆의 `../scislide-desktop/`에 생성합니다. Linux x64에서는 `SciSlide-linux-x64/scislide`를 실행합니다. 앱에는 편집기, Electron 런타임, 데스크톱 호스트와 의존성 라이선스가 포함됩니다. TeX 배포판은 포함하지 않습니다.
+현재 OS와 CPU 아키텍처용 앱을 프로젝트의 `release/`에 생성합니다. Linux x64에서는 `release/SciSlide-linux-x64/scislide`를 실행합니다. `--platform`, `--arch`, `--out`으로 대상을 지정할 수 있고, 기존 결과를 교체하려면 `--overwrite`를 명시합니다. 앱에는 편집기, Electron 런타임, 데스크톱 호스트와 의존성 라이선스가 포함됩니다. TeX 배포판은 포함하지 않습니다.
 
-이 명령은 개발용 앱 폴더를 만드는 단계입니다. 서명된 설치 프로그램, 자동 업데이트, macOS notarization, Windows 서명과 세 OS의 배포 검증은 후속 작업입니다.
+macOS용 **Apple Silicon과 Intel `.pkg` 설치 프로그램**은 다음 명령으로 함께 만듭니다.
+
+```sh
+pnpm desktop:package:mac
+# One architecture:
+pnpm desktop:package:mac --arch=arm64
+```
+
+기본 경로는 `release/SciSlide-0.2.1-macos-arm64-unsigned.pkg`와 `release/SciSlide-0.2.1-macos-x64-unsigned.pkg`이며, 각 파일의 SHA-256 체크섬도 생성합니다. 설치 위치는 `/Applications/SciSlide.app`입니다. [macOS 설치 안내](desktop/MACOS.md)에 아키텍처 선택과 현재 제한을 정리했습니다.
+
+기본 `.pkg` 생성은 [Electron의 공식 순수 JavaScript 패키징](https://packages.electronjs.org/osx-sign/v2.6.0/index.html#pure-javascript-packaging)을 사용하므로 Linux에서도 가능합니다. macOS와 Xcode Command Line Tools가 있으면 `pnpm desktop:package:mac --implementation=native`로 Apple의 `pkgbuild`와 `productbuild`를 사용할 수 있습니다. **두 경로 모두 Developer ID 서명과 notarization이 없는 개발용 설치 프로그램**입니다. macOS의 보안 정책에 따라 설치나 실행이 차단될 수 있습니다. 시스템 보안 설정은 변경하지 않습니다.
+
+저장소의 **macOS development installers** Actions 작업은 macOS runner에서 편집기를 한 번 빌드하고 두 아키텍처를 네이티브 `.pkg`로 만듭니다. Actions의 **Run workflow**로 실행하거나 패키징 설정이 바뀌면 실행됩니다. 버전과 아키텍처 이름을 붙인 installer·checksum·안내문을 30일 보관하는 artifact로 받습니다. 추가 비밀키나 Apple 계정은 사용하지 않습니다. 실제 Mac에서의 설치·편집·파일 저장·출력 검증과 서명된 배포는 별도 단계입니다.
+
+자동 업데이트, macOS notarization, Windows 서명과 세 OS의 전체 배포 검증은 후속 작업입니다.
 
 ## 직접 사용하기
 
