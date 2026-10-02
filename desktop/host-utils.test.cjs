@@ -198,8 +198,8 @@ test("equation compilation only accepts bounded renderer parameters", () => {
 });
 
 test("custom app resource paths reject escaped paths and symlinks outside dist", async () => {
-  const temporary = await fs.mkdtemp(
-    path.join(os.tmpdir(), "scislide-host-test-"),
+  const temporary = await fs.realpath(
+    await fs.mkdtemp(path.join(os.tmpdir(), "scislide-host-test-")),
   );
   const dist = path.join(temporary, "dist");
   try {

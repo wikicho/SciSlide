@@ -9,6 +9,8 @@ on:
       - scripts/package-desktop.mjs
       - scripts/package-macos.mjs
       - desktop/MACOS.md
+      - desktop/host-utils.test.cjs
+      - tests/desktop-package.test.mjs
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
