@@ -60,7 +60,7 @@ jobs:
         run: |
           for arch in arm64 x64; do
             pkg="release/SciSlide-$(node -p "require('./package.json').version")-macos-${arch}-unsigned.pkg"
-            shasum -a 256 -c "${pkg}.sha256"
+            (cd release && shasum -a 256 -c "$(basename "${pkg}.sha256")")
             pkgutil --expand-full "$pkg" "release/verify-${arch}"
             app=$(find "release/verify-${arch}" -type d -name SciSlide.app -print -quit)
             test -n "$app"
