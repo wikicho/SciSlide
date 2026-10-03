@@ -10,6 +10,7 @@ on:
       - scripts/package-windows.mjs
       - desktop/**
       - src/**
+      - public/**
       - tests/**
       - examples/**
       - third-party-licenses/**

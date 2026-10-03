@@ -1,4 +1,4 @@
-# SciSlide 0.4.0 — macOS development installer
+# SciSlide 0.4.1 — macOS development installer
 
 Choose the installer that matches your Mac: **arm64** for Apple Silicon (M1 or later), or **x64** for Intel. The installer copies SciSlide to `/Applications/SciSlide.app`. Node.js, a development server and TeX are not required for MathJax editing.
 
@@ -12,12 +12,12 @@ MathJax equations, AMS notation and the included STIX Two, Fira Math and Latin M
 
 To open bundled examples, use Finder's **Show Package Contents** on SciSlide.app and browse to `Contents/Resources/examples/`. Copy a sample presentation to your own folder before editing it. The sample data is synthetic.
 
-The editor is a prototype. Korean text works in the editor and native `.scislide` files; PDF body text currently supports the bundled Inter Latin character range. Page numbering, embedded MP4/WebM videos and click-step appear/fade builds are available. Videos play in presentation mode; PDF/SVG exports show a static placeholder. Image crop, advanced animation timelines, PPTX conversion and automatic updates are future work.
+The editor is a prototype. Modern Korean body text is supported in the editor and PDF/SVG through bundled Nanum Gothic, without a separate font installation. Page numbering, embedded MP4/WebM videos and click-step appear/fade builds are available. Videos play in presentation mode; PDF/SVG exports show a static placeholder. Image crop, advanced animation timelines, PPTX conversion and automatic updates are future work.
 
 Each installer has a matching `.sha256` file. To verify a download, put the installer and checksum file in the same folder and run:
 
 ```sh
-shasum -a 256 -c SciSlide-0.4.0-macos-arm64-unsigned.pkg.sha256
+shasum -a 256 -c SciSlide-0.4.1-macos-arm64-unsigned.pkg.sha256
 ```
 
 Use the x64 filename for an Intel installer. This checks that the file matches its accompanying checksum; it does not certify the publisher or replace Apple's code signing and notarization.

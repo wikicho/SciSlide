@@ -1,3 +1,5 @@
+import { exportTextFontFamily, exportTextFontWeight } from "./text-fonts";
+
 let measurementContext: CanvasRenderingContext2D | null = null;
 
 /** Shared by the editing scene and exports so text has the same line breaks. */
@@ -12,11 +14,14 @@ export function wrapText(
   const context = measurementContext;
   if (!context)
     throw new Error("This browser cannot measure text for the slide.");
-  context.font = `${fontWeight} ${fontSize}px "${fontFamily}"`;
+  const renderedText = text.normalize("NFC");
+  const family = exportTextFontFamily(renderedText, fontFamily);
+  const weight = exportTextFontWeight(renderedText, fontFamily, fontWeight);
+  context.font = `${weight} ${fontSize}px "${family}"`;
   const availableWidth = Math.max(1, width);
   const lines: string[] = [];
 
-  for (const paragraph of text.replace(/\r\n?/g, "\n").split("\n")) {
+  for (const paragraph of renderedText.replace(/\r\n?/g, "\n").split("\n")) {
     const words = paragraph.trim().split(/\s+/).filter(Boolean);
     if (!words.length) {
       lines.push("");

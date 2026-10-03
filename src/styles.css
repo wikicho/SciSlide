@@ -1,5 +1,19 @@
+@font-face {
+  font-family: "Nanum Gothic";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/nanum-gothic-400.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Nanum Gothic";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/nanum-gothic-700.ttf") format("truetype");
+}
 :root {
-  font-family: Inter, Arial, sans-serif;
+  font-family: Inter, "Nanum Gothic", Arial, sans-serif;
   color: #253347;
   background: #f7f8fa;
   font-synthesis: none;

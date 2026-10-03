@@ -2,7 +2,7 @@
 
 A scientific presentation editor with editable equations, vector output, and an Electron desktop host.
 
-**v0.4.0 is a working prototype.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux systems. The included three-slide cosmology deck uses synthetic demonstration data. The current version also connects compatible installed AI CLIs to generate editable slide drafts. Deck-wide page numbers, embedded video, and ordered click-triggered builds remain available.
+**v0.4.1 is a working prototype.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux systems. The included three-slide cosmology deck uses synthetic demonstration data. The current version also connects compatible installed AI CLIs to generate editable slide drafts. Deck-wide page numbers, embedded video, and ordered click-triggered builds remain available.
 
 ## Getting Started
 
@@ -47,7 +47,7 @@ pnpm desktop:package:mac
 pnpm desktop:package:mac --arch=arm64
 ```
 
-The default output paths are `release/SciSlide-0.4.0-macos-arm64-unsigned.pkg` and `release/SciSlide-0.4.0-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
+The default output paths are `release/SciSlide-0.4.1-macos-arm64-unsigned.pkg` and `release/SciSlide-0.4.1-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
 
 The default `.pkg` implementation uses [Electron's official pure JavaScript packaging](https://packages.electronjs.org/osx-sign/v2.6.0/index.html#pure-javascript-packaging), so it also works on Linux. On macOS with Xcode Command Line Tools, use `pnpm desktop:package:mac --implementation=native` to package with Apple's `pkgbuild` and `productbuild`. **Both methods produce development installers without Developer ID signing or notarization.** macOS security policies may block installation or launch. The packaging process does not change system security settings.
 
@@ -61,7 +61,7 @@ pnpm desktop:package:win
 pnpm desktop:package:win --portable-only
 ```
 
-This command always targets **Intel/AMD x64**, regardless of the build host. It creates `release/SciSlide-0.4.0-windows-x64-setup-unsigned.exe` and `release/SciSlide-0.4.0-windows-x64-portable.zip`, with SHA-256 checksum files. The installer uses an x64 bootstrap executable, installs for the current user under `%LOCALAPPDATA%\Programs\SciSlide`, and adds a Start menu shortcut. The portable ZIP contains the complete app folder; extract it and launch `SciSlide-win32-x64/scislide.exe`. No Node.js or TeX installation is needed to run MathJax editing.
+This command always targets **Intel/AMD x64**, regardless of the build host. It creates `release/SciSlide-0.4.1-windows-x64-setup-unsigned.exe` and `release/SciSlide-0.4.1-windows-x64-portable.zip`, with SHA-256 checksum files. The installer uses an x64 bootstrap executable, installs for the current user under `%LOCALAPPDATA%\Programs\SciSlide`, and adds a Start menu shortcut. The portable ZIP contains the complete app folder; extract it and launch `SciSlide-win32-x64/scislide.exe`. No Node.js or TeX installation is needed to run MathJax editing.
 
 See the [Windows installation and build guide](desktop/WINDOWS.md) for compiler selection, checksums and platform limits. The **Windows x64 development distributions** Actions workflow builds on a Windows x64 runner, verifies the executable architectures and hashes, and checks installation/uninstallation in a temporary directory. Its versioned downloadable artifacts contain both distributions and are retained for 30 days. Windows 10 or later is required; physical Windows 10/11 editing and export validation remains open. Local LaTeX compilation is currently disabled on Windows.
 
@@ -91,6 +91,10 @@ Review the generated slides and notes, then click **Insert draft slides** to add
 The host uses fixed provider commands and passes requests through stdin in a private temporary workspace. Codex runs with read-only enforcement and restricted agent integrations; compatible Claude/Gemini modes disable content-generation tools. Gemini reuses existing authentication through private temporary links to known vendor authentication files, or its normal keychain/environment authentication; those links are removed at job completion. User customizations and organization policies can make a connection unavailable. Requests time out after three minutes, output is bounded, and Cancel or closing the dialog terminates the job. Only one generation runs at a time.
 
 The web editor shows the desktop requirement and does not launch local programs. Image generation, file/repository access, web research, full-deck replacement, streaming chat and direct API-key setup are later features. Native `.scislide` documents keep format version **0.3.0**.
+
+## Korean Text Export
+
+The bundled Nanum Gothic fonts are unchanged static TrueType files from a pinned revision of [Google Fonts](https://github.com/google/fonts/tree/133ccbee9a8b408eb71f31a36ccb9116f5c695ad/ofl/nanumgothic). They use [SIL Open Font License 1.1](third-party-licenses/nanum-gothic/OFL.txt), which permits software bundling and document embedding. The copyright, license, source revision and asset checksums are included in `third-party-licenses/nanum-gothic/`. Korean PDF exports embed subsets of the used fonts; mathematical equations remain vector graphics.
 
 ## Slide Templates
 
@@ -209,7 +213,7 @@ Local LaTeX equations retain their source, preamble, engine, result SVG and dime
 
 ## Current Limitations
 
-- Korean text works in the editor and source files. **PDF body text supports only the character coverage of the bundled Inter Latin fonts**; unsupported characters, including Korean, stop export with a clear error. Outlining Local LaTeX equations does not expand font support for ordinary body text. SVG body text may look different on other computers because of browser font fallback.
+- Modern Korean text is supported in the editor, PDF and SVG through bundled **Nanum Gothic Regular/Bold**. No system font installation or remote font request is needed. Text objects containing Korean use Nanum Gothic; Latin-only objects retain Inter. Korean weights 400/500 use Regular and 600/700 use Bold. Decomposed modern Hangul is normalized to NFC for display/export while the editable source is preserved. PDF text remains selectable, and SVG embeds the required font and its license. Unsupported glyphs, including Hanja and standalone old/combining Jamo, still stop PDF export with a clear error; use native equations for mathematical symbols unavailable in the text font. Local LaTeX equation outlines do not extend body-text font coverage.
 - Figure cropping/PDF region import/insets, persistent groups, smart guides/equal distribution, linked masters, a separate presenter display, equation libraries/shared macros, citations, editable charts, collaboration and PPTX/Beamer conversion are planned. Basic appear/fade click builds are available; advanced motion, exit effects, timing chains, equation-term highlighting and a timeline are not yet available.
 - Local LaTeX is an initial implementation targeting system installations on Linux. Arbitrary complete documents, home package folders, every TeX distribution path, and every package combination are not guaranteed to work.
 - External references and active content in SVG figures are unsupported. PDF export does not support filters, masks, textPath, or some complex SVG effects. These produce an error before export.
@@ -248,12 +252,12 @@ Electron runtime validation covered sandboxing and context isolation, blocked No
  src/lib/local-equation-svg.ts Passive outlined SVG validation
  src/lib/export.ts             Vector PDF/SVG exporters and resource preflight
  tests/                        Document, equation, archive and compiler regressions
- public/fonts/                 Bundled Inter TrueType fonts for PDF
+ public/fonts/                 Bundled Inter and Nanum Gothic TrueType fonts
  third-party-licenses/         Dependency and font license notices
 ```
 
 ## Future Development and Licensing
 
-Priorities include Korean PDF fonts, bounded asset/draft recovery, figure crop/PDF region import/enlarged insets, grouping/smart guides/equal distribution, themes/masters, equation libraries/shared macros, a separate presenter display, citations/BibTeX and CSV charts with units/error bars. Advanced animation, split font loading and desktop distribution validation remain separate follow-up work. Local TeX isolation on macOS and Windows, along with access to explicitly selected user package folders, requires separate implementation. See the [project specification](SciSlide-Project-Specification.md) for the detailed design and follow-up requirements.
+Priorities include bounded asset/draft recovery, figure crop/PDF region import/enlarged insets, grouping/smart guides/equal distribution, themes/masters, equation libraries/shared macros, a separate presenter display, citations/BibTeX and CSV charts with units/error bars. Advanced animation, split font loading and desktop distribution validation remain separate follow-up work. Local TeX isolation on macOS and Windows, along with access to explicitly selected user package folders, requires separate implementation. See the [project specification](SciSlide-Project-Specification.md) for the detailed design and follow-up requirements.
 
 This prototype does not reuse PPTist code. **A project license for the new SciSlide source has not yet been selected.** The license and contribution rules must be finalized before a public release. Bundled dependencies, fonts, and the Electron runtime retain their respective licenses; notices are kept in `third-party-licenses/` and the packaged runtime.

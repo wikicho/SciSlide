@@ -1,4 +1,4 @@
-# SciSlide 0.4.0 — Linux x64
+# SciSlide 0.4.1 — Linux x64
 
 Run the `scislide` executable in this folder. Keep the runtime files together. Node.js and a development server are not required.
 
@@ -24,6 +24,6 @@ Including the current slide's visible text, equations and speaker notes is optio
 
 Isolated compilation uses supported system TeX/font paths. Home-installed `~/texmf` packages and personal font folders are not connected yet. Presentations with saved equation results can be viewed, presented and exported without TeX.
 
-This is a prototype. Korean body-text editing and native saving are available, but Korean body-text PDF output is not yet supported. Figure cropping, advanced animation, PPTX conversion, signed installers and automatic updates remain planned.
+This is a prototype. Modern Korean body text uses bundled Nanum Gothic in the editor, PDF and SVG. Font files and the SIL OFL 1.1 notice are included; no separate font installation is needed. Unsupported scripts and glyphs still produce an export error. Figure cropping, advanced animation, PPTX conversion, signed installers and automatic updates remain planned.
 
 Electron/Chromium notices are in `LICENSE` and `LICENSES.chromium.html`. Application dependency notices are in `resources/app.asar` under `third-party-licenses/`. The license for the new SciSlide project source has not yet been selected.

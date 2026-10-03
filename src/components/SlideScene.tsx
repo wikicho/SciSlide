@@ -7,6 +7,12 @@ import { wrapText } from "../lib/layout";
 import { resolvePageNumber } from "../lib/model";
 import { isVisibleAtStep } from "../lib/presentation";
 import { VideoPlaceholder, VideoView } from "./VideoView";
+import {
+  exportTextFontFamily,
+  exportTextFontWeight,
+  isKoreanFontFamily,
+  KOREAN_FONT_FAMILY,
+} from "../lib/text-fonts";
 
 export function EquationView({
   object,
@@ -120,6 +126,41 @@ export function SlideScene({
   const [localMetrics, setLocalMetrics] = useState<
     Record<string, { width: number; height: number }>
   >({});
+  const [, refreshTextMetrics] = useState(0);
+  const koreanWeights = new Set<number>();
+  for (const original of slide.objects) {
+    const object = preview[original.id] ?? original;
+    if (
+      object.type === "text" &&
+      object.visible &&
+      isKoreanFontFamily(exportTextFontFamily(object.text, object.fontFamily))
+    ) {
+      koreanWeights.add(
+        exportTextFontWeight(object.text, object.fontFamily, object.fontWeight),
+      );
+    }
+  }
+  if (pageNumber && isKoreanFontFamily(deck.theme.fontFamily))
+    koreanWeights.add(400);
+  const koreanFontKey = [...koreanWeights].sort().join(",");
+  useEffect(() => {
+    if (!koreanFontKey || !document.fonts?.load) return;
+    let active = true;
+    void Promise.all(
+      koreanFontKey
+        .split(",")
+        .map((weight) =>
+          document.fonts.load(`${weight} 16px "${KOREAN_FONT_FAMILY}"`, "한글"),
+        ),
+    )
+      .then(() => {
+        if (active) refreshTextMetrics((revision) => revision + 1);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [koreanFontKey]);
   const reportMetrics = useCallback(
     (id: string, width: number, height: number) => {
       setLocalMetrics((m) =>
@@ -189,8 +230,12 @@ export function SlideScene({
                 <text
                   fill={o.color}
                   fontSize={o.fontSize}
-                  fontWeight={o.fontWeight}
-                  fontFamily={o.fontFamily}
+                  fontWeight={exportTextFontWeight(
+                    o.text,
+                    o.fontFamily,
+                    o.fontWeight,
+                  )}
+                  fontFamily={exportTextFontFamily(o.text, o.fontFamily)}
                   textAnchor={
                     o.align === "center"
                       ? "middle"

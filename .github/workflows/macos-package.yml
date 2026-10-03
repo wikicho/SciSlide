@@ -10,6 +10,7 @@ on:
       - scripts/package-macos.mjs
       - desktop/**
       - src/**
+      - public/**
       - tests/**
       - examples/**
       - third-party-licenses/**

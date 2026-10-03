@@ -4,12 +4,28 @@ import type { AnySlideObject, Asset, Deck, Slide } from "./model";
 import { renderObjectEquation } from "./equation-renderer";
 import { wrapText } from "./layout";
 import { resolvePageNumber } from "./model";
+import koreanFontLicense from "../../third-party-licenses/nanum-gothic/OFL.txt?raw";
+import {
+  fontDefinitions,
+  loadInterFonts,
+  loadKoreanFonts,
+  type ExportFontFiles,
+  type KoreanFontFiles,
+} from "./export-fonts";
+import {
+  exportTextFontFamily,
+  exportTextFontWeight,
+  firstFontFamily,
+  isKoreanFontFamily,
+  KOREAN_FONT_FAMILY,
+  nearestKoreanWeight,
+  normalizeRenderedText,
+  PDF_GENERIC_FONT_FAMILIES,
+  TEXT_FONT_WEIGHTS,
+  type TextFontWeight,
+} from "./text-fonts";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-const FONT_WEIGHTS = [400, 500, 600, 700] as const;
-type FontWeight = (typeof FONT_WEIGHTS)[number];
-type FontFiles = Record<FontWeight, string>;
-let bundledFonts: Promise<FontFiles> | undefined;
 
 function svgElement<K extends keyof SVGElementTagNameMap>(
   tag: K,
@@ -21,53 +37,7 @@ function svgElement<K extends keyof SVGElementTagNameMap>(
   return element;
 }
 
-function base64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += 8192) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
-  }
-  return btoa(binary);
-}
-
-async function loadFonts(): Promise<FontFiles> {
-  bundledFonts ??= (async () => {
-    const entries = await Promise.all(
-      FONT_WEIGHTS.map(async (weight) => {
-        const response = await fetch(
-          new URL(`fonts/inter-${weight}.ttf`, document.baseURI),
-        );
-        if (!response.ok)
-          throw new Error(
-            `The bundled Inter ${weight} font could not be loaded. Reload the app and try again.`,
-          );
-        const bytes = new Uint8Array(await response.arrayBuffer());
-        if (bytes.length < 12 || bytes[0] !== 0 || bytes[1] !== 1) {
-          throw new Error(
-            `The bundled Inter ${weight} font is not a valid TrueType font.`,
-          );
-        }
-        // Make measurement independent of whether this weight has already been
-        // used on screen. document.fonts.ready alone does not load unused faces.
-        const face = new FontFace("Inter", bytes, {
-          weight: String(weight),
-          style: "normal",
-        });
-        await face.load();
-        document.fonts.add(face);
-        return [weight, base64(bytes)] as const;
-      }),
-    );
-    return Object.fromEntries(entries) as FontFiles;
-  })();
-  try {
-    return await bundledFonts;
-  } catch (error) {
-    bundledFonts = undefined;
-    throw error;
-  }
-}
-
-function fontStyle(weight: FontWeight): string {
+function fontStyle(weight: TextFontWeight): string {
   return weight === 400
     ? "normal"
     : weight === 700
@@ -75,19 +45,21 @@ function fontStyle(weight: FontWeight): string {
       : `${weight}normal`;
 }
 
-function addPdfFonts(pdf: jsPDF, fonts: FontFiles) {
-  for (const weight of FONT_WEIGHTS) {
+function addPdfFonts(pdf: jsPDF, fonts: ExportFontFiles) {
+  for (const weight of TEXT_FONT_WEIGHTS) {
     const name = `inter-${weight}.ttf`;
-    pdf.addFileToVFS(name, fonts[weight]);
+    pdf.addFileToVFS(name, fonts.inter[weight]);
     pdf.addFont(name, "Inter", fontStyle(weight));
   }
+  if (fonts.korean) addKoreanPdfFonts(pdf, fonts.korean);
 }
 
-function fontDefinitions(fonts: FontFiles): string {
-  return FONT_WEIGHTS.map(
-    (weight) =>
-      `@font-face{font-family:Inter;font-style:normal;font-weight:${weight};src:url(data:font/ttf;base64,${fonts[weight]}) format('truetype')}`,
-  ).join("\n");
+function addKoreanPdfFonts(pdf: jsPDF, fonts: KoreanFontFiles) {
+  for (const weight of [400, 700] as const) {
+    const name = `nanum-gothic-${weight}.ttf`;
+    pdf.addFileToVFS(name, fonts[weight]);
+    pdf.addFont(name, KOREAN_FONT_FAMILY, fontStyle(weight));
+  }
 }
 
 function decodeSvg(asset: Asset): string {
@@ -245,6 +217,14 @@ async function objectSvg(
   title.textContent = object.name;
   group.append(title);
   if (object.type === "text") {
+    const renderedText = normalizeRenderedText(object.text);
+    const family = exportTextFontFamily(renderedText, object.fontFamily);
+    const weight = exportTextFontWeight(
+      renderedText,
+      object.fontFamily,
+      object.fontWeight,
+    );
+    if (isKoreanFontFamily(family)) await loadKoreanFonts();
     const x =
       object.align === "center"
         ? width / 2
@@ -253,9 +233,9 @@ async function objectSvg(
           : 0;
     const text = svgElement("text", {
       fill: object.color,
-      "font-family": object.fontFamily,
+      "font-family": family,
       "font-size": object.fontSize,
-      "font-weight": object.fontWeight,
+      "font-weight": weight,
       "font-style": "normal",
       "text-anchor":
         object.align === "center"
@@ -264,20 +244,16 @@ async function objectSvg(
             ? "end"
             : "start",
     });
-    wrapText(
-      object.text,
-      width,
-      object.fontSize,
-      object.fontFamily,
-      object.fontWeight,
-    ).forEach((line, index) => {
-      const span = svgElement("tspan", {
-        x,
-        y: object.fontSize + index * object.fontSize * 1.3,
-      });
-      span.textContent = line || " ";
-      text.append(span);
-    });
+    wrapText(renderedText, width, object.fontSize, family, weight).forEach(
+      (line, index) => {
+        const span = svgElement("tspan", {
+          x,
+          y: object.fontSize + index * object.fontSize * 1.3,
+        });
+        span.textContent = line || " ";
+        text.append(span);
+      },
+    );
     group.append(text);
   } else if (object.type === "shape") {
     const attributes = {
@@ -393,12 +369,95 @@ async function objectSvg(
   return group;
 }
 
+function directSvgText(node: Element): string {
+  return [...node.childNodes]
+    .filter((child) => child.nodeType === Node.TEXT_NODE)
+    .map((child) => child.textContent ?? "")
+    .join("");
+}
+
+function svgFontProperty(
+  node: Element,
+  property: string,
+  fallback: string,
+): string {
+  const computed = getComputedStyle(node).getPropertyValue(property);
+  if (computed && computed !== "inherit") return computed;
+  // Presentation attributes are not inherited by jsdom's computed-style
+  // implementation; this also makes inherited inline SVG defaults explicit.
+  for (
+    let ancestor: Element | null = node;
+    ancestor;
+    ancestor = ancestor.parentElement
+  ) {
+    const inline = (ancestor as SVGElement).style?.getPropertyValue(property);
+    const value = inline || ancestor.getAttribute(property);
+    if (value && value !== "inherit") return value;
+  }
+  return fallback;
+}
+
+function svgFontWeight(node: Element): number {
+  const value = svgFontProperty(node, "font-weight", "400");
+  return value === "bold"
+    ? 700
+    : value === "normal"
+      ? 400
+      : Number(value) || 400;
+}
+
+/** Snapshot styles first so selecting a parent run does not alter its children. */
+async function normalizeSvgTextFonts(svg: SVGSVGElement): Promise<boolean> {
+  const host = document.createElement("div");
+  host.style.cssText =
+    "position:fixed;left:-100000px;top:0;pointer-events:none;opacity:0";
+  document.body.append(host);
+  host.append(svg);
+  try {
+    const runs = [...svg.querySelectorAll("text,tspan")]
+      .map((node) => {
+        for (const child of node.childNodes) {
+          if (child.nodeType === Node.TEXT_NODE && child.textContent)
+            child.textContent = normalizeRenderedText(child.textContent);
+        }
+        const text = directSvgText(node);
+        const requestedFamily = firstFontFamily(
+          svgFontProperty(node, "font-family", "serif"),
+        );
+        const family = firstFontFamily(
+          exportTextFontFamily(text, requestedFamily),
+        );
+        const weight = svgFontWeight(node);
+        return { node: node as SVGElement, text, family, weight };
+      })
+      .filter((run) => run.text.trim());
+    const needsKorean = runs.some((run) => isKoreanFontFamily(run.family));
+    if (needsKorean) await loadKoreanFonts();
+    for (const { node, family, weight } of runs) {
+      const resolvedWeight = isKoreanFontFamily(family)
+        ? nearestKoreanWeight(weight)
+        : weight;
+      // Inline styles take precedence over imported presentation attributes.
+      // Keep Latin child runs in their original family if a Korean parent was
+      // changed, and give svg2pdf exactly the same static master as the browser.
+      node.style.setProperty("font-family", family);
+      node.style.setProperty("font-weight", String(resolvedWeight));
+      node.setAttribute("font-family", family);
+      node.setAttribute("font-weight", String(resolvedWeight));
+    }
+    return needsKorean;
+  } finally {
+    svg.remove();
+    host.remove();
+  }
+}
+
 /** Shared static export scene: all build steps, page numbering, passive media frames. */
 export async function renderSlideSvg(
   deck: Deck,
   slide: Slide,
   index: number,
-  fonts?: FontFiles,
+  fonts?: ExportFontFiles,
 ): Promise<SVGSVGElement> {
   await document.fonts.ready;
   const { width, height } = deck.slideSize;
@@ -414,11 +473,6 @@ export async function renderSlideSvg(
   const title = svgElement("title");
   title.textContent = slide.title;
   svg.append(title);
-  if (fonts) {
-    const style = svgElement("style");
-    style.textContent = fontDefinitions(fonts);
-    svg.append(style);
-  }
   svg.append(svgElement("rect", { width, height, fill: slide.background }));
   const objects = await Promise.all(
     slide.objects
@@ -442,6 +496,23 @@ export async function renderSlideSvg(
     });
     number.textContent = pageNumber.text;
     svg.append(number);
+  }
+  const needsKorean = await normalizeSvgTextFonts(svg);
+  if (fonts) {
+    const embeddedFonts: ExportFontFiles = {
+      ...fonts,
+      korean: needsKorean ? await loadKoreanFonts() : undefined,
+    };
+    const style = svgElement("style");
+    style.textContent = fontDefinitions(embeddedFonts);
+    svg.insertBefore(style, svg.children[1]);
+    if (embeddedFonts.korean) {
+      const license = svgElement("metadata", {
+        "data-font-license": KOREAN_FONT_FAMILY,
+      });
+      license.textContent = koreanFontLicense;
+      svg.insertBefore(license, style);
+    }
   }
   return svg;
 }
@@ -472,50 +543,39 @@ function verifyPdfContent(svg: SVGSVGElement, pdf: jsPDF, slide: Slide) {
   // Computed styles include styles embedded in imported figures. The hidden
   // SVG is attached only during validation/rendering and is always removed.
   for (const node of svg.querySelectorAll("text,tspan")) {
-    const text = [...node.childNodes]
-      .filter((child) => child.nodeType === Node.TEXT_NODE)
-      .map((child) => child.textContent ?? "")
-      .join("");
+    const text = directSvgText(node);
     if (!text.trim()) continue;
-    const style = getComputedStyle(node);
-    const family = style.fontFamily
-      .split(",")[0]
-      .trim()
-      .replace(/^['"]|['"]$/g, "");
-    const weight = Number(style.fontWeight) || 400;
-    if (style.fontStyle !== "normal")
+    const family = firstFontFamily(
+      svgFontProperty(node, "font-family", "serif"),
+    );
+    const weight = svgFontWeight(node);
+    if (svgFontProperty(node, "font-style", "normal") !== "normal")
       throw new Error(
         `Slide “${slide.title}” contains italic SVG text. Outline that figure's text or export SVG.`,
       );
     let characterMap: Record<number, number> | undefined;
-    if (family === "Inter") {
-      if (!(FONT_WEIGHTS as readonly number[]).includes(weight))
+    if (family === "Inter" || isKoreanFontFamily(family)) {
+      const korean = isKoreanFontFamily(family);
+      const availableWeights = korean ? [400, 700] : TEXT_FONT_WEIGHTS;
+      if (!(availableWeights as readonly number[]).includes(weight))
         throw new Error(
-          `Slide “${slide.title}” uses text weight ${weight}. PDF export supports Inter 400, 500, 600, and 700.`,
+          `Slide “${slide.title}” uses text weight ${weight}. PDF export supports Inter 400, 500, 600, and 700, and Nanum Gothic 400 and 700 (500 maps to 400; 600 maps to 700).`,
         );
-      pdf.setFont("Inter", fontStyle(weight as FontWeight));
+      pdf.setFont(
+        korean ? KOREAN_FONT_FAMILY : "Inter",
+        fontStyle(weight as TextFontWeight),
+      );
       characterMap = pdf.getFont().metadata?.cmap?.unicode?.codeMap as
         Record<number, number> | undefined;
       if (!characterMap)
-        throw new Error("The Inter font could not be embedded into the PDF.");
+        throw new Error(
+          `The ${family} font could not be embedded into the PDF.`,
+        );
     } else if (
-      ![
-        "serif",
-        "sans-serif",
-        "monospace",
-        "Arial",
-        "Times",
-        "Times New Roman",
-        "Courier",
-        "Courier New",
-        "Helvetica",
-        "helvetica",
-        "times",
-        "courier",
-      ].includes(family)
+      !(PDF_GENERIC_FONT_FAMILIES as readonly string[]).includes(family)
     ) {
       throw new Error(
-        `Slide “${slide.title}” needs the unbundled font “${family}”. Use Inter for slide text, outline the figure's text, or export SVG.`,
+        `Slide “${slide.title}” needs the unbundled font “${family}”. Use Inter or Nanum Gothic for slide text, outline the figure's text, or export SVG.`,
       );
     } else if (![400, 700].includes(weight)) {
       throw new Error(
@@ -539,15 +599,15 @@ function verifyPdfContent(svg: SVGSVGElement, pdf: jsPDF, slide: Slide) {
     if (unsupportedCharacters.size) {
       const characters = [...unsupportedCharacters].slice(0, 8).join(" ");
       throw new Error(
-        `Slide “${slide.title}” contains text glyphs unavailable in its embedded PDF font (${characters}). Use a native equation for mathematical symbols, outline figure text, or export SVG. Korean and other unbundled scripts require SVG export in this version.`,
+        `Slide “${slide.title}” contains text glyphs unavailable in its embedded PDF font “${family}” (${characters}). Nanum Gothic covers modern Korean syllables, but not every Jamo, Hanja, or other script. Use a native equation for mathematical symbols, outline figure text, or export SVG.`,
       );
     }
   }
 }
 
-/** Editable Unicode text, embedded Inter fonts, embedded figures and vector equations. */
+/** Editable Unicode text, embedded Inter/Nanum Gothic fonts and vector equations. */
 export async function exportSlideSvg(deck: Deck, slide: Slide): Promise<Blob> {
-  const fonts = await loadFonts();
+  const fonts: ExportFontFiles = { inter: await loadInterFonts() };
   const svg = await renderSlideSvg(
     deck,
     slide,
@@ -564,7 +624,7 @@ export async function exportSlideSvg(deck: Deck, slide: Slide): Promise<Blob> {
 
 /** Render genuine PDF vectors; raster figures remain embedded raster images. */
 export async function exportDeckPdf(deck: Deck): Promise<Blob> {
-  const fonts = await loadFonts();
+  const fonts: ExportFontFiles = { inter: await loadInterFonts() };
   const { width, height } = deck.slideSize;
   const pdf = new jsPDF({
     unit: "px",
@@ -589,6 +649,15 @@ export async function exportDeckPdf(deck: Deck): Promise<Blob> {
     const slides = await Promise.all(
       deck.slides.map((slide, index) => renderSlideSvg(deck, slide, index)),
     );
+    if (
+      slides.some((svg) =>
+        [...svg.querySelectorAll("text,tspan")].some((node) =>
+          isKoreanFontFamily(node.getAttribute("font-family") ?? ""),
+        ),
+      )
+    ) {
+      addKoreanPdfFonts(pdf, await loadKoreanFonts());
+    }
     for (let index = 0; index < slides.length; index++) {
       const svg = slides[index];
       host.append(svg);
