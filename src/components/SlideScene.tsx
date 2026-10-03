@@ -14,6 +14,8 @@ import { resolvePageNumber } from "../lib/model";
 import { isVisibleAtStep } from "../lib/presentation";
 import { VideoPlaceholder, VideoView } from "./VideoView";
 import { ShapeView } from "./ShapeView";
+import { SmartGuideOverlay } from "./SmartGuideOverlay";
+import type { SceneGuide } from "./SmartGuideOverlay";
 import { isLineShape, lineEndpoints } from "../lib/shape-geometry";
 import {
   exportTextFontFamily,
@@ -114,6 +116,7 @@ export function SlideScene({
   onDrawStart,
   drawing = false,
   guides = [],
+  guideScale = 1,
   draftShape,
   onMetrics,
   metrics = {},
@@ -136,7 +139,8 @@ export function SlideScene({
   ) => void;
   onDrawStart?: (e: PointerEvent<SVGSVGElement>) => void;
   drawing?: boolean;
-  guides?: Array<{ axis: "x" | "y"; position: number }>;
+  guides?: SceneGuide[];
+  guideScale?: number;
   draftShape?: ShapeObject;
   onMetrics?: (id: string, w: number, h: number) => void;
   metrics?: Record<string, { width: number; height: number }>;
@@ -437,23 +441,11 @@ export function SlideScene({
         </g>
       )}
       {!playback && guides.length > 0 && (
-        <g data-alignment-guides="true" pointerEvents="none">
-          {guides.map(({ axis, position }, index) => (
-            <path
-              key={`${axis}:${position}:${index}`}
-              d={
-                axis === "x"
-                  ? `M ${position} 0 V ${deck.slideSize.height}`
-                  : `M 0 ${position} H ${deck.slideSize.width}`
-              }
-              fill="none"
-              stroke="#c026d3"
-              strokeWidth="1"
-              strokeDasharray="5 4"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-        </g>
+        <SmartGuideOverlay
+          guides={guides}
+          slideSize={deck.slideSize}
+          scale={guideScale}
+        />
       )}
       {pageNumber && (
         <text

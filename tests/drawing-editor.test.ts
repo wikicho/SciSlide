@@ -4,7 +4,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
 import { createBlankSlide, createDemoDeck } from "../src/lib/model";
-import type { Deck, ShapeObject } from "../src/lib/model";
+import type {
+  Deck,
+  ShapeObject,
+  SlideObject,
+  FigureObject,
+} from "../src/lib/model";
 import { lineWorldEndpoints, shapeFromDrag } from "../src/lib/drawing";
 import { loadRecovery, saveRecovery } from "../src/lib/persistence";
 
@@ -35,7 +40,7 @@ function rectangle(x: number, y: number, width = 100, height = 80) {
   return shapeFromDrag("rect", { x, y }, { x: x + width, y: y + height });
 }
 
-function blankDeck(objects: ShapeObject[] = []): Deck {
+function blankDeck(objects: SlideObject[] = []): Deck {
   const demo = createDemoDeck();
   return {
     ...demo,
@@ -366,7 +371,9 @@ describe("drawing editor gestures and history", () => {
     await pointer(objectElement(0), "pointerdown", 110, 110);
     await pointer(window, "pointermove", 307, 141);
     expect(
-      canvas().querySelector('[data-alignment-guides] path[d="M 400 0 V 900"]'),
+      canvas().querySelector(
+        '[data-guide-kind="alignment"][data-guide-axis="x"]',
+      ),
     ).not.toBeNull();
     await pointer(window, "pointerup", 307, 141);
     const snapped = await persist();
@@ -378,6 +385,95 @@ describe("drawing editor gestures and history", () => {
     expect(bypassed[0].transform.x).toBe(297);
     expect(bypassed[0].transform.y).toBe(131);
     expect(canvas().querySelector("[data-alignment-guides]")).toBeNull();
+  });
+
+  it("snaps both dimensions while resizing and commits one undoable edit without saving guides", async () => {
+    const first = rectangle(100, 100, 140, 80);
+    const target = rectangle(700, 500, 300, 150);
+    await render(blankDeck([first, target]));
+    await pointer(objectElement(0), "pointerdown", 110, 110);
+    await pointer(window, "pointerup", 110, 110);
+    await pointer(
+      canvas().querySelector(".resize-handle")!,
+      "pointerdown",
+      240,
+      180,
+    );
+    await pointer(window, "pointermove", 398, 248);
+    expect(canvas().querySelectorAll('[data-guide-kind="size"]')).toHaveLength(
+      4,
+    );
+    expect(canvas().textContent).toContain("300 px");
+    expect(canvas().textContent).toContain("150 px");
+    expect((await persist())[0].transform.width).toBe(140);
+    await pointer(window, "pointerup", 398, 248);
+    const resized = await persist();
+    expect(resized[0].transform).toMatchObject({
+      x: 100,
+      y: 100,
+      width: 300,
+      height: 150,
+    });
+    expect(canvas().querySelector("[data-alignment-guides]")).toBeNull();
+    expect(JSON.stringify(saved)).not.toContain("guides");
+    await click("Undo · Ctrl+Z");
+    expect(await persist()).toEqual([first, target]);
+  });
+
+  it("matches photo widths without stretching and allows Alt and the guide toggle to bypass resize snapping", async () => {
+    const photo: FigureObject = {
+      ...rectangle(100, 100, 200, 100),
+      type: "figure",
+      assetId: "missing",
+      alt: "Test photo",
+    };
+    const target = rectangle(700, 500, 300, 220);
+    await render(blankDeck([photo, target]));
+    async function resize(options: PointerEventInit = {}) {
+      await pointer(objectElement(0), "pointerdown", 110, 110);
+      await pointer(window, "pointerup", 110, 110);
+      await pointer(
+        canvas().querySelector(".resize-handle")!,
+        "pointerdown",
+        300,
+        200,
+        options,
+      );
+      await pointer(window, "pointermove", 398, 600, options);
+      await pointer(window, "pointerup", 398, 600, options);
+      return (await persist())[0].transform;
+    }
+    expect(await resize()).toMatchObject({ width: 300, height: 150 });
+    await click("Undo · Ctrl+Z");
+    expect(await resize({ altKey: true })).toMatchObject({
+      width: 298,
+      height: 149,
+    });
+    await click("Undo · Ctrl+Z");
+    await click("Smart alignment guides · Alt to bypass");
+    expect(await resize()).toMatchObject({ width: 298, height: 149 });
+  });
+
+  it("shows two equal gaps between different-width objects and keeps grid snapping in control", async () => {
+    const moving = rectangle(350, 250, 200, 80);
+    const left = rectangle(100, 100, 100, 80);
+    const right = rectangle(600, 100, 140, 80);
+    await render(blankDeck([moving, left, right]));
+    await pointer(objectElement(0), "pointerdown", 360, 260);
+    await pointer(window, "pointermove", 307, 110);
+    expect(
+      canvas().querySelectorAll('[data-guide-kind="spacing"]'),
+    ).toHaveLength(2);
+    expect(canvas().textContent?.match(/100 px/g)).toHaveLength(2);
+    await pointer(window, "pointerup", 307, 110);
+    expect((await persist())[0].transform).toMatchObject({ x: 300, y: 100 });
+    await click("Undo · Ctrl+Z");
+    await click("Snap to 20 px grid");
+    await pointer(objectElement(0), "pointerdown", 360, 260);
+    await pointer(window, "pointermove", 307, 110);
+    expect(canvas().querySelector("[data-alignment-guides]")).toBeNull();
+    await pointer(window, "pointerup", 307, 110);
+    expect((await persist())[0].transform).toMatchObject({ x: 300, y: 100 });
   });
 
   it("keeps a partly locked group atomic across pointer dragging, keyboard movement, duplication and deletion", async () => {
@@ -394,5 +490,22 @@ describe("drawing editor gestures and history", () => {
     expect(await persist()).toEqual([first, second]);
     expect(button("Group objects · Ctrl+G").disabled).toBe(true);
     expect(button("Ungroup objects · Ctrl+Shift+G").disabled).toBe(true);
+  });
+
+  it("uses visible group bounds for guides while translating hidden members with the group", async () => {
+    const visible = rectangle(100, 100);
+    const hidden = rectangle(500, 100);
+    visible.groupId = hidden.groupId = "with-hidden-member";
+    hidden.visible = false;
+    const target = rectangle(400, 400);
+    const ignored = rectangle(297, 250);
+    ignored.visible = false;
+    await render(blankDeck([visible, hidden, target, ignored]));
+    await drag(0, { x: 110, y: 110 }, { x: 307, y: 141 });
+    const moved = await persist();
+    expect(moved[0].transform).toMatchObject({ x: 300, y: 131 });
+    expect(moved[1].transform).toMatchObject({ x: 700, y: 131 });
+    expect(moved[2]).toEqual(target);
+    expect(moved[3]).toEqual(ignored);
   });
 });

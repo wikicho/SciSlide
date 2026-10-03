@@ -271,7 +271,7 @@ describe("drawing document compatibility", () => {
     );
     expect(manifest).toMatchObject({
       formatVersion: "0.4.0",
-      producer: { name: "SciSlide", version: "0.5.0" },
+      producer: { name: "SciSlide", version: "0.5.1" },
     });
     const loaded = await readDeckArchive(archive);
     expect(loaded.formatVersion).toBe("0.4.0");

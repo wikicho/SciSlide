@@ -2,7 +2,7 @@
 
 A scientific presentation editor with editable equations, vector output, and an Electron desktop host.
 
-**v0.5.0 is a working prototype.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux systems. Draw rectangles, ellipses, lines and arrows, edit line endpoints, and move persistent groups with automatic alignment guides. The included three-slide cosmology deck uses synthetic demonstration data. Compatible installed AI CLIs generate editable slide drafts. Deck-wide page numbers, embedded video, and ordered click-triggered builds remain available.
+**v0.5.1 is a working prototype.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux systems. Draw rectangles, ellipses, lines and arrows, edit line endpoints, and move persistent groups. Smart guides help align centers and edges, match dimensions while resizing, and arrange objects with equal gaps. The included three-slide cosmology deck uses synthetic demonstration data. Compatible installed AI CLIs generate editable slide drafts. Deck-wide page numbers, embedded video, and ordered click-triggered builds remain available.
 
 ## Getting Started
 
@@ -47,7 +47,7 @@ pnpm desktop:package:mac
 pnpm desktop:package:mac --arch=arm64
 ```
 
-The default output paths are `release/SciSlide-0.5.0-macos-arm64-unsigned.pkg` and `release/SciSlide-0.5.0-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
+The default output paths are `release/SciSlide-0.5.1-macos-arm64-unsigned.pkg` and `release/SciSlide-0.5.1-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
 
 The default `.pkg` implementation uses [Electron's official pure JavaScript packaging](https://packages.electronjs.org/osx-sign/v2.6.0/index.html#pure-javascript-packaging), so it also works on Linux. On macOS with Xcode Command Line Tools, use `pnpm desktop:package:mac --implementation=native` to package with Apple's `pkgbuild` and `productbuild`. **Both methods produce development installers without Developer ID signing or notarization.** macOS security policies may block installation or launch. The packaging process does not change system security settings.
 
@@ -61,7 +61,7 @@ pnpm desktop:package:win
 pnpm desktop:package:win --portable-only
 ```
 
-This command always targets **Intel/AMD x64**, regardless of the build host. It creates `release/SciSlide-0.5.0-windows-x64-setup-unsigned.exe` and `release/SciSlide-0.5.0-windows-x64-portable.zip`, with SHA-256 checksum files. The installer uses an x64 bootstrap executable, installs for the current user under `%LOCALAPPDATA%\Programs\SciSlide`, and adds a Start menu shortcut. The portable ZIP contains the complete app folder; extract it and launch `SciSlide-win32-x64/scislide.exe`. No Node.js or TeX installation is needed to run MathJax editing.
+This command always targets **Intel/AMD x64**, regardless of the build host. It creates `release/SciSlide-0.5.1-windows-x64-setup-unsigned.exe` and `release/SciSlide-0.5.1-windows-x64-portable.zip`, with SHA-256 checksum files. The installer uses an x64 bootstrap executable, installs for the current user under `%LOCALAPPDATA%\Programs\SciSlide`, and adds a Start menu shortcut. The portable ZIP contains the complete app folder; extract it and launch `SciSlide-win32-x64/scislide.exe`. No Node.js or TeX installation is needed to run MathJax editing.
 
 See the [Windows installation and build guide](desktop/WINDOWS.md) for compiler selection, checksums and platform limits. The **Windows x64 development distributions** Actions workflow builds on a Windows x64 runner, verifies the executable architectures and hashes, and checks installation/uninstallation in a temporary directory. Its versioned downloadable artifacts contain both distributions and are retained for 30 days. Windows 10 or later is required; physical Windows 10/11 editing and export validation remains open. Local LaTeX compilation is currently disabled on Windows.
 
@@ -86,7 +86,11 @@ The shape Inspector controls stroke color, width and **Solid / Dashed / Dotted**
 
 Use **Shift+click** to select several objects, then **Group objects** to keep them together. **Ctrl+G** groups and **Ctrl+Shift+G** ungroups; on macOS use **Cmd** instead of Ctrl. Clicking a grouped member selects the group, and dragging moves its members together. Duplicate creates an independent group; **Ungroup objects** leaves each object's current position intact. Ungroup before resizing, rotating or editing the endpoints of an individual member. Group membership survives save/open and undo/redo. Groups are flat: nested groups and whole-group scaling or rotation are not available yet.
 
-Automatic alignment guides appear while dragging near another object's edges or center. Hold **Alt** to bypass the guides. **Snap to 20 px grid** separately enables grid snapping, which takes precedence over object guides. Guide lines are editor aids and are not saved or exported. Equal distribution, connectors that track attached shapes, freehand paths and a path editor remain future work.
+Smart guides appear while moving an object or selection near another object's matching edges or center, or the slide center. The lines connect the relevant bounds so the alignment is easy to see. Equal-gap guides show distance labels when placing an object between aligned neighbors or continuing an existing row or column; objects may have different widths or heights.
+
+While resizing with the lower-right handle, guides help unrotated text, figures, videos, rectangles and ellipses match another independent, unrotated object's width or height and align the resized edge. Figures and videos keep their aspect ratio; hold **Shift** to preserve the ratio when resizing text or ordinary shapes. Matching one dimension may change the other dimension to preserve that ratio. Equation resizing changes font size, and rotated objects do not show resize guides.
+
+Use the smart-guide toolbar control to toggle these aids, or hold **Alt** to bypass them for a gesture. **Snap to 20 px grid** separately enables grid snapping and takes precedence over smart guides. Guides exist only during editing and do not appear in saved decks, thumbnails, presentation mode or exports. Commands that distribute several selected objects at once, connectors that track attached shapes, freehand paths and a path editor remain future work.
 
 ## AI Slide Drafts
 
@@ -215,7 +219,7 @@ Local LaTeX equations retain their source, preamble, engine, result SVG and dime
 - Deck-wide dynamic page numbers in the editor, slideshow, PDF and SVG.
 - Ordered click-triggered appear/fade builds; editor/thumbnails/static exports show the complete layout.
 - Moving, resizing, rotation, opacity, locking, duplication, and layer ordering.
-- Shift+click multi-selection, flat persistent groups, alignment, automatic drag guides, separate 20 px grid snapping, and keyboard movement.
+- Shift+click multi-selection, flat persistent groups, edge/center alignment guides, matching width/height guides during resizing, labeled equal-gap guides, separate 20 px grid snapping, and keyboard movement.
 - Undo/redo and automatic recovery through localStorage in the current editing environment.
 - ZIP-based source file saving and loading, with checksum validation for assets and equation results.
 - MathJax 4.1.3, three equation fonts, and 17 package entries with examples.
@@ -225,7 +229,7 @@ Local LaTeX equations retain their source, preamble, engine, result SVG and dime
 ## Current Limitations
 
 - Modern Korean text is supported in the editor, PDF and SVG through bundled **Nanum Gothic Regular/Bold**. No system font installation or remote font request is needed. Text objects containing Korean use Nanum Gothic; Latin-only objects retain Inter. Korean weights 400/500 use Regular and 600/700 use Bold. Decomposed modern Hangul is normalized to NFC for display/export while the editable source is preserved. PDF text remains selectable, and SVG embeds the required font and its license. Unsupported glyphs, including Hanja and standalone old/combining Jamo, still stop PDF export with a clear error; use native equations for mathematical symbols unavailable in the text font. Local LaTeX equation outlines do not extend body-text font coverage.
-- Figure cropping/PDF region import/insets, equal distribution, linked masters, a separate presenter display, equation libraries/shared macros, citations, editable charts, collaboration and PPTX/Beamer conversion are planned. Group nesting/scaling/rotation, attached connectors, freehand paths and a path editor are also future work. Basic appear/fade click builds are available; advanced motion, exit effects, timing chains, equation-term highlighting and a timeline are not yet available.
+- Figure cropping/PDF region import/insets, commands to distribute a selection, linked masters, a separate presenter display, equation libraries/shared macros, citations, editable charts, collaboration and PPTX/Beamer conversion are planned. Group nesting/scaling/rotation, attached connectors, freehand paths and a path editor are also future work. Basic appear/fade click builds are available; advanced motion, exit effects, timing chains, equation-term highlighting and a timeline are not yet available.
 - Local LaTeX is an initial implementation targeting system installations on Linux. Arbitrary complete documents, home package folders, every TeX distribution path, and every package combination are not guaranteed to work.
 - External references and active content in SVG figures are unsupported. PDF export does not support filters, masks, textPath, or some complex SVG effects. These produce an error before export.
 - Automatic recovery uses separate localStorage in the web and Electron environments. Recovery data is not shared automatically, and large figures and embedded videos may exceed storage limits. Save a source file. Recovery of unapplied equation drafts is not guaranteed.
@@ -269,6 +273,6 @@ Electron runtime validation covered sandboxing and context isolation, blocked No
 
 ## Future Development and Licensing
 
-Priorities include bounded asset/draft recovery, figure crop/PDF region import/enlarged insets, equal distribution and richer group transforms, themes/masters, equation libraries/shared macros, a separate presenter display, citations/BibTeX and CSV charts with units/error bars. Attached connectors, freehand paths, advanced animation, split font loading and desktop distribution validation remain follow-up work. Local TeX isolation on macOS and Windows, along with access to explicitly selected user package folders, requires separate implementation. See the [project specification](SciSlide-Project-Specification.md) for the detailed design and follow-up requirements.
+Priorities include bounded asset/draft recovery, figure crop/PDF region import/enlarged insets, selection distribution commands and richer group transforms, themes/masters, equation libraries/shared macros, a separate presenter display, citations/BibTeX and CSV charts with units/error bars. Attached connectors, freehand paths, advanced animation, split font loading and desktop distribution validation remain follow-up work. Local TeX isolation on macOS and Windows, along with access to explicitly selected user package folders, requires separate implementation. See the [project specification](SciSlide-Project-Specification.md) for the detailed design and follow-up requirements.
 
 This prototype does not reuse PPTist code. **A project license for the new SciSlide source has not yet been selected.** The license and contribution rules must be finalized before a public release. Bundled dependencies, fonts, and the Electron runtime retain their respective licenses; notices are kept in `third-party-licenses/` and the packaged runtime.

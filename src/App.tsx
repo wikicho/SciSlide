@@ -91,8 +91,8 @@ import {
   duplicateSelectedObjects,
   objectBounds,
   selectionBounds,
-  snapTranslation,
 } from "./lib/drawing";
+import { snapMove, snapResize, type SmartGuide } from "./lib/smart-guides";
 import { SlideScene } from "./components/SlideScene";
 import { MathSupportDialog } from "./components/MathSupportDialog";
 import { SlideTemplateDialog } from "./components/SlideTemplateDialog";
@@ -175,9 +175,7 @@ export default function App() {
   );
   const [draftShape, setDraftShape] = useState<ShapeObject | undefined>();
   const [smartGuides, setSmartGuides] = useState(true);
-  const [guides, setGuides] = useState<
-    Array<{ axis: "x" | "y"; position: number }>
-  >([]);
+  const [guides, setGuides] = useState<SmartGuide[]>([]);
   const [metrics, setMetrics] = useState<
     Record<string, { width: number; height: number }>
   >({});
@@ -1263,15 +1261,28 @@ export default function App() {
           setGuides([]);
         } else if (smartGuides && !e.altKey) {
           const origin = selectionBounds(
-            g.objects,
+            g.objects.filter((o) => o.visible),
             g.objects.map((o) => o.id),
           );
           if (origin) {
             const ids = new Set(g.objects.map((o) => o.id));
-            const targets = slide.objects
-              .filter((o) => o.visible && !ids.has(o.id))
-              .map((o) => objectBounds(o, metrics[o.id]));
-            const snap = snapTranslation(
+            const stationary = slide.objects.filter(
+              (o) => o.visible && !ids.has(o.id),
+            );
+            // Treat a group as one reference so spacing measures its outer box.
+            const units = new Map<string, SlideObject[]>();
+            for (const o of stationary) {
+              const key = o.groupId ? `group:${o.groupId}` : `object:${o.id}`;
+              units.set(key, [...(units.get(key) ?? []), o]);
+            }
+            const targets = [...units.values()].map((objects) =>
+              selectionBounds(
+                objects,
+                objects.map((o) => o.id),
+                metrics,
+              )!,
+            );
+            const snap = snapMove(
               origin,
               { x: dx, y: dy },
               targets,
@@ -1281,9 +1292,9 @@ export default function App() {
             dx = snap.dx;
             dy = snap.dy;
             setGuides(snap.guides);
-          }
+          } else setGuides([]);
         } else setGuides([]);
-      }
+      } else setGuides([]);
       for (const o of g.objects) {
         const n = clone(o);
         if (g.mode === "drag") {
@@ -1302,11 +1313,51 @@ export default function App() {
               ),
             );
           else {
-            n.transform.width = Math.max(24, w + dx);
-            n.transform.height =
-              o.type === "figure" || o.type === "video" || e.shiftKey
-                ? Math.max(24, h * ratio)
-                : Math.max(24, h + dy);
+            const preserveRatio =
+              o.type === "figure" || o.type === "video" || e.shiftKey;
+            const minWidth = preserveRatio ? Math.max(24, (24 * w) / h) : 24;
+            const width = Math.max(minWidth, w + dx);
+            const proposed = {
+              width,
+              height: preserveRatio ? (width * h) / w : Math.max(24, h + dy),
+            };
+            if (
+              smartGuides &&
+              !grid &&
+              !e.altKey &&
+              o.transform.rotation === 0
+            ) {
+              const targets = slide.objects
+                .filter(
+                  (target) =>
+                    target.visible &&
+                    target.id !== o.id &&
+                    !target.groupId &&
+                    target.transform.rotation === 0 &&
+                    target.type !== "equation" &&
+                    !isLineShape(target),
+                )
+                .map((target) => objectBounds(target));
+              const snap = snapResize(
+                objectBounds(o),
+                proposed,
+                targets,
+                deck.slideSize,
+                (6 * deck.slideSize.width) /
+                  g.svg.getBoundingClientRect().width,
+                {
+                  aspectRatio: preserveRatio ? w / h : undefined,
+                  minWidth,
+                  minHeight: 24,
+                },
+              );
+              n.transform.width = snap.width;
+              n.transform.height = snap.height;
+              setGuides(snap.guides);
+            } else {
+              n.transform.width = proposed.width;
+              n.transform.height = proposed.height;
+            }
           }
         }
         next[o.id] = n;
@@ -1879,6 +1930,7 @@ export default function App() {
                 drawing={!!drawingTool}
                 draftShape={draftShape}
                 guides={guides}
+                guideScale={(fitWidth * zoom) / (100 * deck.slideSize.width)}
                 onDrawStart={drawingTool ? startDrawing : undefined}
                 metrics={metrics}
                 onMetrics={onMetrics}
