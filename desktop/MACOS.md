@@ -1,4 +1,4 @@
-# SciSlide 0.3.0 — macOS development installer
+# SciSlide 0.4.0 — macOS development installer
 
 Choose the installer that matches your Mac: **arm64** for Apple Silicon (M1 or later), or **x64** for Intel. The installer copies SciSlide to `/Applications/SciSlide.app`. Node.js, a development server and TeX are not required for MathJax editing.
 
@@ -17,9 +17,13 @@ The editor is a prototype. Korean text works in the editor and native `.scislide
 Each installer has a matching `.sha256` file. To verify a download, put the installer and checksum file in the same folder and run:
 
 ```sh
-shasum -a 256 -c SciSlide-0.3.0-macos-arm64-unsigned.pkg.sha256
+shasum -a 256 -c SciSlide-0.4.0-macos-arm64-unsigned.pkg.sha256
 ```
 
 Use the x64 filename for an Intel installer. This checks that the file matches its accompanying checksum; it does not certify the publisher or replace Apple's code signing and notarization.
 
 Electron/Chromium license notices are included in the application bundle. App dependency notices are inside `Contents/Resources/app.asar` under `third-party-licenses/`. A project license for the new SciSlide source has not been selected yet.
+
+## AI content drafts
+
+Open **AI draft** to connect a compatible installed Codex CLI, Claude Code or Gemini CLI. Install and sign in to the CLI in your terminal first; the desktop chatbot application alone is insufficient. Generate titles, bullet points, notes and MathJax equations, review the preview, then insert editable slides. Including current-slide text is optional. Requests use the provider account/network/usage limits. Cancel stops a job, and Undo restores the deck after insertion. CLI versions and restrictions are checked; unsupported configurations show a reason. See the repository README for connection details and current limits.

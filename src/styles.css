@@ -1586,6 +1586,243 @@ button .lucide {
   border-radius: 16px;
   box-shadow: 0 20px 70px #16344730;
 }
+
+.ai-dialog {
+  width: min(1080px, calc(100vw - 40px));
+  max-height: calc(100dvh - 40px);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 20px 70px #16344730;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.ai-dialog > header {
+  padding: 24px 28px 20px;
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--line);
+}
+.ai-dialog h2 {
+  margin: 7px 0;
+  font-size: 24px;
+  letter-spacing: -0.7px;
+  color: #193344;
+}
+.ai-dialog header p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.ai-dialog-body {
+  display: grid;
+  grid-template-columns: 345px minmax(0, 1fr);
+  min-height: 0;
+  overflow: auto;
+}
+.ai-compose {
+  padding: 22px 24px;
+  border-right: 1px solid var(--line);
+}
+.ai-compose .field {
+  margin-bottom: 17px;
+}
+.ai-compose select,
+.ai-prompt {
+  width: 100%;
+}
+.ai-prompt {
+  min-height: 150px;
+  resize: vertical;
+  line-height: 1.6;
+  padding: 11px;
+  font-size: 12px;
+}
+.ai-provider-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 15px;
+  font-size: 13px;
+}
+.ai-connection {
+  font-size: 11px;
+  color: #6b7280;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  margin: -7px 0 21px;
+}
+.ai-connection.connected {
+  color: #167362;
+}
+.ai-context-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.ai-context-option input {
+  margin: 3px 0 0;
+}
+.ai-context {
+  margin-top: 12px;
+  font-size: 11px;
+}
+.ai-context summary,
+.ai-preview-card summary {
+  cursor: pointer;
+  color: #427060;
+}
+.ai-context pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 180px;
+  overflow: auto;
+  background: #f6f8fa;
+  padding: 10px;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.ai-disclosure {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 19px 0 15px;
+}
+.ai-generate {
+  width: 100%;
+  justify-content: center;
+}
+.ai-error {
+  color: #a92e29;
+  background: #fff2ef;
+  border-radius: 7px;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.ai-notice {
+  background: #eef7f4;
+  padding: 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  margin-bottom: 18px;
+}
+.ai-preview {
+  background: #f5f7f9;
+  padding: 24px;
+  overflow: auto;
+  min-width: 0;
+}
+.ai-empty {
+  min-height: 365px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
+  color: #537065;
+  padding: 20px;
+}
+.ai-empty strong {
+  font-size: 16px;
+  color: #284a43;
+}
+.ai-empty p {
+  max-width: 310px;
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 0;
+}
+.ai-preview-heading h3 {
+  font-size: 19px;
+  line-height: 1.45;
+  margin: 8px 0;
+  color: #284a43;
+}
+.ai-preview-heading > p {
+  margin: 0 0 20px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.ai-preview-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 12px;
+  margin-bottom: 18px;
+}
+.ai-slide-image {
+  border: 1px solid #e6ecf0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.ai-slide-image svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.ai-preview-card > strong {
+  display: block;
+  font-size: 13px;
+  margin: 12px 0 5px;
+}
+.ai-preview-card details {
+  font-size: 11px;
+  line-height: 1.6;
+  padding-top: 6px;
+}
+.ai-preview-card details p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ai-dialog > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 17px 24px;
+  border-top: 1px solid var(--line);
+}
+.ai-dialog > footer > span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  max-width: 460px;
+}
+@media (max-width: 700px) {
+  .ai-dialog {
+    width: calc(100vw - 20px);
+    max-height: calc(100dvh - 20px);
+  }
+  .ai-dialog-body {
+    grid-template-columns: 1fr;
+  }
+  .ai-compose {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .ai-empty {
+    min-height: 160px;
+  }
+  .ai-dialog > header {
+    padding: 18px;
+  }
+  .ai-dialog h2 {
+    font-size: 21px;
+  }
+  .ai-dialog > footer {
+    padding: 15px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+}
 .template-dialog > header {
   display: flex;
   align-items: flex-start;

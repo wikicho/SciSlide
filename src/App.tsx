@@ -36,12 +36,14 @@ import {
   MousePointer2,
   Sigma,
   CircleHelp,
+  Sparkles,
 } from "lucide-react";
 import {
   createDemoDeck,
   createBlankSlide,
   newId,
   DEFAULT_PAGE_NUMBERS,
+  validateDeck,
 } from "./lib/model";
 import type {
   Deck,
@@ -72,6 +74,8 @@ import { cloneDeck, pruneUnusedAssets } from "./lib/deck-editing";
 import { SlideScene } from "./components/SlideScene";
 import { MathSupportDialog } from "./components/MathSupportDialog";
 import { SlideTemplateDialog } from "./components/SlideTemplateDialog";
+import { AIDraftDialog, aiAnchorFingerprint } from "./components/AIDraftDialog";
+import type { AIDraftApplication } from "./components/AIDraftDialog";
 import { createTemplateSlide } from "./lib/slide-templates";
 import type { SlideTemplateId } from "./lib/slide-templates";
 import type { EquationFontId } from "./lib/equations";
@@ -159,6 +163,7 @@ export default function App() {
     [presentationStep, setPresentationStep] = useState(0),
     [showHelp, setShowHelp] = useState(false),
     [showSlideTemplates, setShowSlideTemplates] = useState(false),
+    [showAiDraft, setShowAiDraft] = useState(false),
     [showMathLibrary, setShowMathLibrary] = useState(false),
     [zoom, setZoom] = useState(100),
     [grid, setGrid] = useState(false),
@@ -204,6 +209,7 @@ export default function App() {
     };
   }, []);
   const closeMathLibrary = useCallback(() => setShowMathLibrary(false), []);
+  const closeAiDraft = useCallback(() => setShowAiDraft(false), []);
   const closeSlideTemplates = useCallback(
     () => setShowSlideTemplates(false),
     [],
@@ -291,6 +297,36 @@ export default function App() {
     },
     [commit],
   );
+  const applyAiDraft = (application: AIDraftApplication) => {
+    const current = deckRef.current;
+    const anchor = current.slides.find((s) => s.id === application.anchorId);
+    if (
+      current.id !== application.deckId ||
+      !anchor ||
+      aiAnchorFingerprint(current, anchor) !== application.fingerprint
+    ) {
+      notify("The source slide changed. Generate a fresh AI draft.");
+      return false;
+    }
+    const next = cloneDeck(current);
+    const index = next.slides.findIndex((s) => s.id === anchor.id);
+    next.slides.splice(index + 1, 0, ...structuredClone(application.slides));
+    try {
+      validateDeck(next);
+    } catch (e) {
+      notify(
+        e instanceof Error
+          ? e.message
+          : "The generated slides could not be inserted.",
+      );
+      return false;
+    }
+    commit(next);
+    setSlideId(application.slides[0].id);
+    setSelected([]);
+    notify(`${application.slides.length} editable AI slides inserted.`);
+    return true;
+  };
   const updateObject = (id: string, fn: (o: SlideObject) => void, key = "") =>
     change(
       (d) => {
@@ -926,6 +962,7 @@ export default function App() {
   }, []);
   useEffect(() =>
     desktop?.onCommand((command) => {
+      if (showAiDraft) return;
       if (showSlideTemplates) setShowSlideTemplates(false);
       const editing =
         document.activeElement instanceof HTMLElement &&
@@ -1075,7 +1112,7 @@ export default function App() {
   }, [slide.id, change, metrics, deck.theme.equation.fontSize, grid]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (showMathLibrary || showSlideTemplates) {
+      if (showMathLibrary || showSlideTemplates || showAiDraft) {
         if ((e.ctrlKey || e.metaKey) && e.key === "s") e.preventDefault();
         return;
       }
@@ -1241,6 +1278,13 @@ export default function App() {
           </span>
         </div>
         <div className="header-actions">
+          <button
+            className="button light"
+            disabled={!!busy}
+            onClick={() => setShowAiDraft(true)}
+          >
+            <Sparkles size={16} /> AI draft
+          </button>
           <IconButton
             title="Keyboard shortcuts"
             onClick={() => setShowHelp(true)}
@@ -2586,6 +2630,14 @@ export default function App() {
           deck={deck}
           onChoose={addTemplateSlide}
           onClose={closeSlideTemplates}
+        />
+      )}
+      {showAiDraft && (
+        <AIDraftDialog
+          deck={deck}
+          slide={slide}
+          onApply={applyAiDraft}
+          onClose={closeAiDraft}
         />
       )}
     </div>

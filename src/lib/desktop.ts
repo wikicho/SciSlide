@@ -42,6 +42,33 @@ export type DesktopCommand =
   | "present"
   | "exportPdf";
 
+export type AiProvider = "codex" | "claude" | "gemini";
+
+export interface AiCapabilities {
+  providers: Array<{
+    id: AiProvider;
+    label: string;
+    available: boolean;
+    version?: string;
+    reason?: string;
+  }>;
+  message?: string;
+}
+
+export interface AiRequest {
+  jobId: string;
+  provider: AiProvider;
+  prompt: string;
+  slideCount: number;
+  context?: string;
+}
+
+export interface AiResult {
+  text: string;
+  provider: AiProvider;
+  version?: string;
+}
+
 export interface DesktopApi {
   platform: string;
   openDocument(): Promise<{
@@ -63,6 +90,9 @@ export interface DesktopApi {
   detectTex(): Promise<TexCapabilities>;
   compileTex(request: TexRequest): Promise<TexResult>;
   cancelCompile(jobId: string): Promise<void>;
+  detectAi(): Promise<AiCapabilities>;
+  generateAi(request: AiRequest): Promise<AiResult>;
+  cancelAi(jobId: string): Promise<void>;
   onCommand(callback: (command: DesktopCommand) => void): () => void;
 }
 

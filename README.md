@@ -2,7 +2,7 @@
 
 A scientific presentation editor with editable equations, vector output, and an Electron desktop host.
 
-**v0.3.0 is a working prototype.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux systems. The included three-slide cosmology deck uses synthetic demonstration data. The current version adds deck-wide page numbers, embedded video, and ordered click-triggered builds.
+**v0.4.0 is a working prototype.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux systems. The included three-slide cosmology deck uses synthetic demonstration data. The current version also connects compatible installed AI CLIs to generate editable slide drafts. Deck-wide page numbers, embedded video, and ordered click-triggered builds remain available.
 
 ## Getting Started
 
@@ -47,7 +47,7 @@ pnpm desktop:package:mac
 pnpm desktop:package:mac --arch=arm64
 ```
 
-The default output paths are `release/SciSlide-0.3.0-macos-arm64-unsigned.pkg` and `release/SciSlide-0.3.0-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
+The default output paths are `release/SciSlide-0.4.0-macos-arm64-unsigned.pkg` and `release/SciSlide-0.4.0-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
 
 The default `.pkg` implementation uses [Electron's official pure JavaScript packaging](https://packages.electronjs.org/osx-sign/v2.6.0/index.html#pure-javascript-packaging), so it also works on Linux. On macOS with Xcode Command Line Tools, use `pnpm desktop:package:mac --implementation=native` to package with Apple's `pkgbuild` and `productbuild`. **Both methods produce development installers without Developer ID signing or notarization.** macOS security policies may block installation or launch. The packaging process does not change system security settings.
 
@@ -61,7 +61,7 @@ pnpm desktop:package:win
 pnpm desktop:package:win --portable-only
 ```
 
-This command always targets **Intel/AMD x64**, regardless of the build host. It creates `release/SciSlide-0.3.0-windows-x64-setup-unsigned.exe` and `release/SciSlide-0.3.0-windows-x64-portable.zip`, with SHA-256 checksum files. The installer uses an x64 bootstrap executable, installs for the current user under `%LOCALAPPDATA%\Programs\SciSlide`, and adds a Start menu shortcut. The portable ZIP contains the complete app folder; extract it and launch `SciSlide-win32-x64/scislide.exe`. No Node.js or TeX installation is needed to run MathJax editing.
+This command always targets **Intel/AMD x64**, regardless of the build host. It creates `release/SciSlide-0.4.0-windows-x64-setup-unsigned.exe` and `release/SciSlide-0.4.0-windows-x64-portable.zip`, with SHA-256 checksum files. The installer uses an x64 bootstrap executable, installs for the current user under `%LOCALAPPDATA%\Programs\SciSlide`, and adds a Start menu shortcut. The portable ZIP contains the complete app folder; extract it and launch `SciSlide-win32-x64/scislide.exe`. No Node.js or TeX installation is needed to run MathJax editing.
 
 See the [Windows installation and build guide](desktop/WINDOWS.md) for compiler selection, checksums and platform limits. The **Windows x64 development distributions** Actions workflow builds on a Windows x64 runner, verifies the executable architectures and hashes, and checks installation/uninstallation in a temporary directory. Its versioned downloadable artifacts contain both distributions and are retained for 30 days. Windows 10 or later is required; physical Windows 10/11 editing and export validation remains open. Local LaTeX compilation is currently disabled on Windows.
 
@@ -77,6 +77,20 @@ See the [Windows installation and build guide](desktop/WINDOWS.md) for compiler 
 6. Use **Present** for the slideshow, and **Export** to save all slides as a PDF or the current slide as an SVG.
 
 The desktop menu provides New Presentation, Open, Save, Save As, undo/redo, presentation mode, and PDF export. A successful save notification appears after the native file write completes. The web version distinguishes starting a download from completing a save to disk.
+
+## AI Slide Drafts
+
+Open **AI draft** in the Electron desktop app, choose an installed **Codex CLI / Claude Code / Gemini CLI**, enter your topic and choose 1–12 slides. Install and sign in to the CLI in your terminal first. **Refresh AI connections** checks its version and required controls; finding an executable does not prove its account is authenticated. Unsupported CLI versions show a reason. A desktop chatbot app alone is not a CLI connection.
+
+The reviewed connections are **Codex CLI 0.160.x** and **Gemini CLI 0.62.x**. Claude Code must advertise every required safe-mode, restricted, tool-disabling and structured-output flag. Other versions may appear as unavailable until their controls are reviewed. Gemini connections are unavailable when system settings/defaults prevent SciSlide from verifying the content-only configuration.
+
+**Generate draft** sends your instructions through that provider's existing login. Optionally include the current slide's visible text, equations and speaker notes; a preview shows the exact context. Figures, video bytes, file paths and local TeX configuration are excluded. Existing provider network requirements, data policies, account limits and any account charges still apply. SciSlide does not store API keys or read credential contents.
+
+Review the generated slides and notes, then click **Insert draft slides** to add them after the current slide. Generated titles, bullet points and MathJax equations are ordinary editable objects. MathJax syntax and equation size are checked before insertion. Scientific claims and citations need review. Invalid output is rejected, and a changed source slide requires a fresh draft. Undo restores the previous deck. The draft's overall title labels its preview and does not rename the presentation.
+
+The host uses fixed provider commands and passes requests through stdin in a private temporary workspace. Codex runs with read-only enforcement and restricted agent integrations; compatible Claude/Gemini modes disable content-generation tools. Gemini reuses existing authentication through private temporary links to known vendor authentication files, or its normal keychain/environment authentication; those links are removed at job completion. User customizations and organization policies can make a connection unavailable. Requests time out after three minutes, output is bounded, and Cancel or closing the dialog terminates the job. Only one generation runs at a time.
+
+The web editor shows the desktop requirement and does not launch local programs. Image generation, file/repository access, web research, full-deck replacement, streaming chat and direct API-key setup are later features. Native `.scislide` documents keep format version **0.3.0**.
 
 ## Slide Templates
 
@@ -180,6 +194,7 @@ Local LaTeX equations retain their source, preamble, engine, result SVG and dime
 
 ## Implemented Features
 
+- Installed AI CLI discovery, bounded draft generation, slide preview/insertion, cancellation and undo.
 - Four Scientific slide templates and a blank slide; slide creation, duplication, deletion, reordering, titles, backgrounds, and speaker notes.
 - Text, equations, SVG/PNG/JPEG figures, embedded MP4/WebM videos, rectangles, and ellipses.
 - Deck-wide dynamic page numbers in the editor, slideshow, PDF and SVG.

@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld("scislideDesktop", {
   compileTex: (request) => ipcRenderer.invoke("scislide:compile-tex", request),
   cancelCompile: (jobId) =>
     ipcRenderer.invoke("scislide:cancel-compile", jobId),
+  detectAi: () => ipcRenderer.invoke("scislide:detect-ai"),
+  generateAi: (request) => ipcRenderer.invoke("scislide:generate-ai", request),
+  cancelAi: (jobId) => ipcRenderer.invoke("scislide:cancel-ai", jobId),
   onCommand: (callback) => {
     if (typeof callback !== "function")
       throw new TypeError("A command listener must be a function.");

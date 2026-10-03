@@ -50,6 +50,8 @@ let mainWindow = null;
 let documentPath = null;
 let fileOperations = Promise.resolve();
 let texModule;
+let aiModule;
+let quittingAfterCleanup = false;
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -84,6 +86,11 @@ const csp = [
 function compiler() {
   texModule ||= import(pathToFileURL(path.join(__dirname, "tex.mjs")).href);
   return texModule;
+}
+
+function aiHost() {
+  aiModule ||= import(pathToFileURL(path.join(__dirname, "ai.mjs")).href);
+  return aiModule;
 }
 
 function validateSender(event) {
@@ -261,6 +268,11 @@ function registerIpc() {
     const jobId = validateJobId(value);
     if (runningJobs.has(jobId)) await (await compiler()).cancelCompile(jobId);
   });
+  ipc("scislide:detect-ai", async () => (await aiHost()).detectAi());
+  ipc("scislide:generate-ai", async (value) =>
+    (await aiHost()).generateAi(value),
+  );
+  ipc("scislide:cancel-ai", async (value) => (await aiHost()).cancelAi(value));
 }
 
 function sendCommand(command) {
@@ -433,6 +445,7 @@ async function createMainWindow() {
   );
   mainWindow.once("ready-to-show", () => mainWindow?.show());
   mainWindow.on("closed", () => {
+    aiModule?.then((module) => module.cancelAllAi()).catch(() => undefined);
     mainWindow = null;
     documentPath = null;
   });
@@ -470,14 +483,23 @@ else {
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();
   });
-  app.on("before-quit", () => {
-    if (runningJobs.size)
-      compiler()
-        .then((module) =>
-          Promise.allSettled(
-            Array.from(runningJobs, (jobId) => module.cancelCompile(jobId)),
-          ),
-        )
-        .catch(() => undefined);
+  app.on("before-quit", (event) => {
+    if (quittingAfterCleanup || (!aiModule && !runningJobs.size)) return;
+    event.preventDefault();
+    Promise.allSettled([
+      ...(aiModule ? [aiModule.then((module) => module.cancelAllAi())] : []),
+      ...(runningJobs.size
+        ? [
+            compiler().then((module) =>
+              Promise.allSettled(
+                Array.from(runningJobs, (jobId) => module.cancelCompile(jobId)),
+              ),
+            ),
+          ]
+        : []),
+    ]).finally(() => {
+      quittingAfterCleanup = true;
+      app.quit();
+    });
   });
 }

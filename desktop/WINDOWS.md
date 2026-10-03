@@ -1,12 +1,12 @@
-# SciSlide 0.3.0 — Windows x64
+# SciSlide 0.4.0 — Windows x64
 
 This development build contains the **x64 (Intel/AMD 64-bit)** SciSlide app for Windows 10 or later. Windows 11 x64 is the intended desktop target. Node.js, a development server and TeX are not required for MathJax editing. Physical Windows 10/11 desktop validation is still a release requirement.
 
 ## Install or run the portable app
 
-Run `SciSlide-0.3.0-windows-x64-setup-unsigned.exe` to install for your current user. The default destination is `%LOCALAPPDATA%\Programs\SciSlide`, with a Start menu shortcut. Administrator privileges are not requested. Quit SciSlide before installing an update. Remove it through Windows' installed-app settings. Uninstallation does not remove presentations you saved elsewhere or the app's user-data folder.
+Run `SciSlide-0.4.0-windows-x64-setup-unsigned.exe` to install for your current user. The default destination is `%LOCALAPPDATA%\Programs\SciSlide`, with a Start menu shortcut. Administrator privileges are not requested. Quit SciSlide before installing an update. Remove it through Windows' installed-app settings. Uninstallation does not remove presentations you saved elsewhere or the app's user-data folder.
 
-Alternatively, extract **all** of `SciSlide-0.3.0-windows-x64-portable.zip`, then open `SciSlide-win32-x64\scislide.exe`. Keep the runtime files, DLLs and `resources` directory together. The portable edition runs without installation, but still uses Electron's ordinary per-user app-data directory; recovery data is not stored beside the executable.
+Alternatively, extract **all** of `SciSlide-0.4.0-windows-x64-portable.zip`, then open `SciSlide-win32-x64\scislide.exe`. Keep the runtime files, DLLs and `resources` directory together. The portable edition runs without installation, but still uses Electron's ordinary per-user app-data directory; recovery data is not stored beside the executable.
 
 Both distributions are **unsigned development builds**. Windows security policies may block installation or launch. Code signing and publisher reputation are later release work; these builds do not change system security settings. The application binary is x64, and the installer uses an x64 bootstrap executable. A separate native ARM64 or 32-bit Windows edition is not provided.
 
@@ -23,8 +23,8 @@ Bundled editable examples are in the app's `examples` folder. Copy one to your d
 Each distribution has a matching `.sha256` file. In PowerShell, compare its recorded hash with the result of:
 
 ```powershell
-Get-FileHash .\SciSlide-0.3.0-windows-x64-setup-unsigned.exe -Algorithm SHA256
-Get-Content .\SciSlide-0.3.0-windows-x64-setup-unsigned.exe.sha256
+Get-FileHash .\SciSlide-0.4.0-windows-x64-setup-unsigned.exe -Algorithm SHA256
+Get-Content .\SciSlide-0.4.0-windows-x64-setup-unsigned.exe.sha256
 ```
 
 Use the portable ZIP's filename to verify that distribution. A matching checksum detects file changes; it does not certify a publisher or replace code signing.
@@ -47,3 +47,7 @@ pnpm desktop:package:win --portable-only
 Output defaults to `release/`. Use `--out` for another output folder and `--overwrite` to replace existing generated outputs. The **Windows x64 development distributions** GitHub Actions workflow builds on a Windows x64 runner, checks hashes and PE architecture, and tests installation and uninstallation in a temporary directory. Its downloadable artifacts are retained for 30 days. A build and install smoke check does not validate the complete editing, saving, media and export journey on physical Windows desktops.
 
 Electron/Chromium notices are beside the executable in `LICENSE` and `LICENSES.chromium.html`; app dependency notices are in `resources/app.asar` under `third-party-licenses/`. A license for the new SciSlide source has not been selected yet. Automatic updates and signed distribution remain future work.
+
+## AI content drafts
+
+Open **AI draft** to connect a compatible installed Codex CLI, Claude Code or Gemini CLI. Install and sign in to the CLI in your terminal first; the desktop chatbot application alone is insufficient. Generate titles, bullet points, notes and MathJax equations, review the preview, then insert editable slides. Including current-slide text is optional. Requests use the provider account/network/usage limits. Cancel stops a job, and Undo restores the deck after insertion. CLI versions and restrictions are checked; unsupported configurations show a reason. See the repository README for connection details and current limits.
