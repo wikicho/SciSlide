@@ -658,6 +658,7 @@ export function createAiHost(dependencies = {}) {
       findExecutable(provider, { platform, env: environment, home }));
   const timeout = dependencies.timeout || AI_LIMITS.timeout;
   const jobs = new Map();
+  let detectionJob;
 
   async function killTree(child) {
     if (!child?.pid) return;
@@ -857,26 +858,39 @@ export function createAiHost(dependencies = {}) {
   }
 
   async function detectAi() {
-    const directory = await mkdtemp(
-      path.join(temporaryRoot, "scislide-ai-detect-"),
-    );
-    try {
-      const providers = [];
-      for (const provider of PROVIDERS) {
-        const { launcher, ...publicInfo } = await inspectProvider(
-          provider,
-          directory,
-        );
-        providers.push(publicInfo);
+    // Concurrent refresh requests share one probe sequence rather than launching
+    // an unbounded number of installed CLI processes from the renderer.
+    if (detectionJob) return detectionJob.done;
+    const job = { cancelled: false, child: null, stop: null, done: null };
+    detectionJob = job;
+    job.done = (async () => {
+      const directory = await mkdtemp(
+        path.join(temporaryRoot, "scislide-ai-detect-"),
+      );
+      try {
+        const providers = [];
+        for (const provider of PROVIDERS) {
+          if (job.cancelled)
+            throw new Error("AI provider detection was cancelled.");
+          const { launcher, ...publicInfo } = await inspectProvider(
+            provider,
+            directory,
+            job,
+          );
+          providers.push(publicInfo);
+        }
+        return {
+          providers,
+          message:
+            "Use an already installed and logged-in CLI. Prompts are sent through that provider's account.",
+        };
+      } finally {
+        await rm(directory, { recursive: true, force: true });
       }
-      return {
-        providers,
-        message:
-          "Use an already installed and logged-in CLI. Prompts are sent through that provider's account.",
-      };
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
+    })().finally(() => {
+      if (detectionJob === job) detectionJob = null;
+    });
+    return job.done;
   }
 
   async function generateAi(value) {
@@ -965,7 +979,15 @@ export function createAiHost(dependencies = {}) {
     await job.done;
   }
   async function cancelAllAi() {
-    await Promise.allSettled([...jobs.keys()].map(cancelAi));
+    const detection = detectionJob;
+    if (detection) {
+      detection.cancelled = true;
+      detection.stop?.();
+    }
+    await Promise.allSettled([
+      ...[...jobs.keys()].map(cancelAi),
+      ...(detection ? [detection.done] : []),
+    ]);
   }
   return { detectAi, generateAi, cancelAi, cancelAllAi };
 }

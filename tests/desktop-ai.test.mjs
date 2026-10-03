@@ -253,6 +253,18 @@ test("CLI detection probes only version/help and removes its private directory",
   );
 });
 
+test("concurrent provider refreshes share one bounded probe sequence", async (t) => {
+  const { host, calls } = await fixture(t);
+  const results = await Promise.all([
+    host.detectAi(),
+    host.detectAi(),
+    host.detectAi(),
+  ]);
+  assert.equal(results[0], results[1]);
+  assert.equal(results[0], results[2]);
+  assert.equal(calls.length, 2);
+});
+
 test("Codex content uses fixed read-only argv, stdin, bounded output and provider-specific auth", async (t) => {
   const { directory, host, calls } = await fixture(t, "normal", {
     environment: {
