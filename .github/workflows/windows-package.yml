@@ -1,0 +1,146 @@
+name: Windows x64 development distributions
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/windows-package.yml
+      - scripts/package-desktop.mjs
+      - scripts/package-windows.mjs
+      - desktop/**
+      - src/**
+      - tests/**
+      - examples/**
+      - third-party-licenses/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - index.html
+      - vite.config.ts
+      - tsconfig*.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js x64
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          architecture: x64
+          package-manager-cache: false
+
+      - name: Set up pinned pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.25.0
+          run_install: false
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check editor and desktop host on Windows
+        run: |
+          pnpm test
+          if ($LASTEXITCODE -ne 0) { throw 'Editor tests failed.' }
+          pnpm test:desktop
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop tests failed.' }
+          pnpm build
+          if ($LASTEXITCODE -ne 0) { throw 'Production build failed.' }
+
+      - name: Build x64 app, portable ZIP, and per-user installer
+        run: |
+          node scripts/package-windows.mjs --arch=x64
+          if ($LASTEXITCODE -ne 0) { throw 'Windows packaging failed.' }
+          $version = node -p "require('./package.json').version"
+          "SCISLIDE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Verify SHA-256 and x64 PE headers
+        run: |
+          Get-ChildItem release/SciSlide-*-windows-x64-*.sha256 | ForEach-Object {
+            $parts = (Get-Content $_.FullName -Raw).Trim() -split '  ', 2
+            $file = Join-Path $_.DirectoryName $parts[1]
+            $actual = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $parts[0]) { throw "Checksum mismatch: $file" }
+          }
+          node --input-type=module -e "import { verifyWindowsX64 } from './scripts/package-windows.mjs'; await verifyWindowsX64('release/SciSlide-win32-x64/scislide.exe'); await verifyWindowsX64('release/SciSlide-' + process.env.SCISLIDE_VERSION + '-windows-x64-setup-unsigned.exe');"
+          if ($LASTEXITCODE -ne 0) { throw 'Windows x64 architecture verification failed.' }
+
+      - name: Install, launch, and uninstall the native Windows app
+        run: |
+          $installer = (Resolve-Path "release/SciSlide-$env:SCISLIDE_VERSION-windows-x64-setup-unsigned.exe").Path
+          $installDir = Join-Path $env:RUNNER_TEMP 'SciSlide installed smoke test'
+          if (Test-Path $installDir) { throw 'Smoke test install directory already exists.' }
+          $installLog = Join-Path $env:RUNNER_TEMP 'scislide-install.log'
+          $uninstallLog = Join-Path $env:RUNNER_TEMP 'scislide-uninstall.log'
+          $process = $null
+          try {
+            $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$installDir`"", "/LOG=`"$installLog`"")
+            $setup = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
+            if ($setup.ExitCode -ne 0) { throw "Installation failed: $($setup.ExitCode)" }
+            foreach ($relative in @('scislide.exe', 'resources/app.asar', 'README.md', 'examples/early-universe.scislide', 'unins000.exe')) {
+              if (!(Test-Path (Join-Path $installDir $relative) -PathType Leaf)) { throw "Missing installed payload: $relative" }
+            }
+            $env:SCISLIDE_SMOKE_EXE = Join-Path $installDir 'scislide.exe'
+            node --input-type=module -e "import { verifyWindowsX64 } from './scripts/package-windows.mjs'; await verifyWindowsX64(process.env.SCISLIDE_SMOKE_EXE);"
+            if ($LASTEXITCODE -ne 0) { throw 'Installed app is not x64.' }
+            $process = Start-Process -FilePath $env:SCISLIDE_SMOKE_EXE -WorkingDirectory $installDir -PassThru
+            Start-Sleep -Seconds 20
+            $process.Refresh()
+            if ($process.HasExited) { throw "The installed Electron app exited during startup: $($process.ExitCode)" }
+            if ($process.MainWindowHandle -eq 0) { throw 'The installed app did not create a native window.' }
+            Write-Output 'Installed x64 Electron app created a window and remained running.'
+          } finally {
+            # Stop only this test installation, including its Chromium child processes.
+            Get-CimInstance Win32_Process -Filter "Name = 'scislide.exe'" | Where-Object {
+              $_.ExecutablePath -and $_.ExecutablePath.StartsWith($installDir + '\', [System.StringComparison]::OrdinalIgnoreCase)
+            } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+            $uninstaller = Join-Path $installDir 'unins000.exe'
+            if (Test-Path $uninstaller) {
+              $remove = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=`"$uninstallLog`"") -Wait -PassThru
+              if ($remove.ExitCode -ne 0) { throw "Uninstall failed: $($remove.ExitCode)" }
+              if (Test-Path (Join-Path $installDir 'scislide.exe')) { throw 'Uninstall left the app executable installed.' }
+            }
+          }
+
+      - name: Upload Windows x64 development distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: SciSlide-${{ env.SCISLIDE_VERSION }}-windows-x64-unsigned
+          path: |
+            release/SciSlide-*-windows-x64-setup-unsigned.exe
+            release/SciSlide-*-windows-x64-setup-unsigned.exe.sha256
+            release/SciSlide-*-windows-x64-portable.zip
+            release/SciSlide-*-windows-x64-portable.zip.sha256
+            release/WINDOWS-INSTALL.md
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload installer logs after a failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: SciSlide-Windows-installer-diagnostics
+          path: |
+            ${{ runner.temp }}/scislide-install.log
+            ${{ runner.temp }}/scislide-uninstall.log
+          if-no-files-found: ignore
+          retention-days: 7

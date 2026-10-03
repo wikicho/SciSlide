@@ -119,9 +119,15 @@ function suggestedName(value, extension) {
       .replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/g, "_")
       .replace(/^\.+|[. ]+$/g, "")
       .trim() || "Untitled";
-  return cleaned.toLowerCase().endsWith(`.${extension}`)
-    ? cleaned
-    : `${cleaned}.${extension}`;
+  // Windows device names stay reserved even when followed by an extension.
+  // Keep suggested document/export names portable on every desktop platform.
+  const portable =
+    /^(?:CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])(?:\s*\.|$)/i.test(cleaned)
+      ? `_${cleaned}`
+      : cleaned;
+  return portable.toLowerCase().endsWith(`.${extension}`)
+    ? portable
+    : `${portable}.${extension}`;
 }
 
 function validateSaveDocument(value) {

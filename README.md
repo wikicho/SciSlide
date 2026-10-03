@@ -53,7 +53,19 @@ The default `.pkg` implementation uses [Electron's official pure JavaScript pack
 
 The repository's **macOS development installers** Actions workflow builds the editor once on a macOS runner and creates native `.pkg` installers for both architectures. It runs when packaging configuration changes or through Actions' **Run workflow** control. The versioned artifacts contain the installer, checksum, and installation guide for each architecture and are retained for 30 days. No additional secrets or Apple account are used. Installation, editing, file saving, and export on a physical Mac, along with signed distribution, require separate validation.
 
-Automatic updates, macOS notarization, Windows signing, and complete distribution validation across all three operating systems remain future work.
+Build **Windows x64** distributions on Windows with Inno Setup 6.7 or later:
+
+```sh
+pnpm desktop:package:win
+# Portable ZIP only; also supported from Linux and macOS:
+pnpm desktop:package:win --portable-only
+```
+
+This command always targets **Intel/AMD x64**, regardless of the build host. It creates `release/SciSlide-0.3.0-windows-x64-setup-unsigned.exe` and `release/SciSlide-0.3.0-windows-x64-portable.zip`, with SHA-256 checksum files. The installer uses an x64 bootstrap executable, installs for the current user under `%LOCALAPPDATA%\Programs\SciSlide`, and adds a Start menu shortcut. The portable ZIP contains the complete app folder; extract it and launch `SciSlide-win32-x64/scislide.exe`. No Node.js or TeX installation is needed to run MathJax editing.
+
+See the [Windows installation and build guide](desktop/WINDOWS.md) for compiler selection, checksums and platform limits. The **Windows x64 development distributions** Actions workflow builds on a Windows x64 runner, verifies the executable architectures and hashes, and checks installation/uninstallation in a temporary directory. Its versioned downloadable artifacts contain both distributions and are retained for 30 days. Windows 10 or later is required; physical Windows 10/11 editing and export validation remains open. Local LaTeX compilation is currently disabled on Windows.
+
+**Windows distributions are unsigned development builds.** Windows security policies may block installation or launch. Automatic updates, macOS notarization, Windows signing, and complete distribution validation across all three operating systems remain future work.
 
 ## Using the Editor
 

@@ -16,7 +16,7 @@
 
 This document consolidates the referenced conversation, **웹 기반 프레젠테이션 제작**, into an open-source project specification and records the subsequent implementation. Product goals come from that discussion. Sections identify the working prototype separately from target requirements; future features and release gates are not claims of existing functionality.
 
-The current v0.3.0 prototype is an independent React/TypeScript application with three bundled MathJax fonts, 17 math-package catalog entries, and an Electron host. Native file operations and an explicit Local LaTeX Compile → Apply workflow are implemented. A built-in Scientific starter template provides research-title, key-findings, equation/meaning and figure-comparison layouts. Deck-wide slide numbers, embedded MP4/WebM video objects, and ordered click-triggered appear/fade builds extend this baseline. Video plays in presentation mode; PDF/SVG output remains static and includes a labeled video placeholder. More advanced animation, linked masters, scientific figure tools, and research integrations are planned below. Isolated local compilation currently supports Linux system TeX installations; macOS/Windows compilation and home-installed package access remain future work. [The README](README.md) documents setup and usage. Unsigned, unnotarized macOS installer generation for Apple Silicon and Intel is available via `scripts/package-macos.mjs`; a native macOS build workflow is also provided. Installer structure can be checked on Linux, while installation and GUI behavior on a real Mac remain unverified. This prototype is not yet a complete scientific MVP or a signed production distribution.
+The current v0.3.0 prototype is an independent React/TypeScript application with three bundled MathJax fonts, 17 math-package catalog entries, and an Electron host. Native file operations and an explicit Local LaTeX Compile → Apply workflow are implemented. A built-in Scientific starter template provides research-title, key-findings, equation/meaning and figure-comparison layouts. Deck-wide slide numbers, embedded MP4/WebM video objects, and ordered click-triggered appear/fade builds extend this baseline. Video plays in presentation mode; PDF/SVG output remains static and includes a labeled video placeholder. More advanced animation, linked masters, scientific figure tools, and research integrations are planned below. Isolated local compilation currently supports Linux system TeX installations; macOS/Windows compilation and home-installed package access remain future work. [The README](README.md) documents setup and usage. Unsigned, unnotarized macOS installer generation for Apple Silicon and Intel is available via `scripts/package-macos.mjs`; a native macOS build workflow is also provided. Windows x64 portable ZIP and unsigned installer generation is available via `scripts/package-windows.mjs`, with a native Windows build workflow. Windows installation is per-user, and the x64 application has no Node.js or TeX runtime requirement for MathJax editing. Installer checks and CI smoke tests do not establish complete editing, saving and export behavior on physical Windows or Mac desktops. This prototype is not yet a complete scientific MVP or a signed production distribution.
 
 ## Contents
 
@@ -363,18 +363,18 @@ See the [dvisvgm manual](https://dvisvgm.de/Manpage/) for the converter's format
 
 The table defines product requirements, including capabilities beyond the current prototype. Current implementation status is:
 
-| Area                 | v0.3.0 status                                                                                                                  |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Editor core          | Slide operations, text/equation/figure/shape/video objects, transforms, alignment, selection, history and notes                |
-| Starter templates    | Scientific layout picker with research title, key findings, equation/meaning, figure comparison and blank                      |
-| Page numbers         | Deck-wide numbering rendered from current slide order in the editor, player and static exports                                 |
-| Animation foundation | Optional ordered click-triggered appear/fade builds; player state is separate from saved content                               |
-| Media                | Embedded MP4/WebM insertion and presentation playback; static PDF/SVG uses a labeled video placeholder                         |
-| Equations            | Three MathJax fonts and package catalog; explicit Linux Local LaTeX Compile → Apply; portable valid local SVG results          |
-| Files and output     | Native Electron Open/Save/Save As and PDF/SVG save; browser download fallback; 0.1.0/0.2.0 migration and 0.3.0 archives        |
-| Desktop              | Electron host, current-platform apps and unsigned Mac installers; signed distribution and physical Mac GUI review remain open  |
-| Partial requirements | localStorage recovery; Latin PDF body fonts; no figure crop, grouping, smart guides, line shape or equal-spacing control       |
-| Later features       | PDF figure import/insets, masters, advanced animation, presenter display, shared equation library, citations and native charts |
+| Area                 | v0.3.0 status                                                                                                                                         |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Editor core          | Slide operations, text/equation/figure/shape/video objects, transforms, alignment, selection, history and notes                                       |
+| Starter templates    | Scientific layout picker with research title, key findings, equation/meaning, figure comparison and blank                                             |
+| Page numbers         | Deck-wide numbering rendered from current slide order in the editor, player and static exports                                                        |
+| Animation foundation | Optional ordered click-triggered appear/fade builds; player state is separate from saved content                                                      |
+| Media                | Embedded MP4/WebM insertion and presentation playback; static PDF/SVG uses a labeled video placeholder                                                |
+| Equations            | Three MathJax fonts and package catalog; explicit Linux Local LaTeX Compile → Apply; portable valid local SVG results                                 |
+| Files and output     | Native Electron Open/Save/Save As and PDF/SVG save; browser download fallback; 0.1.0/0.2.0 migration and 0.3.0 archives                               |
+| Desktop              | Electron host, current-platform apps, unsigned Mac installers and Windows x64 installer/portable ZIP; signing and physical desktop review remain open |
+| Partial requirements | localStorage recovery; Latin PDF body fonts; no figure crop, grouping, smart guides, line shape or equal-spacing control                              |
+| Later features       | PDF figure import/insets, masters, advanced animation, presenter display, shared equation library, citations and native charts                        |
 
 | ID   | Feature                     | Scope                                            | Acceptance criterion                                                                                                                  |
 | ---- | --------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
@@ -601,17 +601,17 @@ A future extraction into document/equation/renderer/platform packages should fol
 
 ### 7.2 Recorded decisions and remaining work
 
-| Decision          | Current direction                                                          | Remaining work                                                             |
-| ----------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Base project      | Independent React/TypeScript implementation; no PPTist source reuse        | Select project license and contribution rules                              |
-| State/model       | Typed model and immutable editor history                                   | Extract reusable command/document boundaries when useful                   |
-| Native format     | Implemented ZIP/JSON/media/local renders, 0.3.0 with 0.1.0/0.2.0 migration | Publish JSON Schema and unpacked Git workflow                              |
-| MathJax           | Fixed bundled font/package profiles and individual vector glyph fallback   | Reduce loading cost and expand glyph fixtures                              |
-| Installed TeX     | Explicit Electron compile with Linux OS isolation and saved vectors        | Home resource authorization, broader installations, macOS/Windows adapters |
-| PDF pipeline      | jsPDF/svg2pdf.js with shared geometry and resource preflight               | Korean body fonts and broader supported effects                            |
-| PDF figure import | Deferred                                                                   | Preserve supported vector pages and publish capability subset              |
-| Desktop runtime   | Electron 44.5.1 chosen and current-platform app packaging implemented      | Signed installers, updates and tested OS matrix                            |
-| Collaboration     | Deferred                                                                   | Shared-state, conflict and asset design proposal                           |
+| Decision          | Current direction                                                                        | Remaining work                                                             |
+| ----------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Base project      | Independent React/TypeScript implementation; no PPTist source reuse                      | Select project license and contribution rules                              |
+| State/model       | Typed model and immutable editor history                                                 | Extract reusable command/document boundaries when useful                   |
+| Native format     | Implemented ZIP/JSON/media/local renders, 0.3.0 with 0.1.0/0.2.0 migration               | Publish JSON Schema and unpacked Git workflow                              |
+| MathJax           | Fixed bundled font/package profiles and individual vector glyph fallback                 | Reduce loading cost and expand glyph fixtures                              |
+| Installed TeX     | Explicit Electron compile with Linux OS isolation and saved vectors                      | Home resource authorization, broader installations, macOS/Windows adapters |
+| PDF pipeline      | jsPDF/svg2pdf.js with shared geometry and resource preflight                             | Korean body fonts and broader supported effects                            |
+| PDF figure import | Deferred                                                                                 | Preserve supported vector pages and publish capability subset              |
+| Desktop runtime   | Electron 44.5.1; app packaging, Mac installers and Windows x64 distributions implemented | Signed installers, updates and tested OS matrix                            |
+| Collaboration     | Deferred                                                                                 | Shared-state, conflict and asset design proposal                           |
 
 ### 7.3 Validation strategy
 
@@ -625,7 +625,7 @@ pnpm build
 pnpm desktop:package
 ```
 
-The desktop integration tests need installed TeX/conversion/isolation tools to exercise compilation. The Linux x64 packaged app has been launched from a relocated app directory and checked through Compile → Apply, draft preservation, typography invalidation, native save/new/open and vector PDF/SVG export. Host checks confirm sandbox/context isolation, secure custom-origin crypto/font access and scoped IPC. The worker enforces a deadline; current cancellation tests are not a dedicated deadline-expiry test. Three-OS installation/signing/update verification remains a release requirement.
+The desktop integration tests need installed TeX/conversion/isolation tools to exercise compilation. The Linux x64 packaged app has been launched from a relocated app directory and checked through Compile → Apply, draft preservation, typography invalidation, native save/new/open and vector PDF/SVG export. Host checks confirm sandbox/context isolation, secure custom-origin crypto/font access and scoped IPC. The worker enforces a deadline; current cancellation tests are not a dedicated deadline-expiry test. Windows x64 distribution checks verify PE machine type and SHA-256 hashes. The Windows workflow additionally checks installation/uninstallation in a temporary directory; physical Windows 10/11 editing, media playback, native saving and export remain release requirements. Three-OS signing/update verification remains open.
 
 End-to-end fixtures should continue to exercise the author → save → reopen → edit → present → export journey. New fixtures cover page-number resolution after reordering, old-format default migration, grouped click builds and reverse navigation, embedded-media round trips, decoder errors, playback cleanup and static export placeholders. State exact automation/runtime coverage; a passing unit test is not a claim of physical-device media or installer validation.
 
@@ -670,6 +670,9 @@ Source conversation: [웹 기반 프레젠테이션 제작](chatgpt-conversation
 - [dvisvgm manual](https://dvisvgm.de/Manpage/) — DVI/XDV/PDF conversion and outlined SVG glyphs; consulted 2026-10-02.
 - [Electron security guide](https://www.electronjs.org/docs/latest/tutorial/security) — sandboxing, isolated preload, CSP and sender validation; consulted 2026-10-02.
 - [Electron protocol API](https://www.electronjs.org/docs/latest/api/protocol) — secure custom-scheme resource loading; consulted 2026-10-02.
+- [Electron Packager](https://github.com/electron/packager) — Windows x64 application bundles; consulted 2026-10-03.
+- [Inno Setup architecture identifiers](https://jrsoftware.org/ishelp/topic_setup_architecturesallowed.htm) and [installation privileges](https://jrsoftware.org/ishelp/topic_setup_privilegesrequired.htm) — x64 targeting and per-user installation; consulted 2026-10-03.
+- [GitHub Windows runner image](https://github.com/actions/runner-images/blob/main/images/windows/Windows2022-Readme.md) — native x64 CI and installed Inno Setup compiler; consulted 2026-10-03.
 - [PPTist repository](https://github.com/pipipi-pikachu/PPTist) and [license](https://github.com/pipipi-pikachu/PPTist/blob/master/LICENSE) — candidate editor foundation and upstream licensing.
 
 For implementation, record exact dependency versions and upstream commit IDs in architecture decisions; these reference links may change over time.

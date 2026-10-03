@@ -162,7 +162,11 @@ export async function packageDesktop(options = {}, dependencies = {}) {
   const usage = path.join(
     root,
     "desktop",
-    target.platform === "darwin" ? "MACOS.md" : "USAGE.md",
+    target.platform === "darwin"
+      ? "MACOS.md"
+      : target.platform === "win32"
+        ? "WINDOWS.md"
+        : "USAGE.md",
   );
   await readFile(usage, "utf8");
   const stage = await mkdtemp(path.join(os.tmpdir(), "scislide-package-"));

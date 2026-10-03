@@ -48,6 +48,7 @@ async function fixture(t) {
   await writeFile(path.join(root, "desktop/host.test.cjs"), "// excluded test");
   await writeFile(path.join(root, "desktop/USAGE.md"), "Linux usage");
   await writeFile(path.join(root, "desktop/MACOS.md"), "Mac usage");
+  await writeFile(path.join(root, "desktop/WINDOWS.md"), "Windows usage");
   await writeFile(path.join(root, "dist/index.html"), "renderer");
   await writeFile(
     path.join(root, "third-party-licenses/NOTICE.md"),
@@ -181,6 +182,37 @@ test("A failed packaging call cleans only its unique temporary stage", async (t)
   assert.equal(await readFile(unrelated, "utf8"), "keep");
 });
 
+test("Windows x64 package carries Windows instructions and editable examples", async (t) => {
+  const root = await fixture(t);
+  let stage;
+  const apps = await packageDesktop(
+    { root, platform: "win32", arch: "x64" },
+    {
+      packager: async (options) => {
+        stage = options.dir;
+        assert.equal(options.platform, "win32");
+        assert.equal(options.arch, "x64");
+        const app = path.join(options.out, "SciSlide-win32-x64");
+        await mkdir(path.join(app, "resources"), { recursive: true });
+        await cp(
+          path.join(stage, "package.json"),
+          path.join(app, "resources/app.asar"),
+        );
+        return [app];
+      },
+    },
+  );
+  await assert.rejects(lstat(stage), { code: "ENOENT" });
+  assert.equal(
+    await readFile(path.join(apps[0], "README.md"), "utf8"),
+    "Windows usage",
+  );
+  assert.equal(
+    await readFile(path.join(apps[0], "examples/example.scislide"), "utf8"),
+    "editable example",
+  );
+});
+
 test("Existing unrecognized app directories and symlinks cannot be overwritten", async (t) => {
   const root = await fixture(t);
   const out = path.join(root, "release");
@@ -197,12 +229,17 @@ test("Existing unrecognized app directories and symlinks cannot be overwritten",
   );
   assert.equal(await readFile(path.join(app, "keep.txt"), "utf8"), "keep");
   await rm(app, { recursive: true });
-  await symlink(path.join(root, "dist"), app, "dir");
+  const directoryLinkType = process.platform === "win32" ? "junction" : "dir";
+  await symlink(path.join(root, "dist"), app, directoryLinkType);
   await assert.rejects(
     packageDesktop({ root, platform: "linux", arch: "x64", overwrite: true }),
     /non-directory or symlink/,
   );
-  await symlink(path.join(root, "dist"), path.join(root, "output-link"), "dir");
+  await symlink(
+    path.join(root, "dist"),
+    path.join(root, "output-link"),
+    directoryLinkType,
+  );
   await assert.rejects(
     packageDesktop({
       root,

@@ -12,6 +12,7 @@ const {
   validateSaveExport,
   validateCompile,
   resolveAsset,
+  suggestedName,
 } = require("./host-utils.cjs");
 
 test("IPC trusts only the exact main document, with a bounded local development origin", () => {
@@ -197,7 +198,36 @@ test("equation compilation only accepts bounded renderer parameters", () => {
     assert.throws(() => validateCompile({ ...valid, ...changed }));
 });
 
-test("custom app resource paths reject escaped paths and symlinks outside dist", async () => {
+test("suggested save names avoid Windows devices and preserve ordinary titles", () => {
+  for (const name of [
+    "CON",
+    "prn",
+    "AUX.scislide",
+    "nul.tar.gz",
+    "COM1",
+    "COM9.pdf",
+    "LPT1",
+    "LPT9.svg",
+    "COM¹",
+    "COM².scislide",
+    "COM³",
+    "LPT¹",
+    "LPT².pdf",
+    "LPT³",
+  ]) {
+    assert.ok(suggestedName(name, "scislide").startsWith("_"), name);
+  }
+  assert.equal(suggestedName("NUL.pdf", "pdf"), "_NUL.pdf");
+  assert.equal(suggestedName("CON.scislide", "scislide"), "_CON.scislide");
+  assert.equal(suggestedName("COM10", "scislide"), "COM10.scislide");
+  assert.equal(suggestedName("Conclusion", "pdf"), "Conclusion.pdf");
+  assert.equal(
+    suggestedName("우주론 발표", "scislide"),
+    "우주론 발표.scislide",
+  );
+});
+
+test("custom app resource paths reject escaped paths outside dist", async () => {
   const temporary = await fs.realpath(
     await fs.mkdtemp(path.join(os.tmpdir(), "scislide-host-test-")),
   );
@@ -206,10 +236,6 @@ test("custom app resource paths reject escaped paths and symlinks outside dist",
     await fs.mkdir(dist);
     await fs.writeFile(path.join(dist, "index.html"), "<html></html>");
     await fs.writeFile(path.join(temporary, "secret.txt"), "secret");
-    await fs.symlink(
-      path.join(temporary, "secret.txt"),
-      path.join(dist, "leak.txt"),
-    );
     assert.equal(
       await resolveAsset("scislide://app/", dist),
       path.join(dist, "index.html"),
@@ -217,7 +243,6 @@ test("custom app resource paths reject escaped paths and symlinks outside dist",
     for (const value of [
       "scislide://app/%2e%2e%2fsecret.txt",
       "scislide://app/%5c..%5csecret.txt",
-      "scislide://app/leak.txt",
       "file:///etc/passwd",
       "scislide://other/index.html",
     ])
@@ -225,4 +250,28 @@ test("custom app resource paths reject escaped paths and symlinks outside dist",
   } finally {
     await fs.rm(temporary, { recursive: true, force: true });
   }
+});
+
+test("custom app resources reject file symlinks outside dist", async (context) => {
+  const temporary = await fs.realpath(
+    await fs.mkdtemp(path.join(os.tmpdir(), "scislide-host-symlink-test-")),
+  );
+  context.after(() => fs.rm(temporary, { recursive: true, force: true }));
+  const dist = path.join(temporary, "dist");
+  await fs.mkdir(dist);
+  await fs.writeFile(path.join(temporary, "secret.txt"), "secret");
+  try {
+    await fs.symlink(
+      path.join(temporary, "secret.txt"),
+      path.join(dist, "leak.txt"),
+      "file",
+    );
+  } catch (error) {
+    if (process.platform === "win32" && error.code === "EPERM") {
+      context.skip("This Windows account cannot create file symbolic links.");
+      return;
+    }
+    throw error;
+  }
+  await assert.rejects(resolveAsset("scislide://app/leak.txt", dist));
 });

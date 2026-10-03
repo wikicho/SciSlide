@@ -12,8 +12,9 @@
     "desktop": "pnpm build && electron .",
     "desktop:dev": "node scripts/desktop-dev.mjs",
     "desktop:package": "pnpm build && node scripts/package-desktop.mjs",
-    "test:desktop": "node --test --test-isolation=none desktop/host-utils.test.cjs tests/desktop-tex.test.mjs tests/desktop-package.test.mjs",
-    "desktop:package:mac": "pnpm build && node scripts/package-macos.mjs"
+    "test:desktop": "node --test --test-isolation=none desktop/host-utils.test.cjs tests/desktop-tex.test.mjs tests/desktop-package.test.mjs tests/windows-package.test.mjs",
+    "desktop:package:mac": "pnpm build && node scripts/package-macos.mjs",
+    "desktop:package:win": "pnpm build && node scripts/package-windows.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.0",
