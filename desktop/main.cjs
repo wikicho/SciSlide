@@ -71,6 +71,7 @@ const csp = [
   `script-src 'self'${devUrl ? " 'unsafe-inline'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
+  "media-src data: blob:",
   "font-src 'self' data:",
   `connect-src 'self'${devUrl ? " ws://127.0.0.1:5173" : ""}`,
   "worker-src 'none'",

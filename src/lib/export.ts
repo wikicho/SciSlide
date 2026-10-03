@@ -3,6 +3,7 @@ import { svg2pdf } from "svg2pdf.js";
 import type { AnySlideObject, Asset, Deck, Slide } from "./model";
 import { renderObjectEquation } from "./equation-renderer";
 import { wrapText } from "./layout";
+import { resolvePageNumber } from "./model";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const FONT_WEIGHTS = [400, 500, 600, 700] as const;
@@ -309,6 +310,35 @@ async function objectSvg(
     const nested = parseSvg(equation.svg, `Equation “${object.name}”`);
     prefixIds(nested, prefix);
     group.append(nested);
+  } else if (object.type === "video") {
+    const asset = deck.assets.find(
+      (candidate) => candidate.id === object.assetId,
+    );
+    if (!asset || !["video/mp4", "video/webm"].includes(asset.mime))
+      throw new Error(
+        `Video “${object.name}” is missing its supported media asset.`,
+      );
+    // Static exports intentionally carry a passive frame, never playable media.
+    const size = Math.max(4, Math.min(width, height) * 0.18);
+    group.append(
+      svgElement("rect", { width, height, rx: 12, fill: "#172033" }),
+    );
+    group.append(
+      svgElement("path", {
+        d: `M ${width / 2 - size / 3} ${height / 2 - size / 2} L ${width / 2 + size / 2} ${height / 2} L ${width / 2 - size / 3} ${height / 2 + size / 2} Z`,
+        fill: "#e2e8f0",
+      }),
+    );
+    const caption = svgElement("text", {
+      x: width / 2,
+      y: height * 0.82,
+      "text-anchor": "middle",
+      fill: "#cbd5e1",
+      "font-family": "Inter",
+      "font-size": Math.min(22, width / 18, height / 10),
+    });
+    caption.textContent = "Video (presentation only)";
+    group.append(caption);
   } else {
     const asset = deck.assets.find(
       (candidate) => candidate.id === object.assetId,
@@ -363,7 +393,8 @@ async function objectSvg(
   return group;
 }
 
-async function slideSvg(
+/** Shared static export scene: all build steps, page numbering, passive media frames. */
+export async function renderSlideSvg(
   deck: Deck,
   slide: Slide,
   index: number,
@@ -397,6 +428,21 @@ async function slideSvg(
       ),
   );
   svg.append(...objects);
+  const pageNumber = resolvePageNumber(deck, index);
+  if (pageNumber) {
+    const number = svgElement("text", {
+      x: pageNumber.x,
+      y: pageNumber.y,
+      "text-anchor": pageNumber.anchor,
+      fill: pageNumber.color,
+      "font-family": deck.theme.fontFamily,
+      "font-size": pageNumber.fontSize,
+      "font-weight": 400,
+      "data-page-number": "true",
+    });
+    number.textContent = pageNumber.text;
+    svg.append(number);
+  }
   return svg;
 }
 
@@ -502,7 +548,7 @@ function verifyPdfContent(svg: SVGSVGElement, pdf: jsPDF, slide: Slide) {
 /** Editable Unicode text, embedded Inter fonts, embedded figures and vector equations. */
 export async function exportSlideSvg(deck: Deck, slide: Slide): Promise<Blob> {
   const fonts = await loadFonts();
-  const svg = await slideSvg(
+  const svg = await renderSlideSvg(
     deck,
     slide,
     Math.max(
@@ -541,7 +587,7 @@ export async function exportDeckPdf(deck: Deck): Promise<Blob> {
     // Prepare every slide before producing a downloadable document. An invalid
     // equation or missing figure aborts the export with its object/slide name.
     const slides = await Promise.all(
-      deck.slides.map((slide, index) => slideSvg(deck, slide, index)),
+      deck.slides.map((slide, index) => renderSlideSvg(deck, slide, index)),
     );
     for (let index = 0; index < slides.length; index++) {
       const svg = slides[index];

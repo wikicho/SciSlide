@@ -14,6 +14,7 @@ import {
   FilePlus2,
   FolderOpen,
   ImagePlus,
+  Video,
   Layers,
   LockKeyhole,
   Maximize2,
@@ -36,24 +37,38 @@ import {
   Sigma,
   CircleHelp,
 } from "lucide-react";
-import { createDemoDeck, createBlankSlide, newId } from "./lib/model";
+import {
+  createDemoDeck,
+  createBlankSlide,
+  newId,
+  DEFAULT_PAGE_NUMBERS,
+} from "./lib/model";
 import type {
   Deck,
   SlideObject,
   EquationObject,
   TextObject,
   ShapeObject,
+  VideoObject,
 } from "./lib/model";
 import {
   buildDeckArchive,
   readDeckArchive,
   importFigure,
+  importVideo,
+  MAX_VIDEO_BYTES,
   downloadBlob,
   loadRecovery,
   saveRecovery,
 } from "./lib/persistence";
 import { renderEquation, FONT_OPTIONS } from "./lib/equations";
 import { exportDeckPdf, exportSlideSvg } from "./lib/export";
+import {
+  maxBuildStep,
+  nextBuildStep,
+  previousBuildStep,
+} from "./lib/presentation";
+import { cloneDeck, pruneUnusedAssets } from "./lib/deck-editing";
 import { SlideScene } from "./components/SlideScene";
 import { MathSupportDialog } from "./components/MathSupportDialog";
 import { SlideTemplateDialog } from "./components/SlideTemplateDialog";
@@ -141,6 +156,7 @@ export default function App() {
     [recoveryStatus, setRecoveryStatus] = useState("Local workspace");
   const [exportMenu, setExportMenu] = useState(false),
     [presenting, setPresenting] = useState(false),
+    [presentationStep, setPresentationStep] = useState(0),
     [showHelp, setShowHelp] = useState(false),
     [showSlideTemplates, setShowSlideTemplates] = useState(false),
     [showMathLibrary, setShowMathLibrary] = useState(false),
@@ -194,11 +210,17 @@ export default function App() {
   );
   const openInput = useRef<HTMLInputElement>(null),
     imageInput = useRef<HTMLInputElement>(null),
+    videoInput = useRef<HTMLInputElement>(null),
     canvasRef = useRef<HTMLDivElement>(null),
     sourceRef = useRef<HTMLTextAreaElement>(null);
   const slide = deck.slides.find((s) => s.id === slideId) ?? deck.slides[0];
   const slideIndex = deck.slides.indexOf(slide),
     object = slide.objects.find((o) => o.id === selected[0]);
+  const pageNumbers = {
+    ...DEFAULT_PAGE_NUMBERS,
+    ...deck.pageNumbers,
+    enabled: deck.pageNumbers?.enabled ?? false,
+  };
   const gesture = useRef<{
     mode: "drag" | "resize";
     start: { x: number; y: number };
@@ -252,7 +274,7 @@ export default function App() {
       !key ||
       now - lastCommit.current.time > 650
     ) {
-      undo.current.push(clone(deckRef.current));
+      undo.current.push(cloneDeck(deckRef.current));
       if (undo.current.length > 60) undo.current.shift();
     }
     lastCommit.current = { key, time: now };
@@ -263,7 +285,7 @@ export default function App() {
   }, []);
   const change = useCallback(
     (fn: (d: Deck) => void, key = "") => {
-      const next = clone(deckRef.current);
+      const next = cloneDeck(deckRef.current);
       fn(next);
       commit(next, key);
     },
@@ -284,7 +306,7 @@ export default function App() {
       to = direction === "undo" ? redo.current : undo.current;
     const next = from.pop();
     if (!next) return;
-    to.push(clone(deckRef.current));
+    to.push(cloneDeck(deckRef.current));
     deckRef.current = next;
     setDeck(next);
     setSelected([]);
@@ -511,6 +533,7 @@ export default function App() {
   };
   const switchSlide = (id: string) => {
     setSlideId(id);
+    setPresentationStep(0);
     setSelected([]);
     setPreview({});
   };
@@ -542,6 +565,7 @@ export default function App() {
     }
     change((d) => {
       d.slides = d.slides.filter((s) => s.id !== slide.id);
+      pruneUnusedAssets(d);
     });
     switchSlide(deck.slides[slideIndex ? slideIndex - 1 : 1].id);
   };
@@ -565,7 +589,9 @@ export default function App() {
           ? "Text"
           : type === "figure"
             ? "Figure"
-            : "Shape",
+            : type === "video"
+              ? "Video"
+              : "Shape",
     transform: { x: 140, y: 250, width: 600, height: 120, rotation: 0 },
     opacity: 1,
     visible: true,
@@ -622,6 +648,7 @@ export default function App() {
     change((d) => {
       const s = d.slides.find((s) => s.id === slide.id)!;
       s.objects = s.objects.filter((o) => !ids.includes(o.id));
+      pruneUnusedAssets(d);
     });
     setSelected([]);
   };
@@ -795,12 +822,53 @@ export default function App() {
       setBusy("");
     }
   };
+  const addVideo = async (file: File) => {
+    if (busy) return;
+    setBusy("Importing video");
+    // Keep the destination stable while the file is being read.
+    const targetSlideId = slide.id;
+    try {
+      const asset = await importVideo(file);
+      if (!deckRef.current.slides.some((s) => s.id === targetSlideId))
+        throw new Error("The destination slide is no longer available.");
+      const nativeWidth = asset.width || 800;
+      const nativeHeight = asset.height || 450;
+      const scale = Math.min(800 / nativeWidth, 600 / nativeHeight);
+      const width = nativeWidth * scale;
+      const height = nativeHeight * scale;
+      const video: VideoObject = {
+        ...base("video"),
+        type: "video",
+        name: "Video",
+        assetId: asset.id,
+        alt: asset.name,
+        autoplay: false,
+        loop: false,
+        muted: false,
+        controls: true,
+        transform: { x: 180, y: 220, width, height, rotation: 0 },
+      };
+      change((d) => {
+        d.assets.push(asset);
+        d.slides.find((s) => s.id === targetSlideId)!.objects.push(video);
+      });
+      switchSlide(targetSlideId);
+      setSelected([video.id]);
+      notify(
+        "Video added. Use Present to play it; save the deck to keep the embedded file.",
+      );
+    } catch (e) {
+      notify((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  };
   const runExport = async (kind: "pdf" | "svg") => {
     if (busy) return;
     setExportMenu(false);
     setBusy(kind === "pdf" ? "Preparing vector PDF" : "Preparing SVG");
     try {
-      const snapshot = clone(deckRef.current),
+      const snapshot = cloneDeck(deckRef.current),
         blob =
           kind === "pdf"
             ? await exportDeckPdf(snapshot)
@@ -824,12 +892,29 @@ export default function App() {
     }
   };
   const startPresent = () => {
+    setPresentationStep(0);
     setPresenting(true);
     document.documentElement.requestFullscreen?.().catch(() => {});
   };
   const stopPresent = () => {
     setPresenting(false);
+    setPresentationStep(0);
     if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  };
+  const nextPresentation = () => {
+    const next = nextBuildStep(slide, presentationStep);
+    if (next !== null) setPresentationStep(next);
+    else if (slideIndex < deck.slides.length - 1)
+      switchSlide(deck.slides[slideIndex + 1].id);
+  };
+  const previousPresentation = () => {
+    const previous = previousBuildStep(slide, presentationStep);
+    if (previous !== null) setPresentationStep(previous);
+    else if (slideIndex > 0) {
+      const previousSlide = deck.slides[slideIndex - 1];
+      switchSlide(previousSlide.id);
+      setPresentationStep(maxBuildStep(previousSlide));
+    }
   };
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -958,7 +1043,7 @@ export default function App() {
           else {
             n.transform.width = Math.max(24, w + dx);
             n.transform.height =
-              o.type === "figure" || e.shiftKey
+              o.type === "figure" || o.type === "video" || e.shiftKey
                 ? Math.max(24, h * ratio)
                 : Math.max(24, h + dy);
           }
@@ -1001,16 +1086,31 @@ export default function App() {
       if (presenting) {
         if (e.key === "Escape") {
           stopPresent();
-        } else if (
-          ["ArrowRight", "ArrowDown", " ", "PageDown"].includes(e.key)
-        ) {
+          return;
+        }
+        const target = e.target instanceof Element ? e.target : null;
+        const mediaControl = !!target?.closest(
+          "video,audio,.video-player,input,select,textarea",
+        );
+        if (
+          mediaControl ||
+          (target?.closest("button") && [" ", "Enter"].includes(e.key))
+        )
+          return;
+        if (["ArrowRight", "ArrowDown", " ", "PageDown"].includes(e.key)) {
           e.preventDefault();
-          switchSlide(
-            deck.slides[Math.min(deck.slides.length - 1, slideIndex + 1)].id,
-          );
+          nextPresentation();
         } else if (["ArrowLeft", "ArrowUp", "PageUp"].includes(e.key)) {
           e.preventDefault();
-          switchSlide(deck.slides[Math.max(0, slideIndex - 1)].id);
+          previousPresentation();
+        } else if (e.key === "Home") {
+          e.preventDefault();
+          switchSlide(deck.slides[0].id);
+        } else if (e.key === "End") {
+          e.preventDefault();
+          const last = deck.slides[deck.slides.length - 1];
+          switchSlide(last.id);
+          setPresentationStep(maxBuildStep(last));
         }
         return;
       }
@@ -1072,26 +1172,36 @@ export default function App() {
   if (presenting)
     return (
       <div className="presentation-view">
-        <SlideScene deck={deck} slide={slide} />
+        <SlideScene
+          key={slide.id}
+          deck={deck}
+          slide={slide}
+          slideIndex={slideIndex}
+          presentationStep={presentationStep}
+          playback
+        />
         <div className="presentation-controls">
           <IconButton
-            title="Previous slide"
-            onClick={() =>
-              switchSlide(deck.slides[Math.max(0, slideIndex - 1)].id)
-            }
+            title="Previous step or slide"
+            onClick={previousPresentation}
+            disabled={slideIndex === 0 && presentationStep === 0}
           >
             <ChevronLeft size={20} />
           </IconButton>
           <span>
             {slideIndex + 1} / {deck.slides.length}
+            {maxBuildStep(slide) > 0 && (
+              <small className="presentation-step">
+                Step {presentationStep}
+              </small>
+            )}
           </span>
           <IconButton
-            title="Next slide"
-            onClick={() =>
-              switchSlide(
-                deck.slides[Math.min(deck.slides.length - 1, slideIndex + 1)]
-                  .id,
-              )
+            title="Next step or slide"
+            onClick={nextPresentation}
+            disabled={
+              slideIndex === deck.slides.length - 1 &&
+              presentationStep >= maxBuildStep(slide)
             }
           >
             <ChevronRight size={20} />
@@ -1216,6 +1326,14 @@ export default function App() {
         <button className="tool" onClick={() => imageInput.current?.click()}>
           <ImagePlus size={18} /> Figure
         </button>
+        <button
+          className="tool"
+          disabled={!!busy}
+          onClick={() => videoInput.current?.click()}
+          title={`Insert an MP4 or WebM video · up to ${MAX_VIDEO_BYTES / 1024 / 1024} MB`}
+        >
+          <Video size={18} /> Video
+        </button>
         <IconButton
           title="Insert rectangle"
           onClick={() => void insert("rect")}
@@ -1284,7 +1402,7 @@ export default function App() {
                   {String(i + 1).padStart(2, "0")}
                 </span>
                 <span className="thumbnail">
-                  <SlideScene deck={deck} slide={s} />
+                  <SlideScene deck={deck} slide={s} slideIndex={i} />
                 </span>
                 <span className="thumbnail-title">
                   {s.title || "Untitled slide"}
@@ -1355,6 +1473,7 @@ export default function App() {
               <SlideScene
                 deck={deck}
                 slide={slide}
+                slideIndex={slideIndex}
                 selected={selected}
                 preview={preview}
                 metrics={metrics}
@@ -1430,6 +1549,8 @@ export default function App() {
                     <Type size={20} />
                   ) : object.type === "figure" ? (
                     <ImagePlus size={20} />
+                  ) : object.type === "video" ? (
+                    <Video size={20} />
                   ) : (
                     <Square size={20} />
                   )}
@@ -1888,6 +2009,156 @@ export default function App() {
                   </p>
                 </div>
               )}
+              {object.type === "video" && (
+                <div className="inspector-section">
+                  <div className="section-label">VIDEO</div>
+                  <Field label="Description">
+                    <textarea
+                      aria-label="Video description"
+                      value={object.alt}
+                      onChange={(e) =>
+                        updateObject(
+                          object.id,
+                          (o) => {
+                            if (o.type === "video") o.alt = e.target.value;
+                          },
+                          "video-alt",
+                        )
+                      }
+                    />
+                  </Field>
+                  {(["autoplay", "loop", "muted", "controls"] as const).map(
+                    (property) => (
+                      <label className="check-field" key={property}>
+                        <input
+                          type="checkbox"
+                          checked={object[property]}
+                          onChange={(e) =>
+                            updateObject(object.id, (o) => {
+                              if (o.type === "video")
+                                o[property] = e.target.checked;
+                            })
+                          }
+                        />
+                        <span>
+                          {
+                            {
+                              autoplay: "Play when revealed",
+                              loop: "Loop video",
+                              muted: "Mute audio",
+                              controls: "Show playback controls",
+                            }[property]
+                          }
+                        </span>
+                      </label>
+                    ),
+                  )}
+                  <p className="field-hint">
+                    {deck.assets.find((a) => a.id === object.assetId)?.mime ||
+                      "Embedded video"}
+                    {" · "}
+                    {(() => {
+                      const asset = deck.assets.find(
+                        (a) => a.id === object.assetId,
+                      );
+                      if (!asset) return "Missing asset";
+                      const bytes = Math.floor(
+                        ((asset.dataUrl.length -
+                          asset.dataUrl.indexOf(",") -
+                          1) *
+                          3) /
+                          4,
+                      );
+                      return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+                    })()}
+                    <br />
+                    Stored inside the deck. Videos play only in Present mode.
+                    Codec support depends on your browser or Electron; autoplay
+                    may require a click.
+                  </p>
+                </div>
+              )}
+              <div className="inspector-section">
+                <div className="section-label">APPEARANCE STEPS</div>
+                <Field label="Reveal step (0 = visible at start)">
+                  <input
+                    aria-label="Object reveal step"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={object.build?.step ?? 0}
+                    onChange={(e) =>
+                      updateObject(
+                        object.id,
+                        (o) => {
+                          o.build = {
+                            step: Math.max(
+                              0,
+                              Math.min(100, Math.round(Number(e.target.value))),
+                            ),
+                            effect: o.build?.effect ?? "appear",
+                            durationMs: o.build?.durationMs ?? 300,
+                          };
+                        },
+                        "build-step",
+                      )
+                    }
+                  />
+                </Field>
+                <div className="field-row">
+                  <Field label="Effect">
+                    <select
+                      aria-label="Object reveal effect"
+                      value={object.build?.effect ?? "appear"}
+                      onChange={(e) =>
+                        updateObject(object.id, (o) => {
+                          o.build = {
+                            step: o.build?.step ?? 0,
+                            effect: e.target.value as "appear" | "fade",
+                            durationMs: o.build?.durationMs ?? 300,
+                          };
+                        })
+                      }
+                    >
+                      <option value="appear">Appear</option>
+                      <option value="fade">Fade in</option>
+                    </select>
+                  </Field>
+                  <Field label="Duration (ms)">
+                    <input
+                      aria-label="Object reveal duration"
+                      type="number"
+                      min="100"
+                      max="3000"
+                      step="100"
+                      disabled={object.build?.effect !== "fade"}
+                      value={object.build?.durationMs ?? 300}
+                      onChange={(e) =>
+                        updateObject(
+                          object.id,
+                          (o) => {
+                            o.build = {
+                              step: o.build?.step ?? 0,
+                              effect: o.build?.effect ?? "appear",
+                              durationMs: Math.max(
+                                100,
+                                Math.min(3000, Number(e.target.value)),
+                              ),
+                            };
+                          },
+                          "build-duration",
+                        )
+                      }
+                    />
+                  </Field>
+                </div>
+                <p className="field-hint">
+                  Present reveals each step with Next or an arrow key. Objects
+                  with the same step appear together. Editor and PDF/SVG exports
+                  show all steps.
+                </p>
+              </div>
               <div className="inspector-section">
                 <div className="section-label">POSITION & SIZE</div>
                 <div className="field-row">
@@ -2070,6 +2341,145 @@ export default function App() {
                   Applies to equations using deck typography.
                 </p>
               </div>
+              <div className="inspector-section">
+                <div className="section-label">PAGE NUMBERS</div>
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    checked={pageNumbers.enabled}
+                    onChange={(e) =>
+                      change((d) => {
+                        d.pageNumbers = {
+                          ...pageNumbers,
+                          enabled: e.target.checked,
+                        };
+                      })
+                    }
+                  />
+                  <span>Show page numbers</span>
+                </label>
+                <div className="field-row">
+                  <Field label="Position">
+                    <select
+                      aria-label="Page number position"
+                      disabled={!pageNumbers.enabled}
+                      value={pageNumbers.position}
+                      onChange={(e) =>
+                        change((d) => {
+                          d.pageNumbers = {
+                            ...pageNumbers,
+                            position: e.target
+                              .value as typeof pageNumbers.position,
+                          };
+                        })
+                      }
+                    >
+                      <option value="bottom-left">Bottom left</option>
+                      <option value="bottom-center">Bottom center</option>
+                      <option value="bottom-right">Bottom right</option>
+                    </select>
+                  </Field>
+                  <Field label="Format">
+                    <select
+                      aria-label="Page number format"
+                      disabled={!pageNumbers.enabled}
+                      value={pageNumbers.format}
+                      onChange={(e) =>
+                        change((d) => {
+                          d.pageNumbers = {
+                            ...pageNumbers,
+                            format: e.target.value as typeof pageNumbers.format,
+                          };
+                        })
+                      }
+                    >
+                      <option value="number">1</option>
+                      <option value="number-total">Number / last page</option>
+                    </select>
+                  </Field>
+                </div>
+                <Field label="Start numbering at">
+                  <input
+                    aria-label="Page number starting value"
+                    type="number"
+                    min="0"
+                    max="10000"
+                    step="1"
+                    disabled={!pageNumbers.enabled}
+                    value={pageNumbers.startAt}
+                    onChange={(e) =>
+                      change((d) => {
+                        d.pageNumbers = {
+                          ...pageNumbers,
+                          startAt: Math.max(
+                            0,
+                            Math.min(10000, Math.round(Number(e.target.value))),
+                          ),
+                        };
+                      }, "page-start")
+                    }
+                  />
+                </Field>
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    disabled={!pageNumbers.enabled}
+                    checked={pageNumbers.hideFirst}
+                    onChange={(e) =>
+                      change((d) => {
+                        d.pageNumbers = {
+                          ...pageNumbers,
+                          hideFirst: e.target.checked,
+                        };
+                      })
+                    }
+                  />
+                  <span>Hide number on the first slide</span>
+                </label>
+                <div className="field-row">
+                  <Field label="Size">
+                    <input
+                      aria-label="Page number size"
+                      type="number"
+                      min="4"
+                      max="200"
+                      disabled={!pageNumbers.enabled}
+                      value={pageNumbers.fontSize}
+                      onChange={(e) =>
+                        change((d) => {
+                          d.pageNumbers = {
+                            ...pageNumbers,
+                            fontSize: Math.max(
+                              4,
+                              Math.min(200, Number(e.target.value)),
+                            ),
+                          };
+                        }, "page-size")
+                      }
+                    />
+                  </Field>
+                  <Field label="Color">
+                    <input
+                      aria-label="Page number color"
+                      type="color"
+                      disabled={!pageNumbers.enabled}
+                      value={pageNumbers.color}
+                      onChange={(e) =>
+                        change((d) => {
+                          d.pageNumbers = {
+                            ...pageNumbers,
+                            color: e.target.value,
+                          };
+                        })
+                      }
+                    />
+                  </Field>
+                </div>
+                <p className="field-hint">
+                  Applies to every slide and static exports. Hiding the first
+                  number keeps the remaining numbering unchanged.
+                </p>
+              </div>
             </>
           )}
           <div className="inspector-tip">
@@ -2101,6 +2511,16 @@ export default function App() {
         accept="image/svg+xml,image/png,image/jpeg"
         onChange={(e) => {
           if (e.target.files?.[0]) void addFigure(e.target.files[0]);
+          e.target.value = "";
+        }}
+      />
+      <input
+        hidden
+        ref={videoInput}
+        type="file"
+        accept="video/mp4,video/webm,.mp4,.webm"
+        onChange={(e) => {
+          if (e.target.files?.[0]) void addVideo(e.target.files[0]);
           e.target.value = "";
         }}
       />
@@ -2141,10 +2561,15 @@ export default function App() {
               <dd>Delete / Backspace</dd>
               <dt>Exit slideshow</dt>
               <dd>Escape</dd>
+              <dt>Next / previous reveal</dt>
+              <dd>Right / Left · Space / PageDown</dd>
+              <dt>First / last slide</dt>
+              <dd>Home / End</dd>
             </dl>
             <p className="field-hint">
-              This is an early local prototype. Animation, PDF figure import,
-              and collaborative editing are planned later.
+              Page numbers, embedded videos, and click-to-reveal appear/fade
+              steps are available. PDF figure import, advanced animation, and
+              collaborative editing are planned later.
             </p>
           </div>
         </div>

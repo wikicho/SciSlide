@@ -2,7 +2,7 @@
 
 A scientific presentation editor with editable equations, vector output, and an Electron desktop host.
 
-**v0.2.1 is a working prototype.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux systems. The included three-slide cosmology deck uses synthetic demonstration data.
+**v0.3.0 is a working prototype.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux systems. The included three-slide cosmology deck uses synthetic demonstration data. The current version adds deck-wide page numbers, embedded video, and ordered click-triggered builds.
 
 ## Getting Started
 
@@ -47,7 +47,7 @@ pnpm desktop:package:mac
 pnpm desktop:package:mac --arch=arm64
 ```
 
-The default output paths are `release/SciSlide-0.2.1-macos-arm64-unsigned.pkg` and `release/SciSlide-0.2.1-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
+The default output paths are `release/SciSlide-0.3.0-macos-arm64-unsigned.pkg` and `release/SciSlide-0.3.0-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
 
 The default `.pkg` implementation uses [Electron's official pure JavaScript packaging](https://packages.electronjs.org/osx-sign/v2.6.0/index.html#pure-javascript-packaging), so it also works on Linux. On macOS with Xcode Command Line Tools, use `pnpm desktop:package:mac --implementation=native` to package with Apple's `pkgbuild` and `productbuild`. **Both methods produce development installers without Developer ID signing or notarization.** macOS security policies may block installation or launch. The packaging process does not change system security settings.
 
@@ -58,7 +58,7 @@ Automatic updates, macOS notarization, Windows signing, and complete distributio
 ## Using the Editor
 
 1. Select a slide from the thumbnails on the left. On narrow screens, use the slide selector above the canvas.
-2. Add objects with **Text / Equation / Figure**. Figures support SVG, PNG, and JPEG.
+2. Add objects with **Text / Equation / Figure / Video**. Figures support SVG, PNG, and JPEG; videos support local MP4 and WebM files.
 3. Click and drag an object to move it. Resize it with the lower-right handle, or enter its position, rotation, and color in the Inspector.
 4. Select an equation, then choose **MathJax · Live preview** or **Local LaTeX · Installed packages**. Equation source and previews are not applied to the slide until you click **Apply equation**.
 5. Desktop **Open / Save / Save As** use native file dialogs. Save writes to the selected original path; Save As lets you choose a new path. The web version downloads the source file.
@@ -71,6 +71,28 @@ The desktop menu provides New Presentation, Open, Save, Save As, undo/redo, pres
 Click **New slide** or **+** in the slide list to choose a built-in Scientific template. Four layouts are available: **Research title**, **Key findings**, **Equation + meaning**, and **Figure comparison**, along with a **Blank** slide. The selected layout is inserted after the current slide.
 
 Template titles, body text, equations, and shapes are ordinary editable objects. Change the text, or move and delete objects to suit your presentation. Equations inherit the presentation's current equation font and color, and you can edit the example expressions. Figure comparison uses editable rectangles and instructions as figure placeholders. Add actual images with **Figure**, then delete the placeholder objects. Templates do not download external images or additional fonts.
+
+## Page Numbers
+
+Click an empty area of the canvas to open the deck Inspector, then use **PAGE NUMBERS → Show page numbers**. Choose bottom-left/center/right placement, a number or number/last-number format, starting number, size and color. Optionally hide the first slide's number. The number is calculated from current slide order, so inserting, duplicating, deleting or reordering slides updates it automatically. Settings are saved in the source file and can be undone/redone.
+
+New decks show bottom-right numbers starting at 1; older files open without numbers. Hiding the first number keeps the sequence unchanged. With three slides starting at 5, the number/last-number format reads `5 / 7`, `6 / 7`, `7 / 7`. Page numbers appear in the editor, slideshow, PDF and SVG through the same scene. They are separate from ordinary text objects and stay visible during click builds. Linked master slides, section numbering and custom footer templates are later features.
+
+## Click Builds and Animation Preparation
+
+Select an object and open **APPEARANCE STEPS** in the Inspector to leave it visible from slide entry (**step 0**) or reveal it at a numbered click step (**1–100**). Objects sharing a step appear together. Choose **Appear** for an immediate reveal or **Fade in** for a short transition; fade duration is bounded to **100–3000 ms**.
+
+In presentation mode, **Next**, the right arrow or Space reveals the next populated build before moving to the next slide. Unused step numbers do not require extra clicks. Backward navigation returns to a previous build state; moving back to the previous slide shows its final state. The editor and thumbnails always show the complete layout, and saved build settings do not change an object's ordinary visibility or geometry. PDF/SVG export uses the final build state.
+
+This is the foundation for later animation controls. A timeline, exit/move/scale effects, timing chains, per-term equation highlighting and one-page-per-build export are not included yet. Media playback controls do not advance builds.
+
+## Embedded Videos
+
+Click **Video**, choose a local **MP4** or **WebM** file, then move/resize the video like a figure. The **VIDEO** Inspector offers **Play when revealed**, **Loop video**, **Mute audio** and **Show playback controls**. Automatic playback remains subject to the runtime's autoplay policy; manual playback controls remain available when needed. Videos play only while presenting. The editor and thumbnails use a static placeholder; leaving the slide or presentation stops playback.
+
+Videos are embedded in the `.scislide` archive, so a successful native save does not depend on the original file path. Each video is limited to **40 MiB**, the complete saved archive to **64 MiB**, and its expanded resources to **100 MiB**. MP4/WebM are containers: codec support depends on the browser/Electron runtime, and an unsupported video produces a playback error. No transcoding, streaming URL import, trimming, subtitles or video export is provided.
+
+**PDF/SVG export includes a labeled static video placeholder and cannot play the video.** Large media can exceed automatic recovery storage; check save/recovery feedback and save a source file rather than relying on recovery. No video is automatically uploaded or downloaded from a remote service.
 
 ## MathJax Equations and AMS Packages
 
@@ -132,13 +154,13 @@ The local worker uses only read-only system TeX and font paths and a temporary w
 
 ## Source Files and Portable Equation Results
 
-New `.scislide` files use **`0.2.0`** as their `formatVersion`. The app migrates existing `0.1.0` files to MathJax equations and uses 0.2.0 on the next save. Opening an existing file does not modify it. Older SciSlide 0.1.x apps may not read the new format.
+New `.scislide` files use **`0.3.0`** as their `formatVersion`. The app reads `0.1.0` and `0.2.0` files, migrates old equations where needed, and saves 0.3.0 on the next save. Older files open with page numbering disabled and no click builds. Opening an existing file does not modify it. Older SciSlide versions may not read the new format.
 
 ```text
 presentation.scislide
   manifest.json              Resource sizes, SHA-256 hashes and rendering profiles
-  document.json              Slides, editable source, styles and local TeX configuration
-  assets/                    Original/sanitized figure assets
+  document.json              Slides, page numbers, builds, video settings and editable source
+  assets/                    Original/sanitized figures and embedded video files
   renders/<equation-id>.svg   Successful outlined Local LaTeX results
 ```
 
@@ -147,7 +169,9 @@ Local LaTeX equations retain their source, preamble, engine, result SVG and dime
 ## Implemented Features
 
 - Four Scientific slide templates and a blank slide; slide creation, duplication, deletion, reordering, titles, backgrounds, and speaker notes.
-- Text, equations, SVG/PNG/JPEG figures, rectangles, and ellipses.
+- Text, equations, SVG/PNG/JPEG figures, embedded MP4/WebM videos, rectangles, and ellipses.
+- Deck-wide dynamic page numbers in the editor, slideshow, PDF and SVG.
+- Ordered click-triggered appear/fade builds; editor/thumbnails/static exports show the complete layout.
 - Moving, resizing, rotation, opacity, locking, duplication, and layer ordering.
 - Shift+click multi-selection, alignment, snapping to a 20 px grid, and keyboard movement.
 - Undo/redo and automatic recovery through localStorage in the current editing environment.
@@ -159,10 +183,10 @@ Local LaTeX equations retain their source, preamble, engine, result SVG and dime
 ## Current Limitations
 
 - Korean text works in the editor and source files. **PDF body text supports only the character coverage of the bundled Inter Latin fonts**; unsupported characters, including Korean, stop export with a clear error. Outlining Local LaTeX equations does not expand font support for ordinary body text. SVG body text may look different on other computers because of browser font fallback.
-- Figure cropping, PDF figure import, animations, master slides, collaboration, and PPTX/Beamer conversion are not yet available.
+- Figure cropping/PDF region import/insets, persistent groups, smart guides/equal distribution, linked masters, a separate presenter display, equation libraries/shared macros, citations, editable charts, collaboration and PPTX/Beamer conversion are planned. Basic appear/fade click builds are available; advanced motion, exit effects, timing chains, equation-term highlighting and a timeline are not yet available.
 - Local LaTeX is an initial implementation targeting system installations on Linux. Arbitrary complete documents, home package folders, every TeX distribution path, and every package combination are not guaranteed to work.
 - External references and active content in SVG figures are unsupported. PDF export does not support filters, masks, textPath, or some complex SVG effects. These produce an error before export.
-- Automatic recovery uses separate localStorage in the web and Electron environments. Recovery data is not shared automatically, and multiple large figures may exceed storage limits. Save a source file. Recovery of unapplied equation drafts is not guaranteed.
+- Automatic recovery uses separate localStorage in the web and Electron environments. Recovery data is not shared automatically, and large figures and embedded videos may exceed storage limits. Save a source file. Recovery of unapplied equation drafts is not guaranteed.
 - Bundling the complete MathJax font data makes the build large. Split loading and an IndexedDB asset store remain future work.
 
 ## Development and Validation
@@ -173,7 +197,7 @@ pnpm test:desktop
 pnpm build
 ```
 
-Web tests cover document validation, legacy file migration, ZIP round trips, checksums, SVG sanitization, equation cache matching, and MathJax packages and fonts. Desktop tests cover input validation for the narrow file and compiler APIs, plus Linux TeX isolation, compilation, cancellation, and resource limits. Running the TeX integration tests requires the tools listed above and a functioning Linux isolation environment. `pnpm build` includes TypeScript checks and a production build.
+Web tests cover document validation, legacy file migration, ZIP round trips, checksums, SVG sanitization, equation cache matching, and MathJax packages and fonts. New regression fixtures cover numbering/build state, video resource validation and static video export policy. Desktop tests cover input validation for the narrow file and compiler APIs, plus Linux TeX isolation, compilation, cancellation, and resource limits. Running the TeX integration tests requires the tools listed above and a functioning Linux isolation environment. `pnpm build` includes TypeScript checks and a production build.
 
 Electron runtime validation covered sandboxing and context isolation, blocked Node access, the secure local origin, SHA-256, bundled fonts, MathJax, native file operations, and delivery of actual LaTeX vector results. Launching the Linux x64 package from another location also verified Compile → Apply, preservation of unapplied drafts, recompilation after resizing, native save → new presentation → reopen, and PDF/SVG export. These checks do not replace installer validation or complete distribution validation across all three operating systems.
 
@@ -189,6 +213,7 @@ Electron runtime validation covered sandboxing and context isolation, blocked No
  src/components/MathSupportDialog.tsx  MathJax package catalog and live examples
  src/lib/model.ts              Versioned document model and migration
  src/lib/slide-templates.ts    Editable scientific starter layouts
+ src/lib/presentation.ts      Deterministic click-build visibility and navigation
  src/lib/persistence.ts        Native archive, validation, recovery and figure import
  src/lib/desktop.ts            Typed platform and local compiler contract
  src/lib/equations.ts          MathJax renderer and font profiles
@@ -202,6 +227,6 @@ Electron runtime validation covered sandboxing and context isolation, blocked No
 
 ## Future Development and Licensing
 
-Priorities include fonts for Korean PDF text, an IndexedDB asset store, draft recovery, figure cropping, split loading of font data, and desktop distribution validation. Local TeX isolation on macOS and Windows, along with access to explicitly selected user package folders, requires separate implementation. See the [project specification](SciSlide-Project-Specification.md) for the detailed design and follow-up requirements.
+Priorities include Korean PDF fonts, bounded asset/draft recovery, figure crop/PDF region import/enlarged insets, grouping/smart guides/equal distribution, themes/masters, equation libraries/shared macros, a separate presenter display, citations/BibTeX and CSV charts with units/error bars. Advanced animation, split font loading and desktop distribution validation remain separate follow-up work. Local TeX isolation on macOS and Windows, along with access to explicitly selected user package folders, requires separate implementation. See the [project specification](SciSlide-Project-Specification.md) for the detailed design and follow-up requirements.
 
 This prototype does not reuse PPTist code. **A project license for the new SciSlide source has not yet been selected.** The license and contribution rules must be finalized before a public release. Bundled dependencies, fonts, and the Electron runtime retain their respective licenses; notices are kept in `third-party-licenses/` and the packaged runtime.

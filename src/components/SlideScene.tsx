@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import type { PointerEvent } from "react";
+import type { CSSProperties, PointerEvent } from "react";
 import type { Deck, Slide, SlideObject, EquationObject } from "../lib/model";
 import { renderObjectEquation } from "../lib/equation-renderer";
 import type { RenderedEquation } from "../lib/equations";
 import { wrapText } from "../lib/layout";
+import { resolvePageNumber } from "../lib/model";
+import { isVisibleAtStep } from "../lib/presentation";
+import { VideoPlaceholder, VideoView } from "./VideoView";
 
 export function EquationView({
   object,
@@ -95,6 +98,9 @@ export function SlideScene({
   onBackground,
   onMetrics,
   metrics = {},
+  slideIndex = deck.slides.findIndex((candidate) => candidate.id === slide.id),
+  presentationStep,
+  playback = false,
 }: {
   deck: Deck;
   slide: Slide;
@@ -106,7 +112,11 @@ export function SlideScene({
   onBackground?: () => void;
   onMetrics?: (id: string, w: number, h: number) => void;
   metrics?: Record<string, { width: number; height: number }>;
+  slideIndex?: number;
+  presentationStep?: number;
+  playback?: boolean;
 }) {
+  const pageNumber = resolvePageNumber(deck, slideIndex);
   const [localMetrics, setLocalMetrics] = useState<
     Record<string, { width: number; height: number }>
   >({});
@@ -124,22 +134,24 @@ export function SlideScene({
   return (
     <svg
       className="slide-scene"
-      viewBox="0 0 1600 900"
+      viewBox={`0 0 ${deck.slideSize.width} ${deck.slideSize.height}`}
       xmlns="http://www.w3.org/2000/svg"
-      role="img"
+      role={playback ? "group" : "img"}
       aria-label={slide.title}
       onPointerDown={(e) => {
         if (e.target === e.currentTarget) onBackground?.();
       }}
     >
       <rect
-        width="1600"
-        height="900"
+        width={deck.slideSize.width}
+        height={deck.slideSize.height}
         fill={slide.background}
         onPointerDown={() => onBackground?.()}
       />
       {slide.objects
-        .filter((o) => o.visible)
+        .filter((o) =>
+          isVisibleAtStep(o, playback ? presentationStep : undefined),
+        )
         .map((original) => {
           const o = preview[original.id] ?? original,
             t = o.transform;
@@ -151,10 +163,25 @@ export function SlideScene({
             h = m?.height ?? t.height;
           return (
             <g
-              key={o.id}
+              key={`${slide.id}:${o.id}`}
               transform={`translate(${t.x} ${t.y}) rotate(${t.rotation} ${w / 2} ${h / 2})`}
               opacity={o.opacity}
-              className={onPointer && !o.locked ? "canvas-object" : ""}
+              className={[
+                onPointer && !o.locked ? "canvas-object" : "",
+                playback && o.build?.step && o.build.effect === "fade"
+                  ? "build-fade"
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              style={
+                playback && o.build?.effect === "fade"
+                  ? ({
+                      animationDuration: `${o.build.durationMs}ms`,
+                      "--build-opacity": o.opacity,
+                    } as CSSProperties)
+                  : undefined
+              }
               onPointerDown={(e) => onPointer?.(e, o)}
               onDoubleClick={() => onEdit?.(o)}
             >
@@ -233,6 +260,17 @@ export function SlideScene({
                   onMetrics={reportMetrics}
                 />
               )}
+              {o.type === "video" &&
+                (() => {
+                  const asset = deck.assets.find(
+                    (candidate) => candidate.id === o.assetId,
+                  );
+                  return playback && asset ? (
+                    <VideoView object={o} asset={asset} />
+                  ) : (
+                    <VideoPlaceholder object={o} missing={!asset} />
+                  );
+                })()}
               {onPointer && (
                 <rect
                   width={w}
@@ -281,6 +319,22 @@ export function SlideScene({
             </g>
           );
         })}
+      {pageNumber && (
+        <text
+          className="slide-page-number"
+          x={pageNumber.x}
+          y={pageNumber.y}
+          textAnchor={pageNumber.anchor}
+          fontSize={pageNumber.fontSize}
+          fill={pageNumber.color}
+          fontFamily={deck.theme.fontFamily}
+          fontWeight="400"
+          pointerEvents="none"
+          aria-label={`Slide ${pageNumber.text}`}
+        >
+          {pageNumber.text}
+        </text>
+      )}
     </svg>
   );
 }

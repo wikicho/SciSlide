@@ -1,4 +1,4 @@
-# SciSlide 0.2.1 — Linux x64
+# SciSlide 0.3.0 — Linux x64
 
 이 폴더의 `scislide` 실행 파일을 실행하세요. 폴더 안의 런타임 파일은 함께 유지해야 합니다. Node.js나 개발 서버 없이 실행할 수 있습니다.
 

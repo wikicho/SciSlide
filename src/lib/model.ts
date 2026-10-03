@@ -35,13 +35,20 @@ export interface Transform {
 
 export interface BaseSlideObject {
   id: string;
-  type: "text" | "equation" | "figure" | "shape";
+  type: "text" | "equation" | "figure" | "shape" | "video";
   name: string;
   transform: Transform;
   opacity: number;
   visible: boolean;
   locked: boolean;
   metadata: Record<string, unknown>;
+  build?: ObjectBuild;
+}
+
+export interface ObjectBuild {
+  step: number;
+  effect: "appear" | "fade";
+  durationMs: number;
 }
 
 export interface TextObject extends BaseSlideObject {
@@ -70,6 +77,16 @@ export interface FigureObject extends BaseSlideObject {
   alt: string;
 }
 
+export interface VideoObject extends BaseSlideObject {
+  type: "video";
+  assetId: string;
+  alt: string;
+  autoplay: boolean;
+  loop: boolean;
+  muted: boolean;
+  controls: boolean;
+}
+
 export interface ShapeObject extends BaseSlideObject {
   type: "shape";
   shape: "rect" | "ellipse";
@@ -79,7 +96,7 @@ export interface ShapeObject extends BaseSlideObject {
 }
 
 export type SlideObject =
-  TextObject | EquationObject | FigureObject | ShapeObject;
+  TextObject | EquationObject | FigureObject | ShapeObject | VideoObject;
 export type AnySlideObject = SlideObject;
 
 export interface Slide {
@@ -100,7 +117,7 @@ export interface Asset {
 }
 
 export interface Deck {
-  formatVersion: "0.2.0";
+  formatVersion: "0.3.0";
   id: string;
   title: string;
   slideSize: { width: number; height: number; unit: "px96" };
@@ -110,6 +127,73 @@ export interface Deck {
   };
   slides: Slide[];
   assets: Asset[];
+  pageNumbers?: PageNumberSettings;
+}
+
+export interface PageNumberSettings {
+  enabled: boolean;
+  position: "bottom-left" | "bottom-center" | "bottom-right";
+  format: "number" | "number-total";
+  startAt: number;
+  hideFirst: boolean;
+  fontSize: number;
+  color: string;
+}
+
+export const DEFAULT_PAGE_NUMBERS: Readonly<PageNumberSettings> = {
+  enabled: true,
+  position: "bottom-right",
+  format: "number",
+  startAt: 1,
+  hideFirst: false,
+  fontSize: 22,
+  color: "#657489",
+};
+
+/** Derived from the current order, so inserting, deleting or moving slides needs no updates. */
+export function resolvePageNumber(
+  deck: Deck,
+  index: number,
+): {
+  text: string;
+  x: number;
+  y: number;
+  anchor: "start" | "middle" | "end";
+  fontSize: number;
+  color: string;
+} | null {
+  const settings = deck.pageNumbers;
+  if (
+    !settings?.enabled ||
+    !Number.isInteger(index) ||
+    index < 0 ||
+    index >= deck.slides.length ||
+    (settings.hideFirst && index === 0)
+  )
+    return null;
+  const current = settings.startAt + index;
+  const last = settings.startAt + deck.slides.length - 1;
+  return {
+    text:
+      settings.format === "number-total"
+        ? `${current} / ${last}`
+        : String(current),
+    x:
+      settings.position === "bottom-left"
+        ? 32
+        : settings.position === "bottom-center"
+          ? deck.slideSize.width / 2
+          : deck.slideSize.width - 32,
+    y: deck.slideSize.height - 36,
+    anchor:
+      settings.position === "bottom-left"
+        ? "start"
+        : settings.position === "bottom-center"
+          ? "middle"
+          : "end",
+    fontSize: settings.fontSize,
+    color: settings.color,
+  };
 }
 
 export const FONT_SET_IDS: readonly FontSetId[] = [
@@ -122,6 +206,8 @@ export const SUPPORTED_IMAGE_MIMES = [
   "image/png",
   "image/jpeg",
 ] as const;
+export const SUPPORTED_VIDEO_MIMES = ["video/mp4", "video/webm"] as const;
+export const MAX_VIDEO_BYTES = 40 * 1024 * 1024;
 
 export function newId(): string {
   return (
@@ -218,9 +304,9 @@ function uniqueId(value: unknown, at: string, identifiers: Set<string>): void {
 /** Validate before a loaded document can replace the current deck. Unknown metadata is retained. */
 export function validateDeck(value: unknown): Deck {
   const deck = record(value, "Document");
-  if (deck.formatVersion !== "0.1.0" && deck.formatVersion !== "0.2.0")
+  if (!["0.1.0", "0.2.0", "0.3.0"].includes(deck.formatVersion as string))
     throw new Error(
-      `Unsupported SciSlide format: ${String(deck.formatVersion)}. This build reads 0.1.0 and 0.2.0.`,
+      `Unsupported SciSlide format: ${String(deck.formatVersion)}. This build reads 0.1.0, 0.2.0 and 0.3.0.`,
     );
   const identifiers = new Set<string>();
   uniqueId(deck.id, "Document ID", identifiers);
@@ -235,22 +321,69 @@ export function validateDeck(value: unknown): Deck {
   fontSet(equationTheme.fontSetId, "Equation theme");
   number(equationTheme.fontSize, "Equation font size", 4, 500);
   color(equationTheme.color, "Equation color");
+  if (deck.pageNumbers !== undefined) {
+    const settings = record(deck.pageNumbers, "Page number settings");
+    boolean(settings.enabled, "Page number visibility");
+    if (
+      !["bottom-left", "bottom-center", "bottom-right"].includes(
+        settings.position as string,
+      )
+    )
+      throw new Error("Unsupported page number position.");
+    if (!["number", "number-total"].includes(settings.format as string))
+      throw new Error("Unsupported page number format.");
+    number(settings.startAt, "Page number start", 0, 10_000);
+    if (!Number.isInteger(settings.startAt))
+      throw new Error("Page number start must be an integer.");
+    boolean(settings.hideFirst, "First page number visibility");
+    number(settings.fontSize, "Page number size", 4, 200);
+    color(settings.color, "Page number color");
+  }
   array(deck.assets, "Assets", 500);
   const assetIds = new Set<string>();
+  const assetMimes = new Map<string, string>();
   deck.assets.forEach((value, index) => {
     const asset = record(value, `Asset ${index + 1}`);
     uniqueId(asset.id, "Asset ID", identifiers);
     assetIds.add(asset.id as string);
+    assetMimes.set(asset.id as string, asset.mime as string);
     string(asset.name, "Asset name");
     if (
-      !SUPPORTED_IMAGE_MIMES.includes(
+      ![...SUPPORTED_IMAGE_MIMES, ...SUPPORTED_VIDEO_MIMES].includes(
         asset.mime as (typeof SUPPORTED_IMAGE_MIMES)[number],
       )
     )
-      throw new Error("Unsupported figure type; use SVG, PNG, or JPEG.");
-    string(asset.dataUrl, "Figure content", 32 * 1024 * 1024);
-    if (!(asset.dataUrl as string).startsWith(`data:${asset.mime}`))
-      throw new Error("Figure content does not match its media type.");
+      throw new Error(
+        "Unsupported media type; use SVG, PNG, JPEG, MP4, or WebM.",
+      );
+    const video = SUPPORTED_VIDEO_MIMES.includes(
+      asset.mime as (typeof SUPPORTED_VIDEO_MIMES)[number],
+    );
+    string(
+      asset.dataUrl,
+      "Media content",
+      video ? Math.ceil(MAX_VIDEO_BYTES / 3) * 4 + 128 : 32 * 1024 * 1024,
+    );
+    const embedded = /^data:([^;,]+)([^,]*),([\s\S]*)$/.exec(
+      asset.dataUrl as string,
+    );
+    if (!embedded || embedded[1] !== asset.mime)
+      throw new Error("Media content does not match its media type.");
+    if (
+      video &&
+      (!embedded[2].split(";").includes("base64") ||
+        !/^[a-zA-Z0-9+/]*={0,2}$/.test(embedded[3]) ||
+        !embedded[3].length ||
+        embedded[3].length % 4)
+    )
+      throw new Error("Videos must contain embedded base64 MP4 or WebM data.");
+    if (
+      video &&
+      (embedded[3].length * 3) / 4 -
+        (embedded[3].endsWith("==") ? 2 : embedded[3].endsWith("=") ? 1 : 0) >
+        MAX_VIDEO_BYTES
+    )
+      throw new Error("A video exceeds the 40 MB limit.");
     number(asset.width, "Figure width", 0.01, 100_000);
     number(asset.height, "Figure height", 0.01, 100_000);
   });
@@ -276,6 +409,15 @@ export function validateDeck(value: unknown): Deck {
       boolean(object.visible, "Object visibility");
       boolean(object.locked, "Object lock");
       record(object.metadata, "Object metadata");
+      if (object.build !== undefined) {
+        const build = record(object.build, "Object build");
+        number(build.step, "Build step", 0, 100);
+        if (!Number.isInteger(build.step))
+          throw new Error("Build step must be an integer.");
+        if (!["appear", "fade"].includes(build.effect as string))
+          throw new Error("Unsupported build effect.");
+        number(build.durationMs, "Build duration", 100, 3000);
+      }
       const transform = record(object.transform, "Object transform");
       number(transform.x, "Object x");
       number(transform.y, "Object y");
@@ -368,7 +510,33 @@ export function validateDeck(value: unknown): Deck {
           id(object.assetId, "Figure asset reference");
           if (!assetIds.has(object.assetId as string))
             throw new Error(`Missing figure asset: ${String(object.assetId)}.`);
+          if (
+            !SUPPORTED_IMAGE_MIMES.includes(
+              assetMimes.get(
+                object.assetId as string,
+              ) as (typeof SUPPORTED_IMAGE_MIMES)[number],
+            )
+          )
+            throw new Error("A figure must reference an image asset.");
           string(object.alt, "Figure description", 10_000);
+          break;
+        case "video":
+          id(object.assetId, "Video asset reference");
+          if (!assetIds.has(object.assetId as string))
+            throw new Error(`Missing video asset: ${String(object.assetId)}.`);
+          if (
+            !SUPPORTED_VIDEO_MIMES.includes(
+              assetMimes.get(
+                object.assetId as string,
+              ) as (typeof SUPPORTED_VIDEO_MIMES)[number],
+            )
+          )
+            throw new Error("A video must reference an MP4 or WebM asset.");
+          string(object.alt, "Video description", 10_000);
+          boolean(object.autoplay, "Video autoplay");
+          boolean(object.loop, "Video loop");
+          boolean(object.muted, "Video mute");
+          boolean(object.controls, "Video controls");
           break;
         case "shape":
           if (!["rect", "ellipse"].includes(object.shape as string))
@@ -383,7 +551,7 @@ export function validateDeck(value: unknown): Deck {
     });
   });
   const snapshot = JSON.parse(
-    JSON.stringify({ ...deck, formatVersion: "0.2.0" }),
+    JSON.stringify({ ...deck, formatVersion: "0.3.0" }),
   ) as Deck;
   for (const slide of snapshot.slides)
     for (const object of slide.objects) {
@@ -568,7 +736,6 @@ export function createDemoDeck(): Deck {
         "#8290a2",
         500,
       ),
-      text("Slide number", "01", 1430, 818, 70, 42, 23, "#657489", 500),
     ],
   };
   const second: Slide = {
@@ -715,7 +882,6 @@ export function createDemoDeck(): Deck {
         "#8290a2",
         500,
       ),
-      text("Slide number", "02", 1430, 818, 70, 42, 23, "#657489", 500),
     ],
   };
   const third: Slide = {
@@ -833,11 +999,11 @@ export function createDemoDeck(): Deck {
         "#8290a2",
         500,
       ),
-      text("Slide number", "03", 1430, 818, 70, 42, 23, "#657489", 500),
     ],
   };
   return {
-    formatVersion: "0.2.0",
+    formatVersion: "0.3.0",
+    pageNumbers: { ...DEFAULT_PAGE_NUMBERS },
     id: newId(),
     title: "Signals from the early Universe",
     slideSize: { width: 1600, height: 900, unit: "px96" },

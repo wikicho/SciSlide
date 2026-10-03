@@ -1,6 +1,11 @@
 import JSZip from "jszip";
 import DOMPurify from "dompurify";
-import { newId, validateDeck } from "./model";
+import {
+  MAX_VIDEO_BYTES,
+  newId,
+  SUPPORTED_VIDEO_MIMES,
+  validateDeck,
+} from "./model";
 import type {
   Asset,
   Deck,
@@ -16,6 +21,7 @@ import {
 } from "./local-equation-svg";
 
 export const MAX_FIGURE_BYTES = 20 * 1024 * 1024;
+export { MAX_VIDEO_BYTES } from "./model";
 export const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024;
 const MAX_UNPACKED_BYTES = 100 * 1024 * 1024;
 const MAX_DOCUMENT_BYTES = 4 * 1024 * 1024;
@@ -71,7 +77,7 @@ interface Resource {
 }
 
 interface Manifest {
-  formatVersion: "0.1.0" | "0.2.0";
+  formatVersion: "0.1.0" | "0.2.0" | "0.3.0";
   document: "document.json";
   producer: { name: string; version: string };
   renderingProfiles: typeof RENDER_PROFILES;
@@ -104,7 +110,7 @@ function bytesToDataUrl(bytes: Uint8Array, mime: string): string {
 function dataUrlToBytes(dataUrl: string, mime: string): Uint8Array {
   const match = /^data:([^;,]+)([^,]*),([\s\S]*)$/.exec(dataUrl);
   if (!match || match[1] !== mime)
-    throw new Error("An embedded figure has an invalid media type.");
+    throw new Error("Embedded media has an invalid media type.");
   try {
     if (match[2].split(";").includes("base64")) {
       const binary = atob(match[3]);
@@ -112,7 +118,7 @@ function dataUrlToBytes(dataUrl: string, mime: string): Uint8Array {
     }
     return new TextEncoder().encode(decodeURIComponent(match[3]));
   } catch {
-    throw new Error("An embedded figure could not be decoded.");
+    throw new Error("Embedded media could not be decoded.");
   }
 }
 
@@ -160,7 +166,22 @@ function extension(mime: string): string {
   if (mime === "image/svg+xml") return "svg";
   if (mime === "image/png") return "png";
   if (mime === "image/jpeg") return "jpg";
-  throw new Error("Unsupported figure type.");
+  if (mime === "video/mp4") return "mp4";
+  if (mime === "video/webm") return "webm";
+  throw new Error("Unsupported media type.");
+}
+
+function resourceLimit(mime: string): number {
+  if (
+    SUPPORTED_VIDEO_MIMES.includes(
+      mime as (typeof SUPPORTED_VIDEO_MIMES)[number],
+    )
+  )
+    return MAX_VIDEO_BYTES;
+  if (mime === "application/json") return MAX_DOCUMENT_BYTES;
+  if (["image/svg+xml", "image/png", "image/jpeg"].includes(mime))
+    return MAX_FIGURE_BYTES;
+  throw new Error("The archive contains an unsupported media type.");
 }
 
 function parseJson(text: string, what: string): unknown {
@@ -459,6 +480,138 @@ function detectedRasterMime(bytes: Uint8Array): string | null {
   return null;
 }
 
+/** Container signatures are checked independently of the filename and declared MIME. */
+function detectedVideoMime(
+  bytes: Uint8Array,
+): "video/mp4" | "video/webm" | null {
+  if (
+    bytes.length >= 16 &&
+    new TextDecoder().decode(bytes.subarray(4, 8)) === "ftyp"
+  ) {
+    const boxSize = new DataView(
+      bytes.buffer,
+      bytes.byteOffset,
+      bytes.byteLength,
+    ).getUint32(0);
+    const brand = new TextDecoder().decode(bytes.subarray(8, 12));
+    if (
+      boxSize >= 16 &&
+      boxSize <= bytes.length &&
+      [
+        "isom",
+        "iso2",
+        "iso3",
+        "iso4",
+        "iso5",
+        "iso6",
+        "mp41",
+        "mp42",
+        "avc1",
+        "dash",
+        "M4V ",
+        "MSNV",
+      ].includes(brand)
+    )
+      return "video/mp4";
+  }
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x1a &&
+    bytes[1] === 0x45 &&
+    bytes[2] === 0xdf &&
+    bytes[3] === 0xa3 &&
+    new TextDecoder().decode(bytes.subarray(4, 4096)).includes("webm")
+  )
+    return "video/webm";
+  return null;
+}
+
+function videoDimensions(
+  file: File,
+): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement("video");
+    const url = URL.createObjectURL(file);
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      video.onloadedmetadata = null;
+      video.onerror = null;
+      video.removeAttribute("src");
+      try {
+        video.load();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    };
+    const fail = (message: string) => {
+      cleanup();
+      reject(new Error(message));
+    };
+    const timeout = window.setTimeout(
+      () =>
+        fail(
+          "Video metadata timed out. Try an MP4 (H.264) or WebM (VP8/VP9) supported by this app.",
+        ),
+      15_000,
+    );
+    video.preload = "metadata";
+    video.muted = true;
+    video.onloadedmetadata = () => {
+      const width = video.videoWidth;
+      const height = video.videoHeight;
+      if (
+        !Number.isFinite(width) ||
+        !Number.isFinite(height) ||
+        width < 1 ||
+        height < 1 ||
+        width > 100_000 ||
+        height > 100_000 ||
+        width * height > 100_000_000
+      ) {
+        fail(
+          "The video has no usable picture or exceeds the 100-megapixel limit.",
+        );
+        return;
+      }
+      cleanup();
+      resolve({ width, height });
+    };
+    video.onerror = () =>
+      fail(
+        "This video codec cannot be decoded by this app. Try MP4 with H.264 or WebM with VP8/VP9.",
+      );
+    video.src = url;
+  });
+}
+
+/** Videos stay inside the portable deck; imports never reference remote media. */
+export async function importVideo(file: File): Promise<Asset> {
+  if (!file.size || file.size > MAX_VIDEO_BYTES)
+    throw new Error("Choose a video smaller than 40 MB.");
+  const bytes = await readBytes(file);
+  const mime = detectedVideoMime(bytes);
+  if (!mime)
+    throw new Error(
+      "Choose a valid MP4 or WebM video. Other video containers are not supported.",
+    );
+  if (
+    file.type &&
+    file.type !== "application/octet-stream" &&
+    file.type !== mime
+  )
+    throw new Error(
+      "The video content does not match its declared media type.",
+    );
+  const dimensions = await videoDimensions(file);
+  return {
+    id: newId(),
+    name: file.name,
+    mime,
+    dataUrl: bytesToDataUrl(bytes, mime),
+    ...dimensions,
+  };
+}
+
 async function rasterDimensions(
   dataUrl: string,
 ): Promise<{ width: number; height: number }> {
@@ -519,8 +672,20 @@ export async function buildDeckArchive(input: Deck): Promise<Blob> {
   let totalBytes = 0;
   for (const asset of deck.assets) {
     const bytes = dataUrlToBytes(asset.dataUrl, asset.mime);
-    if (!bytes.length || bytes.length > MAX_FIGURE_BYTES)
-      throw new Error("A figure is empty or exceeds the 20 MB limit.");
+    const video = SUPPORTED_VIDEO_MIMES.includes(
+      asset.mime as (typeof SUPPORTED_VIDEO_MIMES)[number],
+    );
+    if (
+      !bytes.length ||
+      bytes.length > (video ? MAX_VIDEO_BYTES : MAX_FIGURE_BYTES)
+    )
+      throw new Error(
+        video
+          ? "A video is empty or exceeds the 40 MB limit."
+          : "A figure is empty or exceeds the 20 MB limit.",
+      );
+    if (video && detectedVideoMime(bytes) !== asset.mime)
+      throw new Error("A video does not match its declared file type.");
     totalBytes += bytes.length;
     if (totalBytes > MAX_UNPACKED_BYTES)
       throw new Error("The deck exceeds the 100 MB unpacked limit.");
@@ -571,6 +736,9 @@ export async function buildDeckArchive(input: Deck): Promise<Blob> {
   );
   if (documentBytes.length > MAX_DOCUMENT_BYTES)
     throw new Error("The deck source exceeds the 4 MB limit.");
+  totalBytes += documentBytes.length;
+  if (totalBytes > MAX_UNPACKED_BYTES)
+    throw new Error("The deck exceeds the 100 MB unpacked limit.");
   zip.file("document.json", documentBytes);
   resources.unshift({
     path: "document.json",
@@ -579,9 +747,9 @@ export async function buildDeckArchive(input: Deck): Promise<Blob> {
     sha256: await sha256(documentBytes),
   });
   const manifest: Manifest = {
-    formatVersion: "0.2.0",
+    formatVersion: "0.3.0",
     document: "document.json",
-    producer: { name: "SciSlide", version: "0.2.1" },
+    producer: { name: "SciSlide", version: "0.3.0" },
     renderingProfiles: RENDER_PROFILES,
     resources,
   };
@@ -623,7 +791,13 @@ export async function readDeckArchive(file: Blob): Promise<Deck> {
     const size =
       (entry as unknown as { _data?: { uncompressedSize?: number } })._data
         ?.uncompressedSize ?? 0;
-    if (size > MAX_FIGURE_BYTES || size < 0 || !Number.isFinite(size))
+    const entryLimit =
+      entry.name === "manifest.json"
+        ? MAX_MANIFEST_BYTES
+        : entry.name === "document.json"
+          ? MAX_DOCUMENT_BYTES
+          : MAX_VIDEO_BYTES;
+    if (size > entryLimit || size < 0 || !Number.isFinite(size))
       throw new Error("The archive contains an oversized resource.");
     unpackedSize += size;
     if (unpackedSize > MAX_UNPACKED_BYTES)
@@ -639,7 +813,7 @@ export async function readDeckArchive(file: Blob): Promise<Deck> {
     throw new Error("The SciSlide manifest is invalid.");
   const manifest = candidate as Partial<Manifest>;
   if (
-    !["0.1.0", "0.2.0"].includes(manifest.formatVersion as string) ||
+    !["0.1.0", "0.2.0", "0.3.0"].includes(manifest.formatVersion as string) ||
     manifest.document !== "document.json" ||
     !Array.isArray(manifest.resources) ||
     manifest.resources.length > 10_501
@@ -657,11 +831,15 @@ export async function readDeckArchive(file: Blob): Promise<Deck> {
       resources.has(resource.path) ||
       !Number.isInteger(resource.size) ||
       resource.size < 1 ||
-      resource.size > MAX_FIGURE_BYTES ||
+      resource.size > MAX_VIDEO_BYTES ||
       !/^[a-f0-9]{64}$/.test(resource.sha256) ||
       typeof resource.mime !== "string"
     )
       throw new Error("The resource index is invalid.");
+    if (resource.size > resourceLimit(resource.mime))
+      throw new Error(
+        "The archive contains an oversized resource for its media type.",
+      );
     const entry = zip.file(resource.path);
     if (!entry)
       throw new Error(`A packaged resource is missing: ${resource.path}.`);
@@ -715,7 +893,7 @@ export async function readDeckArchive(file: Blob): Promise<Deck> {
     usedPaths.add(asset.path);
     const packaged = resources.get(asset.path);
     if (!packaged || packaged.resource.mime !== asset.mime)
-      throw new Error(`Missing or mismatched figure asset: ${asset.name}.`);
+      throw new Error(`Missing or mismatched media asset: ${asset.name}.`);
     let bytes = packaged.bytes;
     if (asset.mime === "image/svg+xml") {
       const safe = sanitizeSvg(
@@ -723,6 +901,13 @@ export async function readDeckArchive(file: Blob): Promise<Deck> {
       );
       // The untrusted original is checksum-verified before sanitizing its renderable copy.
       bytes = new TextEncoder().encode(safe);
+    } else if (
+      SUPPORTED_VIDEO_MIMES.includes(
+        asset.mime as (typeof SUPPORTED_VIDEO_MIMES)[number],
+      )
+    ) {
+      if (detectedVideoMime(bytes) !== asset.mime)
+        throw new Error("A video does not match its declared file type.");
     } else if (detectedRasterMime(bytes) !== asset.mime) {
       throw new Error("A figure does not match its declared file type.");
     }
