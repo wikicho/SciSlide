@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { createDemoDeck, FONT_SET_IDS, validateDeck } from "../src/lib/model";
 import { renderObjectEquation } from "../src/lib/equation-renderer";
-import { lineWorldEndpoints } from "../src/lib/drawing";
+import { lineWorldEndpoints, objectBounds } from "../src/lib/drawing";
+import { TEXT_FONT_WEIGHTS } from "../src/lib/text-fonts";
 import {
   createTemplateSlide,
   SLIDE_TEMPLATES,
 } from "../src/lib/slide-templates";
 
-describe("scientific starter templates", () => {
-  it("preserves the original layout IDs and offers four more scientific layouts", () => {
+describe("slide starter templates", () => {
+  it("preserves the scientific layout IDs and adds six Keynote-inspired layouts", () => {
     expect(SLIDE_TEMPLATES.map(({ id }) => id)).toEqual([
       "blank",
       "title",
@@ -19,8 +20,29 @@ describe("scientific starter templates", () => {
       "methods",
       "results",
       "closing",
+      "minimal-white",
+      "minimal-black",
+      "minimal-white-content",
+      "minimal-black-content",
+      "color-statement",
+      "figure-showcase",
     ]);
-    expect(new Set(SLIDE_TEMPLATES.map(({ name }) => name)).size).toBe(9);
+    expect(new Set(SLIDE_TEMPLATES.map(({ name }) => name)).size).toBe(15);
+    expect(
+      SLIDE_TEMPLATES.filter(({ category }) => category === "scientific"),
+    ).toHaveLength(9);
+    expect(
+      SLIDE_TEMPLATES.filter(({ category }) => category === "keynote").map(
+        ({ id }) => id,
+      ),
+    ).toEqual([
+      "minimal-white",
+      "minimal-black",
+      "minimal-white-content",
+      "minimal-black-content",
+      "color-statement",
+      "figure-showcase",
+    ]);
   });
 
   it("produces valid, editable layouts without imported assets", () => {
@@ -29,7 +51,7 @@ describe("scientific starter templates", () => {
     deck.slides = SLIDE_TEMPLATES.map(({ id }) =>
       createTemplateSlide(id, deck.theme),
     );
-    expect(validateDeck(deck).slides).toHaveLength(9);
+    expect(validateDeck(deck).slides).toHaveLength(15);
     expect(deck.slides[0].objects).toEqual([]);
     for (const slide of deck.slides)
       for (const object of slide.objects) {
@@ -74,6 +96,21 @@ describe("scientific starter templates", () => {
         first.objects[0].metadata.changed = true;
         expect(second.objects[0].transform.x).not.toBe(777);
         expect(second.objects[0].metadata.changed).toBeUndefined();
+      }
+    }
+  });
+
+  it("uses bundled Inter font weights so every starter can export to PDF", () => {
+    const { theme } = createDemoDeck();
+    theme.fontFamily = "Inter";
+    for (const { id } of SLIDE_TEMPLATES) {
+      const slide = createTemplateSlide(id, theme);
+      for (const object of slide.objects) {
+        if (object.type !== "text") continue;
+        expect(
+          TEXT_FONT_WEIGHTS,
+          `${slide.title}: ${object.name} must use an exportable Inter weight`,
+        ).toContain(object.fontWeight);
       }
     }
   });
@@ -178,6 +215,144 @@ describe("scientific starter templates", () => {
       expect(start.y).toBeGreaterThan(left.y);
       expect(start.y).toBeLessThan(left.y + left.height);
     }
+  });
+
+  it("leaves generous open space on the monochrome title slides and keeps new text boxes separate", () => {
+    const { theme } = createDemoDeck();
+    const white = createTemplateSlide("minimal-white", theme);
+    const black = createTemplateSlide("minimal-black", theme);
+    for (const slide of [white, black]) {
+      expect(slide.objects).toHaveLength(4);
+      expect(slide.objects.every((object) => object.type === "text")).toBe(
+        true,
+      );
+      const title = slide.objects[0];
+      expect(title.type).toBe("text");
+      if (title.type !== "text") throw new Error("Missing minimal title");
+      expect(title.fontSize).toBeGreaterThanOrEqual(80);
+      expect(title.fontWeight).toBeGreaterThanOrEqual(600);
+      expect(title.transform.y).toBeGreaterThan(300);
+      expect(title.transform.y + title.transform.height).toBeLessThan(450);
+      expect(title.align).toBe(slide === white ? "left" : "center");
+    }
+    for (const { id, category } of SLIDE_TEMPLATES) {
+      if (category !== "keynote") continue;
+      const slide = createTemplateSlide(id, theme);
+      const texts = slide.objects.filter((object) => object.type === "text");
+      for (let first = 0; first < texts.length; first++) {
+        for (let second = first + 1; second < texts.length; second++) {
+          const a = texts[first].transform;
+          const b = texts[second].transform;
+          const overlapX =
+            Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+          const overlapY =
+            Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+          expect(
+            overlapX <= 0 || overlapY <= 0,
+            `${slide.title}: ${texts[first].name} overlaps ${texts[second].name}`,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("pairs the white and black findings layouts with three equally spaced editable columns", () => {
+    const { theme } = createDemoDeck();
+    for (const id of [
+      "minimal-white-content",
+      "minimal-black-content",
+    ] as const) {
+      const slide = createTemplateSlide(id, theme);
+      const headings = slide.objects.filter((object) =>
+        /^Idea \d heading$/.test(object.name),
+      );
+      const details = slide.objects.filter((object) =>
+        /^Idea \d detail$/.test(object.name),
+      );
+      expect(headings).toHaveLength(3);
+      expect(details).toHaveLength(3);
+      const widths = headings.map((object) => object.transform.width);
+      expect(new Set(widths).size).toBe(1);
+      expect(headings[1].transform.x - headings[0].transform.x).toBe(
+        headings[2].transform.x - headings[1].transform.x,
+      );
+      for (const [index, heading] of headings.entries()) {
+        expect(details[index].transform.x).toBe(heading.transform.x);
+        expect(details[index].transform.width).toBe(heading.transform.width);
+        expect(details[index].transform.y).toBeGreaterThan(
+          heading.transform.y + heading.transform.height,
+        );
+      }
+    }
+  });
+
+  it("keeps text on the dark themes readable with high foreground contrast", () => {
+    const luminance = (color: string): number => {
+      const channels = [1, 3, 5].map((offset) => {
+        const value =
+          Number.parseInt(color.slice(offset, offset + 2), 16) / 255;
+        return value <= 0.04045
+          ? value / 12.92
+          : ((value + 0.055) / 1.055) ** 2.4;
+      });
+      return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+    };
+    const { theme } = createDemoDeck();
+    for (const id of [
+      "minimal-black",
+      "minimal-black-content",
+      "color-statement",
+    ] as const) {
+      const slide = createTemplateSlide(id, theme);
+      const background = luminance(slide.background);
+      for (const object of slide.objects) {
+        if (object.type !== "text") continue;
+        const foreground = luminance(object.color);
+        const ratio =
+          (Math.max(foreground, background) + 0.05) /
+          (Math.min(foreground, background) + 0.05);
+        expect(ratio, `${slide.title}: ${object.name}`).toBeGreaterThan(7);
+      }
+    }
+  });
+
+  it("builds the showcase as editable illustration shapes above a light uppercase title", () => {
+    const { theme } = createDemoDeck();
+    const slide = createTemplateSlide("figure-showcase", theme);
+    const illustration = slide.objects.filter(
+      (object) => object.type === "shape",
+    );
+    expect(illustration).toHaveLength(8);
+    expect(
+      illustration.every(
+        (object) => object.type === "shape" && object.shape === "ellipse",
+      ),
+    ).toBe(true);
+    const title = slide.objects.find(
+      (object) => object.name === "Showcase title",
+    );
+    expect(title?.type).toBe("text");
+    if (title?.type !== "text") throw new Error("Missing showcase title");
+    expect(title.text).toBe(title.text.toUpperCase());
+    expect(title.fontWeight).toBe(400);
+    expect(title.align).toBe("center");
+    for (const shape of illustration) {
+      const bounds = objectBounds(shape);
+      expect(bounds.x).toBeGreaterThan(0);
+      expect(bounds.y).toBeGreaterThan(0);
+      expect(bounds.x + bounds.width).toBeLessThan(1600);
+      expect(bounds.y + bounds.height).toBeLessThan(title.transform.y);
+      expect(shape.groupId).toBeUndefined();
+    }
+    const content = slide.objects
+      .flatMap((object) => (object.type === "text" ? [object.text] : []))
+      .join("\n");
+    expect(content).toContain("ILLUSTRATION PLACEHOLDER");
+    expect(content).toContain(
+      "Replace this editable sketch with your own figure.",
+    );
+    expect(slide.notes).toContain("not a scientific model or data figure");
+    expect(slide.notes).toContain("Use Figure");
   });
 
   it("supplies replacement prompts rather than invented result values or imported figures", () => {

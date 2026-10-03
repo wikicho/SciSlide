@@ -1,4 +1,4 @@
-# SciSlide 0.5.0 — macOS development installer
+# SciSlide 0.5.3 — macOS development installer
 
 Choose the installer that matches your Mac: **arm64** for Apple Silicon (M1 or later), or **x64** for Intel. The installer copies SciSlide to `/Applications/SciSlide.app`. Node.js, a development server and TeX are not required for MathJax editing.
 
@@ -6,7 +6,7 @@ These are **unsigned, unnotarized development installers**. They do not carry an
 
 Quit an existing SciSlide window before installing an update. Both architectures use the same application name and installation location; install only the matching one. Open SciSlide from Applications after installation.
 
-**New slide** or the slide list's **+** opens the Scientific template picker. Research title, Key findings, Equation + meaning, Figure comparison and Blank layouts create editable slide objects. **Open / Save / Save As** use native file dialogs; **Export** saves the whole presentation as PDF or the current slide as SVG.
+**New slide** or the slide list's **+** opens the template picker. **All layouts**, **Scientific** and **Keynote-inspired** filter fourteen editable layouts; **Blank slide** creates an empty slide. The eight Scientific layouts cover research titles, findings, equations, comparisons, sections, methods, results and conclusions. Six Keynote-inspired layouts add minimal white/black titles and findings, a navy statement and a figure showcase. Layouts insert after the current slide and can be undone. **Open / Save / Save As** use native file dialogs; **Export** saves the whole presentation as PDF or the current slide as SVG.
 
 Choose **Draw rectangle**, **Draw ellipse**, **Draw line** or **Draw arrow**, then drag on the canvas. Shift constrains squares/circles or line direction; Escape cancels drawing. Selected lines/arrows have editable endpoint handles. The Inspector provides solid/dashed/dotted strokes, stroke width/color, no-fill outlines and arrowheads at the start, end or both ends. Shapes export as vectors in PDF/SVG.
 
@@ -23,7 +23,7 @@ The editor is a prototype. Modern Korean body text is supported in the editor an
 Each installer has a matching `.sha256` file. To verify a download, put the installer and checksum file in the same folder and run:
 
 ```sh
-shasum -a 256 -c SciSlide-0.5.0-macos-arm64-unsigned.pkg.sha256
+shasum -a 256 -c SciSlide-0.5.3-macos-arm64-unsigned.pkg.sha256
 ```
 
 Use the x64 filename for an Intel installer. This checks that the file matches its accompanying checksum; it does not certify the publisher or replace Apple's code signing and notarization.

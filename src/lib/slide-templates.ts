@@ -9,56 +9,103 @@ import type {
   TextObject,
 } from "./model";
 
-/** Scientific layouts that become ordinary editable objects when inserted. */
+/** Layouts that become ordinary editable objects when inserted. */
 export const SLIDE_TEMPLATES = [
   {
     id: "blank",
+    category: "scientific",
     name: "Blank",
     description: "An empty canvas for your own layout.",
   },
   {
     id: "title",
+    category: "scientific",
     name: "Research title",
     description: "A title, subtitle, author and affiliation.",
   },
   {
     id: "content",
+    category: "scientific",
     name: "Key findings",
     description: "Three claims with one clear takeaway.",
   },
   {
     id: "equation",
+    category: "scientific",
     name: "Equation + meaning",
     description: "An editable equation with physical interpretation.",
   },
   {
     id: "comparison",
+    category: "scientific",
     name: "Figure comparison",
     description: "Two figure placeholders with captions.",
   },
   {
     id: "section",
+    category: "scientific",
     name: "Section divider",
     description: "A bold navy chapter heading with a compact agenda.",
   },
   {
     id: "methods",
+    category: "scientific",
     name: "Methods pipeline",
     description: "Three connected steps from inputs to validation.",
   },
   {
     id: "results",
+    category: "scientific",
     name: "Results spotlight",
     description: "One large figure, a key metric and its interpretation.",
   },
   {
     id: "closing",
+    category: "scientific",
     name: "Takeaways + next steps",
     description: "Three closing ideas, future work and a contact line.",
+  },
+  {
+    id: "minimal-white",
+    category: "keynote",
+    name: "Minimal White",
+    description: "A bold opening with generous white space.",
+  },
+  {
+    id: "minimal-black",
+    category: "keynote",
+    name: "Minimal Black",
+    description: "A centered title on a pure, dark canvas.",
+  },
+  {
+    id: "minimal-white-content",
+    category: "keynote",
+    name: "Minimal White findings",
+    description: "Three clean columns for your ideas and evidence.",
+  },
+  {
+    id: "minimal-black-content",
+    category: "keynote",
+    name: "Minimal Black findings",
+    description: "Three focused ideas with white-on-black contrast.",
+  },
+  {
+    id: "color-statement",
+    category: "keynote",
+    name: "Color Statement",
+    description: "One large statement on a deep navy backdrop.",
+  },
+  {
+    id: "figure-showcase",
+    category: "keynote",
+    name: "Figure Showcase",
+    description: "An isolated visual above a light, uppercase caption.",
   },
 ] as const;
 
 export type SlideTemplateId = (typeof SLIDE_TEMPLATES)[number]["id"];
+export type SlideTemplateCategory =
+  (typeof SLIDE_TEMPLATES)[number]["category"];
 
 const colors = {
   ink: "#17263c",
@@ -1099,6 +1146,363 @@ function closingLayout(theme: Deck["theme"]): Slide {
   };
 }
 
+function minimalWhiteLayout(theme: Deck["theme"]): Slide {
+  return {
+    id: newId(),
+    title: "Minimal White",
+    background: "#ffffff",
+    notes:
+      "Replace the title, subtitle, author and date. This original layout uses the restrained typography and open space of a classic presentation theme; all four text boxes are editable.",
+    objects: [
+      text(
+        theme,
+        "Minimal White title",
+        "Make the idea clear.",
+        144,
+        312,
+        1250,
+        112,
+        80,
+        "#111111",
+        700,
+      ),
+      text(
+        theme,
+        "Minimal White subtitle",
+        "A short introduction to your presentation.",
+        148,
+        454,
+        1220,
+        64,
+        34,
+        "#727278",
+      ),
+      text(
+        theme,
+        "Minimal White author",
+        "Your name · Institution",
+        148,
+        720,
+        1220,
+        40,
+        24,
+        "#333336",
+        500,
+      ),
+      text(
+        theme,
+        "Minimal White date",
+        "Event / Date",
+        148,
+        773,
+        1220,
+        34,
+        20,
+        "#727278",
+      ),
+    ],
+  };
+}
+
+function minimalBlackLayout(theme: Deck["theme"]): Slide {
+  return {
+    id: newId(),
+    title: "Minimal Black",
+    background: "#080808",
+    notes:
+      "Replace the centered title and subtitle, then add your name and event. The dark background and four independent text boxes remain editable.",
+    objects: [
+      text(
+        theme,
+        "Minimal Black title",
+        "A clear point of view.",
+        160,
+        315,
+        1280,
+        120,
+        88,
+        "#f5f5f7",
+        600,
+        "center",
+      ),
+      text(
+        theme,
+        "Minimal Black subtitle",
+        "Give your audience one idea to remember.",
+        220,
+        465,
+        1160,
+        62,
+        34,
+        "#b8b8be",
+        400,
+        "center",
+      ),
+      text(
+        theme,
+        "Minimal Black author",
+        "Your name · Institution",
+        300,
+        732,
+        1000,
+        40,
+        24,
+        "#dedee2",
+        500,
+        "center",
+      ),
+      text(
+        theme,
+        "Minimal Black date",
+        "Event / Date",
+        300,
+        785,
+        1000,
+        32,
+        20,
+        "#b8b8be",
+        400,
+        "center",
+      ),
+    ],
+  };
+}
+
+function minimalContentLayout(theme: Deck["theme"], dark: boolean): Slide {
+  const ink = dark ? "#f5f5f7" : "#111111";
+  const muted = dark ? "#b8b8be" : "#727278";
+  const rule = dark ? "#45454a" : "#dedee2";
+  const name = dark ? "Minimal Black findings" : "Minimal White findings";
+  const ideas = [
+    [
+      "First idea",
+      "State your main point.\nAdd the evidence that\nsupports it.",
+    ],
+    [
+      "Second idea",
+      "Explain the next point.\nConnect it to your\nquestion or approach.",
+    ],
+    [
+      "Third idea",
+      "Make the implication clear.\nDescribe why this point\nmatters to your audience.",
+    ],
+  ];
+  return {
+    id: newId(),
+    title: name,
+    background: dark ? "#080808" : "#ffffff",
+    notes:
+      "Replace the heading and three ideas with your own findings and evidence. Each column has an editable number, rule, heading and description; the layout contains no result values or imported assets.",
+    objects: [
+      text(
+        theme,
+        `${name} title`,
+        "Three ideas to remember.",
+        112,
+        132,
+        1376,
+        108,
+        68,
+        ink,
+        600,
+      ),
+      ...ideas.flatMap(([title, detail], index) => {
+        const x = 112 + index * 484;
+        return [
+          text(
+            theme,
+            `Idea ${index + 1} number`,
+            `0${index + 1}`,
+            x,
+            354,
+            408,
+            46,
+            28,
+            muted,
+          ),
+          rect(`Idea ${index + 1} rule`, x, 418, 408, 2, rule),
+          text(
+            theme,
+            `Idea ${index + 1} heading`,
+            title,
+            x,
+            455,
+            408,
+            58,
+            34,
+            ink,
+            600,
+          ),
+          text(
+            theme,
+            `Idea ${index + 1} detail`,
+            detail,
+            x,
+            542,
+            408,
+            144,
+            27,
+            muted,
+          ),
+        ];
+      }),
+      text(
+        theme,
+        `${name} footer`,
+        "Your name · Project / Date",
+        112,
+        812,
+        1376,
+        34,
+        20,
+        muted,
+      ),
+    ],
+  };
+}
+
+function colorStatementLayout(theme: Deck["theme"]): Slide {
+  return {
+    id: newId(),
+    title: "Color Statement",
+    background: "#071d47",
+    notes:
+      "Replace the statement with a question, insight or direction from your own work. The small blue accent and every text box are ordinary editable objects.",
+    objects: [
+      rect("Statement accent", 140, 230, 64, 4, "#6f9cff"),
+      text(
+        theme,
+        "Statement title",
+        "Give one idea\nthe whole stage.",
+        136,
+        288,
+        1320,
+        240,
+        88,
+        "#ffffff",
+        600,
+      ),
+      text(
+        theme,
+        "Statement subtitle",
+        "A short statement of the question, insight or direction.",
+        140,
+        566,
+        1250,
+        76,
+        30,
+        "#bdcce6",
+      ),
+      text(
+        theme,
+        "Statement author",
+        "Your name · Project / Date",
+        140,
+        772,
+        1250,
+        38,
+        24,
+        "#bdcce6",
+      ),
+    ],
+  };
+}
+
+function figureShowcaseLayout(theme: Deck["theme"]): Slide {
+  const ellipse = (
+    name: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    fill: string,
+    stroke = "none",
+    rotation = 0,
+  ): ShapeObject => ({
+    ...base(name, x, y, width, height),
+    type: "shape",
+    shape: "ellipse",
+    transform: { x, y, width, height, rotation },
+    fill,
+    stroke,
+    strokeWidth: stroke === "none" ? 0 : 2,
+  });
+  return {
+    id: newId(),
+    title: "Figure Showcase",
+    background: "#f5f5f7",
+    notes:
+      "The orbit sketch is an illustration placeholder, not a scientific model or data figure. Each ellipse is editable. Use Figure to add your own visual, then remove the placeholder ellipses and helper label. Replace the title and caption with your own content.",
+    objects: [
+      text(
+        theme,
+        "Illustration placeholder label",
+        "ILLUSTRATION PLACEHOLDER",
+        380,
+        82,
+        840,
+        38,
+        18,
+        "#74747b",
+        400,
+        "center",
+      ),
+      ellipse("Illustration orbit 1", 522, 190, 556, 288, "none", "#8a98aa"),
+      ellipse(
+        "Illustration orbit 2",
+        522,
+        190,
+        556,
+        288,
+        "none",
+        "#8a98aa",
+        -32,
+      ),
+      ellipse(
+        "Illustration orbit 3",
+        522,
+        190,
+        556,
+        288,
+        "none",
+        "#8a98aa",
+        32,
+      ),
+      ellipse("Illustration center", 726, 260, 148, 148, "#1d2634"),
+      ellipse("Illustration center inset", 752, 286, 96, 96, "#3e4e64"),
+      ellipse("Illustration node 1", 1044, 292, 28, 28, "#477eae"),
+      ellipse("Illustration node 2", 586, 185, 28, 28, "#91a7be"),
+      ellipse("Illustration node 3", 890, 459, 28, 28, "#adbecf"),
+      text(
+        theme,
+        "Showcase title",
+        "PUT YOUR FIGURE IN FOCUS",
+        180,
+        638,
+        1240,
+        68,
+        36,
+        "#56565d",
+        400,
+        "center",
+      ),
+      text(
+        theme,
+        "Showcase replacement hint",
+        "Replace this editable sketch with your own figure.",
+        220,
+        738,
+        1160,
+        46,
+        24,
+        "#74747b",
+        400,
+        "center",
+      ),
+    ],
+  };
+}
+
 /** Generate independent object IDs each time; templates never retain deck data. */
 export function createTemplateSlide(
   id: SlideTemplateId,
@@ -1123,6 +1527,18 @@ export function createTemplateSlide(
       return resultsLayout(theme);
     case "closing":
       return closingLayout(theme);
+    case "minimal-white":
+      return minimalWhiteLayout(theme);
+    case "minimal-black":
+      return minimalBlackLayout(theme);
+    case "minimal-white-content":
+      return minimalContentLayout(theme, false);
+    case "minimal-black-content":
+      return minimalContentLayout(theme, true);
+    case "color-statement":
+      return colorStatementLayout(theme);
+    case "figure-showcase":
+      return figureShowcaseLayout(theme);
     default:
       throw new Error(`Unknown slide template: ${String(id)}.`);
   }

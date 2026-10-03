@@ -2,7 +2,7 @@
 
 A scientific presentation editor with editable equations, vector output, and an Electron desktop host.
 
-**v0.5.2 is a working prototype.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux systems. Eight scientific starter layouts cover a research talk from title to next steps. Draw rectangles, ellipses, lines and arrows, edit line endpoints, and move persistent groups. Smart guides help align centers and edges, match dimensions while resizing, and arrange objects with equal gaps. The included three-slide cosmology deck uses synthetic demonstration data. Compatible installed AI CLIs generate editable slide drafts. Deck-wide page numbers, embedded video, and ordered click-triggered builds remain available.
+**v0.5.3 is a working prototype.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux systems. Fourteen starter layouts combine scientific presentation structure with minimal Keynote-inspired composition. Draw rectangles, ellipses, lines and arrows, edit line endpoints, and move persistent groups. Smart guides help align centers and edges, match dimensions while resizing, and arrange objects with equal gaps. The included three-slide cosmology deck uses synthetic demonstration data. Compatible installed AI CLIs generate editable slide drafts. Deck-wide page numbers, embedded video, and ordered click-triggered builds remain available.
 
 ## Getting Started
 
@@ -47,7 +47,7 @@ pnpm desktop:package:mac
 pnpm desktop:package:mac --arch=arm64
 ```
 
-The default output paths are `release/SciSlide-0.5.2-macos-arm64-unsigned.pkg` and `release/SciSlide-0.5.2-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
+The default output paths are `release/SciSlide-0.5.3-macos-arm64-unsigned.pkg` and `release/SciSlide-0.5.3-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
 
 The default `.pkg` implementation uses [Electron's official pure JavaScript packaging](https://packages.electronjs.org/osx-sign/v2.6.0/index.html#pure-javascript-packaging), so it also works on Linux. On macOS with Xcode Command Line Tools, use `pnpm desktop:package:mac --implementation=native` to package with Apple's `pkgbuild` and `productbuild`. **Both methods produce development installers without Developer ID signing or notarization.** macOS security policies may block installation or launch. The packaging process does not change system security settings.
 
@@ -61,7 +61,7 @@ pnpm desktop:package:win
 pnpm desktop:package:win --portable-only
 ```
 
-This command always targets **Intel/AMD x64**, regardless of the build host. It creates `release/SciSlide-0.5.2-windows-x64-setup-unsigned.exe` and `release/SciSlide-0.5.2-windows-x64-portable.zip`, with SHA-256 checksum files. The installer uses an x64 bootstrap executable, installs for the current user under `%LOCALAPPDATA%\Programs\SciSlide`, and adds a Start menu shortcut. The portable ZIP contains the complete app folder; extract it and launch `SciSlide-win32-x64/scislide.exe`. No Node.js or TeX installation is needed to run MathJax editing.
+This command always targets **Intel/AMD x64**, regardless of the build host. It creates `release/SciSlide-0.5.3-windows-x64-setup-unsigned.exe` and `release/SciSlide-0.5.3-windows-x64-portable.zip`, with SHA-256 checksum files. The installer uses an x64 bootstrap executable, installs for the current user under `%LOCALAPPDATA%\Programs\SciSlide`, and adds a Start menu shortcut. The portable ZIP contains the complete app folder; extract it and launch `SciSlide-win32-x64/scislide.exe`. No Node.js or TeX installation is needed to run MathJax editing.
 
 See the [Windows installation and build guide](desktop/WINDOWS.md) for compiler selection, checksums and platform limits. The **Windows x64 development distributions** Actions workflow builds on a Windows x64 runner, verifies the executable architectures and hashes, and checks installation/uninstallation in a temporary directory. Its versioned downloadable artifacts contain both distributions and are retained for 30 days. Windows 10 or later is required; physical Windows 10/11 editing and export validation remains open. Local LaTeX compilation is currently disabled on Windows.
 
@@ -112,22 +112,37 @@ The bundled Nanum Gothic fonts are unchanged static TrueType files from a pinned
 
 ## Slide Templates
 
-Click **New slide** or **+** in the slide list to open the Scientific layout picker. Choose one of eight layouts, or **Blank**, to insert a new slide after the current slide. Insertion is one undoable edit.
+Click **New slide** or **+** in the slide list to open the layout picker. Use **All layouts**, **Scientific** or **Keynote-inspired** to browse the fourteen layouts; the count shows the layouts in the selected category. Choose a layout, or **Blank slide**, to insert a new slide after the current slide. Insertion is one undoable edit.
 
-| Layout | Starting point |
-| --- | --- |
-| **Research title** | Talk title, subtitle, author and affiliation |
-| **Key findings** | Three findings and one clear takeaway |
-| **Equation + meaning** | Editable equation, notation and physical interpretation |
-| **Figure comparison** | Two figure placeholders with captions |
-| **Section divider** | Section number, title and a transition into the next topic |
-| **Methods pipeline** | Three method steps connected by editable arrows |
-| **Results spotlight** | Large figure placeholder, key metric and interpretation |
-| **Takeaways + next steps** | Closing takeaways and a next-step card |
+The eight **Scientific** layouts provide research-oriented structure:
+
+| Layout                     | Starting point                                             |
+| -------------------------- | ---------------------------------------------------------- |
+| **Research title**         | Talk title, subtitle, author and affiliation               |
+| **Key findings**           | Three findings and one clear takeaway                      |
+| **Equation + meaning**     | Editable equation, notation and physical interpretation    |
+| **Figure comparison**      | Two figure placeholders with captions                      |
+| **Section divider**        | Section number, title and a transition into the next topic |
+| **Methods pipeline**       | Three method steps connected by editable arrows            |
+| **Results spotlight**      | Large figure placeholder, key metric and interpretation    |
+| **Takeaways + next steps** | Closing takeaways and a next-step card                     |
+
+Six **Keynote-inspired** layouts complement the eight Scientific layouts:
+
+| Layout                     | Starting point                                                           |
+| -------------------------- | ------------------------------------------------------------------------ |
+| **Minimal White**          | Left-aligned title on white with generous whitespace                     |
+| **Minimal Black**          | Centered title on black                                                  |
+| **Minimal White findings** | Three clean columns on white                                             |
+| **Minimal Black findings** | Three clean columns on black                                             |
+| **Color Statement**        | A bold statement on deep navy                                            |
+| **Figure Showcase**        | An isolated illustration above an uppercase caption on a pale background |
+
+The visual direction references the basic white/black, color and showroom compositions shown in [Apple's official Keynote theme chooser guide](https://support.apple.com/guide/keynote-icloud/create-a-presentation-gil310ef8e21/icloud). SciSlide generates these layouts as original editable text and shape geometry using the deck's body font. Figure Showcase starts with an original orbital illustration made from editable shapes. Replace it with your own image through **Figure**, then remove the illustration objects you no longer need.
 
 Template titles, body text, equations, arrows and shapes become ordinary editable objects with independent IDs. Change the text, or move and delete objects to suit your presentation. Text uses the deck's current body font; equations inherit its equation font and color. Figure comparison and Results spotlight use labeled shapes and instructions as placeholders. Add actual SVG/PNG/JPEG images with **Figure**, position them in those areas, then remove the placeholder objects. Example metrics and scientific text are prompts to replace with your own results. Templates contain no imported assets and do not download external images or additional fonts. Linked masters and custom template authoring remain future work.
 
-Open [additional-templates.scislide](examples/additional-templates.scislide) to explore the four newer layouts as a complete editable sample deck.
+Open [additional-templates.scislide](examples/additional-templates.scislide) for the section, methods, results and closing layouts, or [keynote-inspired-templates.scislide](examples/keynote-inspired-templates.scislide) for the six minimal and showcase layouts. Both are editable native sample decks.
 
 ## Page Numbers
 
@@ -226,7 +241,7 @@ Local LaTeX equations retain their source, preamble, engine, result SVG and dime
 ## Implemented Features
 
 - Installed AI CLI discovery, bounded draft generation, slide preview/insertion, cancellation and undo.
-- Eight Scientific slide templates and a blank slide; slide creation, duplication, deletion, reordering, titles, backgrounds, and speaker notes.
+- Fourteen slide templates (eight Scientific and six Keynote-inspired) and a blank slide; category filtering, slide creation, duplication, deletion, reordering, titles, backgrounds, and speaker notes.
 - Text, equations, SVG/PNG/JPEG figures, embedded MP4/WebM videos, and drag-drawn rectangles, ellipses, lines and arrows.
 - Editable line endpoints, start/end/bidirectional arrowheads, solid/dashed/dotted strokes and unfilled shape outlines.
 - Deck-wide dynamic page numbers in the editor, slideshow, PDF and SVG.

@@ -2,6 +2,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { inflateSync } from "node:zlib";
+import { jsPDF } from "jspdf";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +10,7 @@ import { SlideScene } from "../src/components/SlideScene";
 import { exportDeckPdf, renderSlideSvg } from "../src/lib/export";
 import { createDemoDeck, type Deck, type ShapeObject } from "../src/lib/model";
 import { lineEndpoints, shapeGeometry } from "../src/lib/shape-geometry";
+import { createTemplateSlide } from "../src/lib/slide-templates";
 
 // Use the library's real ESM implementation rather than its Node-resolved UMD
 // entry, which expects a browser-global jsPDF in the jsdom environment.
@@ -49,6 +51,19 @@ function blobBytes(blob: Blob): Promise<Buffer> {
     reader.onerror = () => reject(reader.error);
     reader.readAsArrayBuffer(blob);
   });
+}
+
+function pdfStreams(source: string): string[] {
+  return [...source.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)].map(
+    (match) => {
+      const bytes = Buffer.from(match[1], "latin1");
+      try {
+        return inflateSync(bytes).toString("latin1");
+      } catch {
+        return bytes.toString("latin1");
+      }
+    },
+  );
 }
 
 describe("vector drawing scenes and export", () => {
@@ -262,21 +277,110 @@ describe("vector drawing scenes and export", () => {
     const source = bytes.toString("latin1");
     expect(source).toMatch(/^%PDF-/);
     expect(source).not.toContain("/Subtype /Image");
-    const streams = [
-      ...source.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g),
-    ].map((match) => {
-      const bytes = Buffer.from(match[1], "latin1");
-      try {
-        return inflateSync(bytes).toString("latin1");
-      } catch {
-        return bytes.toString("latin1");
-      }
-    });
+    const streams = pdfStreams(source);
     const drawingStream = streams.find((stream) => /\nS\n/.test(stream));
     expect(drawingStream).toBeDefined();
     expect(drawingStream).toMatch(/\[[\d. ]+\] 0\. d/);
     expect(drawingStream).toMatch(/\n[\d.\- ]+ l\n/);
     expect(drawingStream).toMatch(/\nf\n/); // Solid arrowhead polygon.
     expect(drawingStream).toContain("/GS1 gs"); // Half-opacity shape.
+  });
+
+  it("exports all six Keynote-inspired layouts as PDF text and vector shapes", async () => {
+    const deck = createDemoDeck();
+    deck.assets = [];
+    deck.pageNumbers = undefined;
+    deck.slides = (
+      [
+        "minimal-white",
+        "minimal-black",
+        "minimal-white-content",
+        "minimal-black-content",
+        "color-statement",
+        "figure-showcase",
+      ] as const
+    ).map((id) => createTemplateSlide(id, deck.theme));
+
+    // jsdom has no browser text geometry. Measure the real bundled Inter glyphs
+    // with jsPDF, then supply that width through the browser measurement APIs.
+    // The exporter, svg2pdf converter and PDF font validation are unchanged.
+    const metrics = new jsPDF({ unit: "px", hotfixes: ["px_scaling"] });
+    for (const weight of [400, 500, 600, 700]) {
+      const name = `inter-${weight}.ttf`;
+      const bytes = await readFile(resolve("public/fonts", name));
+      metrics.addFileToVFS(name, bytes.toString("base64"));
+      metrics.addFont(
+        name,
+        "Inter",
+        weight === 400 ? "normal" : weight === 700 ? "bold" : `${weight}normal`,
+      );
+    }
+    const measure = (text: string, fontSize: number, fontWeight: number) => {
+      metrics.setFont(
+        "Inter",
+        fontWeight === 400
+          ? "normal"
+          : fontWeight === 700
+            ? "bold"
+            : `${fontWeight}normal`,
+      );
+      metrics.setFontSize(fontSize * 0.75); // CSS px to PDF points.
+      return metrics.getTextWidth(text);
+    };
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      font: "",
+      measureText(this: { font: string }, text: string) {
+        const size = Number(this.font.match(/([\d.]+)px/)?.[1] ?? 16);
+        const weight = Number(
+          this.font.match(/\b(400|500|600|700)\b/)?.[1] ?? 400,
+        );
+        return { width: measure(text, size, weight) };
+      },
+    } as CanvasRenderingContext2D);
+    const originalGetBBox = Object.getOwnPropertyDescriptor(
+      SVGElement.prototype,
+      "getBBox",
+    );
+    Object.defineProperty(SVGElement.prototype, "getBBox", {
+      configurable: true,
+      value(this: SVGElement) {
+        return {
+          x: 0,
+          y: 0,
+          width: measure(
+            this.textContent ?? "",
+            Number(this.getAttribute("font-size")?.replace("px", "") ?? 16),
+            Number(this.getAttribute("font-weight")) || 400,
+          ),
+          height: 16,
+        };
+      },
+    });
+    try {
+      const bytes = await blobBytes(await exportDeckPdf(deck));
+      const source = bytes.toString("latin1");
+      expect(source).toMatch(/^%PDF-/);
+      expect([...source.matchAll(/\/Type \/Page\b/g)]).toHaveLength(6);
+      expect(source).not.toContain("/Subtype /Image");
+      expect(source).toContain("/FontFile2");
+      expect(source).toContain("/ToUnicode");
+      const pageStreams = pdfStreams(source).filter((stream) =>
+        /\bBT\b/.test(stream),
+      );
+      expect(pageStreams).toHaveLength(6);
+      for (const stream of pageStreams) {
+        expect(stream).toMatch(/\/F\d+ [\d.]+ Tf/);
+        expect(stream).toMatch(/<[\da-f]+> Tj/i);
+      }
+      // The showcase's editable orbit ellipses become PDF Bezier curves,
+      // strokes and fills rather than a flattened image or empty placeholder.
+      expect(pageStreams[5]).toMatch(/\n[\d.\- ]+ c\n/);
+      expect(pageStreams[5]).toMatch(/\nS\n/);
+      expect(pageStreams[5]).toMatch(/\nf\n/);
+    } finally {
+      if (originalGetBBox)
+        Object.defineProperty(SVGElement.prototype, "getBBox", originalGetBBox);
+      else Reflect.deleteProperty(SVGElement.prototype, "getBBox");
+    }
   });
 });

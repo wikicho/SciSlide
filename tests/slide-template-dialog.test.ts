@@ -90,16 +90,16 @@ describe("slide template gallery", () => {
     return event;
   }
 
-  it("shows all eight editable layouts using the real slide scenes", async () => {
+  it("shows all fourteen editable layouts using the real slide scenes", async () => {
     await render();
     const layouts = SLIDE_TEMPLATES.filter(({ id }) => id !== "blank");
-    expect(layouts).toHaveLength(8);
+    expect(layouts).toHaveLength(14);
     const cards = [
       ...host.querySelectorAll<HTMLButtonElement>(".template-card"),
     ];
-    expect(cards).toHaveLength(8);
+    expect(cards).toHaveLength(14);
     expect(host.querySelector(".template-count")?.textContent).toBe(
-      "8 layouts",
+      "14 layouts",
     );
     expect(
       host.querySelector("[role=dialog]")?.getAttribute("aria-modal"),
@@ -122,13 +122,68 @@ describe("slide template gallery", () => {
     expect(renderObjectEquation).toHaveBeenCalled();
     expect(host.querySelector(".template-thumbnail path")).not.toBeNull();
     expect(document.activeElement).toBe(cards[0]);
+    expect(button("All layouts").getAttribute("aria-pressed")).toBe("true");
+    expect(button("Scientific").getAttribute("aria-pressed")).toBe("false");
+    expect(button("Keynote-inspired").getAttribute("aria-pressed")).toBe(
+      "false",
+    );
   });
+
+  it.each([
+    ["Scientific", "scientific", 8],
+    ["Keynote-inspired", "keynote", 6],
+  ] as const)(
+    "filters to %s layouts and keeps keyboard focus on the filter",
+    async (label, category, count) => {
+      await render();
+      const filter = button(label);
+      const grid = host.querySelector<HTMLDivElement>(".template-grid")!;
+      grid.scrollTop = 500;
+      await click(filter);
+      expect(grid.scrollTop).toBe(0);
+      expect(document.activeElement).toBe(filter);
+      expect(filter.getAttribute("aria-pressed")).toBe("true");
+      expect(button("All layouts").getAttribute("aria-pressed")).toBe("false");
+      expect(host.querySelector(".template-count")?.textContent).toBe(
+        `${count} layouts`,
+      );
+      const names = [...host.querySelectorAll(".template-card")].map((card) =>
+        card.getAttribute("aria-label"),
+      );
+      expect(names).toEqual(
+        SLIDE_TEMPLATES.filter(
+          (template) =>
+            template.id !== "blank" && template.category === category,
+        ).map((template) => `Use ${template.name} layout`),
+      );
+      expect(names).toHaveLength(count);
+      expect(onChoose).not.toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+
+      grid.scrollTop = 250;
+      await click(button("All layouts"));
+      expect(grid.scrollTop).toBe(0);
+      expect(host.querySelectorAll(".template-card")).toHaveLength(14);
+      expect(host.querySelector(".template-count")?.textContent).toBe(
+        "14 layouts",
+      );
+      expect(button("All layouts").getAttribute("aria-pressed")).toBe("true");
+      expect(filter.getAttribute("aria-pressed")).toBe("false");
+      expect(document.activeElement).toBe(button("All layouts"));
+    },
+  );
 
   it.each([
     ["section", "Section divider"],
     ["methods", "Methods pipeline"],
     ["results", "Results spotlight"],
     ["closing", "Takeaways + next steps"],
+    ["minimal-white", "Minimal White"],
+    ["minimal-black", "Minimal Black"],
+    ["minimal-white-content", "Minimal White findings"],
+    ["minimal-black-content", "Minimal Black findings"],
+    ["color-statement", "Color Statement"],
+    ["figure-showcase", "Figure Showcase"],
   ] as const)(
     "chooses the %s layout without dismissing through the backdrop",
     async (id, name) => {
@@ -155,6 +210,18 @@ describe("slide template gallery", () => {
     expect(document.activeElement).toBe(last);
     expect((await key("Tab")).defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(first);
+    await click(button("Keynote-inspired"));
+    expect((await key("Tab")).defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(button("Keynote-inspired"));
+    expect(host.querySelector("[role=group]")?.getAttribute("aria-label")).toBe(
+      "Slide layout category",
+    );
+    expect(host.querySelectorAll("button")).toHaveLength(11);
+    last.focus();
+    expect((await key("Tab")).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(first);
+    expect((await key("Tab", true)).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(last);
   });
 
   it("closes on Escape and restores focus when dismissed", async () => {

@@ -1,9 +1,15 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, FilePlus2, X } from "lucide-react";
 import type { Deck } from "../lib/model";
 import { SLIDE_TEMPLATES, createTemplateSlide } from "../lib/slide-templates";
 import type { SlideTemplateId } from "../lib/slide-templates";
 import { SlideScene } from "./SlideScene";
+
+const layoutCategories = [
+  { id: "all", name: "All layouts" },
+  { id: "scientific", name: "Scientific" },
+  { id: "keynote", name: "Keynote-inspired" },
+] as const;
 
 export function SlideTemplateDialog({
   deck,
@@ -15,6 +21,9 @@ export function SlideTemplateDialog({
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLElement>(null);
+  const grid = useRef<HTMLDivElement>(null);
+  const [category, setCategory] =
+    useState<(typeof layoutCategories)[number]["id"]>("all");
   const layouts = useMemo(
     () =>
       SLIDE_TEMPLATES.filter((template) => template.id !== "blank").map(
@@ -24,6 +33,9 @@ export function SlideTemplateDialog({
         }),
       ),
     [deck.theme],
+  );
+  const visibleLayouts = layouts.filter(
+    (template) => category === "all" || template.category === category,
   );
   useEffect(() => {
     const previous = document.activeElement;
@@ -70,12 +82,14 @@ export function SlideTemplateDialog({
         <header>
           <div>
             <div className="template-heading-meta">
-              <span className="library-eyebrow">SCIENTIFIC STARTERS</span>
-              <span className="template-count">{layouts.length} layouts</span>
+              <span className="library-eyebrow">SLIDE LAYOUTS</span>
+              <span className="template-count" aria-live="polite">
+                {visibleLayouts.length} layouts
+              </span>
             </div>
             <h2 id="template-dialog-title">Choose a slide layout.</h2>
             <p id="template-dialog-description">
-              From your opening question to your next steps. All objects are
+              Scientific and Keynote-inspired starters. All objects are
               editable.
             </p>
           </div>
@@ -87,8 +101,28 @@ export function SlideTemplateDialog({
             <X size={19} />
           </button>
         </header>
-        <div className="template-grid">
-          {layouts.map((template) => (
+        <div
+          className="template-filters"
+          role="group"
+          aria-label="Slide layout category"
+        >
+          {layoutCategories.map((item) => (
+            <button
+              key={item.id}
+              className="template-filter"
+              aria-pressed={category === item.id}
+              onClick={(event) => {
+                setCategory(item.id);
+                if (grid.current) grid.current.scrollTop = 0;
+                event.currentTarget.focus();
+              }}
+            >
+              {item.name}
+            </button>
+          ))}
+        </div>
+        <div ref={grid} className="template-grid">
+          {visibleLayouts.map((template) => (
             <button
               key={template.id}
               className="template-card"

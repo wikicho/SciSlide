@@ -1895,6 +1895,34 @@ button .lucide {
   line-height: 1.7;
   color: #7c909f;
 }
+.template-filters {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 28px 20px;
+}
+.template-filter {
+  border: 1px solid #dfe7eb;
+  border-radius: 20px;
+  padding: 7px 12px;
+  background: #fff;
+  color: #657b89;
+  font-size: 11px;
+  line-height: 1.3;
+}
+.template-filter[aria-pressed="true"] {
+  border-color: #b7d9ce;
+  background: #edf6f1;
+  color: #287c68;
+}
+.template-filter:hover {
+  border-color: #259f87;
+}
+.template-filter:focus-visible {
+  outline: 2px solid #259f87;
+  outline-offset: 2px;
+}
 .template-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1981,6 +2009,9 @@ button .lucide {
   .template-grid {
     grid-template-columns: 1fr;
     padding: 4px 20px 20px;
+  }
+  .template-filters {
+    padding: 0 20px 20px;
   }
   .template-dialog h2 {
     font-size: 21px;
