@@ -8,12 +8,17 @@ on:
       - .github/workflows/macos-package.yml
       - scripts/package-desktop.mjs
       - scripts/package-macos.mjs
-      - desktop/MACOS.md
-      - desktop/host-utils.test.cjs
-      - tests/desktop-package.test.mjs
+      - desktop/**
+      - src/**
+      - tests/**
+      - examples/**
+      - third-party-licenses/**
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
+      - index.html
+      - vite.config.ts
+      - tsconfig*.json
 
 permissions:
   contents: read
