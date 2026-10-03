@@ -128,7 +128,7 @@ describe("embedded videos and presentation settings", () => {
       expect(media.path).toBe(`assets/${deck.assets[1].id}.${ext}`);
       expect(media.dataUrl).toBeUndefined();
       expect(await zip.file(media.path)!.async("uint8array")).toEqual(content);
-      expect(manifest.formatVersion).toBe("0.3.0");
+      expect(manifest.formatVersion).toBe("0.4.0");
       expect(
         manifest.resources.find((r: { path: string }) => r.path === media.path)
           .sha256,

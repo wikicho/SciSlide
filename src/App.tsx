@@ -37,6 +37,11 @@ import {
   Sigma,
   CircleHelp,
   Sparkles,
+  Minus,
+  ArrowUpRight,
+  Group,
+  Ungroup,
+  Magnet,
 } from "lucide-react";
 import {
   createDemoDeck,
@@ -71,6 +76,23 @@ import {
   previousBuildStep,
 } from "./lib/presentation";
 import { cloneDeck, pruneUnusedAssets } from "./lib/deck-editing";
+import {
+  shapeFromDrag,
+  isLineShape,
+  lineWorldEndpoints,
+  moveLineEndpoint,
+  expandSelection,
+  editableSelection,
+  isObjectLocked,
+  groupObjects,
+  ungroupObjects,
+  cleanupGroups,
+  cloneObjectsWithGroups,
+  duplicateSelectedObjects,
+  objectBounds,
+  selectionBounds,
+  snapTranslation,
+} from "./lib/drawing";
 import { SlideScene } from "./components/SlideScene";
 import { MathSupportDialog } from "./components/MathSupportDialog";
 import { SlideTemplateDialog } from "./components/SlideTemplateDialog";
@@ -148,6 +170,14 @@ export default function App() {
   const [slideId, setSlideId] = useState(deck.slides[0].id),
     [selected, setSelected] = useState<string[]>([]);
   const [preview, setPreview] = useState<Record<string, SlideObject>>({});
+  const [drawingTool, setDrawingTool] = useState<ShapeObject["shape"] | null>(
+    null,
+  );
+  const [draftShape, setDraftShape] = useState<ShapeObject | undefined>();
+  const [smartGuides, setSmartGuides] = useState(true);
+  const [guides, setGuides] = useState<
+    Array<{ axis: "x" | "y"; position: number }>
+  >([]);
   const [metrics, setMetrics] = useState<
     Record<string, { width: number; height: number }>
   >({});
@@ -228,13 +258,30 @@ export default function App() {
     enabled: deck.pageNumbers?.enabled ?? false,
   };
   const gesture = useRef<{
-    mode: "drag" | "resize";
+    mode: "drag" | "resize" | "draw" | "endpoint";
+    kind?: ShapeObject["shape"];
+    endpoint?: "start" | "end";
+    slideId: string;
+    deckId: string;
     start: { x: number; y: number };
     objects: SlideObject[];
     current: Record<string, SlideObject>;
     svg: SVGSVGElement;
     pointerId: number;
   } | null>(null);
+  const cancelGesture = useCallback(() => {
+    const g = gesture.current;
+    gesture.current = null;
+    setPreview({});
+    setDraftShape(undefined);
+    setGuides([]);
+    if (g?.svg.hasPointerCapture(g.pointerId))
+      g.svg.releasePointerCapture(g.pointerId);
+  }, []);
+  useEffect(() => {
+    cancelGesture();
+    setDrawingTool(null);
+  }, [slide.id, deck.id, cancelGesture]);
   useEffect(() => {
     const host = canvasRef.current;
     if (!host) return;
@@ -337,7 +384,26 @@ export default function App() {
       },
       key ? `${slide.id}:${id}:${key}` : "",
     );
+  const updatePosition = (axis: "x" | "y", value: number) => {
+    if (!object) return;
+    const ids = editableSelection(slide.objects, [object.id]);
+    if (!ids.length) return;
+    const delta =
+      Math.max(-1_000_000, Math.min(1_000_000, value)) - object.transform[axis];
+    change(
+      (d) =>
+        d.slides
+          .find((s) => s.id === slide.id)!
+          .objects.filter((o) => ids.includes(o.id))
+          .forEach((o) => {
+            o.transform[axis] += delta;
+          }),
+      `${slide.id}:${object.id}:${axis}`,
+    );
+  };
   const history = (direction: "undo" | "redo") => {
+    cancelGesture();
+    setDrawingTool(null);
     const from = direction === "undo" ? undo.current : redo.current,
       to = direction === "undo" ? redo.current : undo.current;
     const next = from.pop();
@@ -568,6 +634,8 @@ export default function App() {
     }
   };
   const switchSlide = (id: string) => {
+    cancelGesture();
+    setDrawingTool(null);
     setSlideId(id);
     setPresentationStep(0);
     setSelected([]);
@@ -590,7 +658,7 @@ export default function App() {
     const s = clone(slide);
     s.id = newId();
     s.title += " · copy";
-    s.objects.forEach((o) => (o.id = newId()));
+    s.objects = cloneObjectsWithGroups(s.objects);
     change((d) => d.slides.splice(slideIndex + 1, 0, s));
     switchSlide(s.id);
   };
@@ -635,6 +703,8 @@ export default function App() {
     metadata: {},
   });
   const insert = async (type: "text" | "equation" | "rect" | "ellipse") => {
+    cancelGesture();
+    setDrawingTool(null);
     let o: SlideObject;
     if (type === "text")
       o = {
@@ -677,73 +747,94 @@ export default function App() {
     setSelected([o.id]);
   };
   const deleteObjects = () => {
-    const ids = selected.filter(
-      (id) => !slide.objects.find((o) => o.id === id)?.locked,
-    );
+    const ids = editableSelection(slide.objects, selected);
     if (!ids.length) return;
     change((d) => {
       const s = d.slides.find((s) => s.id === slide.id)!;
       s.objects = s.objects.filter((o) => !ids.includes(o.id));
+      cleanupGroups(s.objects);
       pruneUnusedAssets(d);
     });
     setSelected([]);
   };
   const duplicateObjects = () => {
     if (!selected.length) return;
-    const copies = slide.objects
-      .filter((o) => selected.includes(o.id))
-      .map((o) => ({
-        ...clone(o),
-        id: newId(),
-        transform: {
-          ...o.transform,
-          x: o.transform.x + 32,
-          y: o.transform.y + 32,
-        },
-      }));
+    const copies = duplicateSelectedObjects(slide.objects, selected, {
+      x: 32,
+      y: 32,
+    });
+    if (!copies.length) return;
     change((d) =>
       d.slides.find((s) => s.id === slide.id)!.objects.push(...copies),
     );
     setSelected(copies.map((o) => o.id));
   };
+  const groupSelection = () => {
+    const ids = editableSelection(slide.objects, selected);
+    if (ids.length < 2) return;
+    change((d) =>
+      groupObjects(d.slides.find((s) => s.id === slide.id)!.objects, ids),
+    );
+    setSelected(ids);
+    notify("Objects grouped. Drag any member to move the group.");
+  };
+  const ungroupSelection = () => {
+    const ids = editableSelection(slide.objects, selected);
+    if (!slide.objects.some((o) => ids.includes(o.id) && o.groupId)) return;
+    change((d) =>
+      ungroupObjects(d.slides.find((s) => s.id === slide.id)!.objects, ids),
+    );
+    notify("Objects ungrouped.");
+  };
   const align = (where: "left" | "center" | "right") => {
     change((d) => {
       const s = d.slides.find((s) => s.id === slide.id)!;
-      const objs = s.objects.filter(
-        (o) => selected.includes(o.id) && !o.locked,
-      );
-      if (!objs.length) return;
-      const left = Math.min(...objs.map((o) => o.transform.x)),
-        right = Math.max(
-          ...objs.map(
-            (o) => o.transform.x + (metrics[o.id]?.width ?? o.transform.width),
-          ),
-        );
-      objs.forEach((o) => {
-        const w = metrics[o.id]?.width ?? o.transform.width;
-        o.transform.x =
-          objs.length === 1
+      const ids = editableSelection(s.objects, selected);
+      const units = new Map<string, SlideObject[]>();
+      for (const o of s.objects.filter((o) => ids.includes(o.id))) {
+        const key = o.groupId ?? o.id;
+        units.set(key, [...(units.get(key) ?? []), o]);
+      }
+      const bounds = [...units.values()].map((objects) => ({
+        objects,
+        bounds: selectionBounds(
+          objects,
+          objects.map((o) => o.id),
+          metrics,
+        )!,
+      }));
+      if (!bounds.length) return;
+      const left = Math.min(...bounds.map((u) => u.bounds.x));
+      const right = Math.max(...bounds.map((u) => u.bounds.x + u.bounds.width));
+      for (const unit of bounds) {
+        const b = unit.bounds;
+        const x =
+          bounds.length === 1
             ? where === "left"
               ? 80
               : where === "right"
-                ? 1520 - w
-                : (1600 - w) / 2
+                ? deck.slideSize.width - 80 - b.width
+                : (deck.slideSize.width - b.width) / 2
             : where === "left"
               ? left
               : where === "right"
-                ? right - w
-                : (left + right - w) / 2;
-      });
+                ? right - b.width
+                : (left + right - b.width) / 2;
+        unit.objects.forEach((o) => {
+          o.transform.x += x - b.x;
+        });
+      }
     });
   };
   const layer = (front: boolean) => {
     if (!object) return;
     change((d) => {
-      const s = d.slides.find((s) => s.id === slide.id)!,
-        i = s.objects.findIndex((o) => o.id === object.id),
-        o = s.objects.splice(i, 1)[0];
-      if (front) s.objects.push(o);
-      else s.objects.unshift(o);
+      const s = d.slides.find((s) => s.id === slide.id)!;
+      const ids = editableSelection(s.objects, selected);
+      const moving = s.objects.filter((o) => ids.includes(o.id));
+      s.objects = s.objects.filter((o) => !ids.includes(o.id));
+      if (front) s.objects.push(...moving);
+      else s.objects.unshift(...moving);
     });
   };
   const save = async (saveAs = false) => {
@@ -928,6 +1019,8 @@ export default function App() {
     }
   };
   const startPresent = () => {
+    cancelGesture();
+    setDrawingTool(null);
     setPresentationStep(0);
     setPresenting(true);
     document.documentElement.requestFullscreen?.().catch(() => {});
@@ -996,14 +1089,43 @@ export default function App() {
   ) => {
     const r = svg.getBoundingClientRect();
     return {
-      x: ((e.clientX - r.left) * 1600) / r.width,
-      y: ((e.clientY - r.top) * 900) / r.height,
+      x: ((e.clientX - r.left) * deckRef.current.slideSize.width) / r.width,
+      y: ((e.clientY - r.top) * deckRef.current.slideSize.height) / r.height,
     };
   };
+  const chooseDrawingTool = (kind: ShapeObject["shape"] | null) => {
+    cancelGesture();
+    setDrawingTool(kind);
+    setSelected([]);
+  };
+  const startDrawing = (e: PointerEvent<SVGSVGElement>) => {
+    if (!drawingTool || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    cancelGesture();
+    const svg = e.currentTarget;
+    const start = position(e, svg);
+    const initial = shapeFromDrag(drawingTool, start, start);
+    gesture.current = {
+      mode: "draw",
+      kind: drawingTool,
+      slideId: slide.id,
+      deckId: deck.id,
+      start,
+      objects: [initial],
+      current: {},
+      svg,
+      pointerId: e.pointerId,
+    };
+    setSelected([]);
+    setDraftShape(initial);
+    svg.setPointerCapture(e.pointerId);
+  };
   const startGesture = (
-    e: PointerEvent<SVGGElement | SVGRectElement>,
+    e: PointerEvent<SVGGElement | SVGRectElement | SVGCircleElement>,
     o: SlideObject,
-    mode: "drag" | "resize",
+    mode: "drag" | "resize" | "endpoint",
+    endpoint?: "start" | "end",
   ) => {
     e.stopPropagation();
     if (
@@ -1014,20 +1136,26 @@ export default function App() {
       return;
     if (e.button !== 0) return;
     const svg = e.currentTarget.ownerSVGElement!;
-    let ids = selected.includes(o.id) ? selected : [o.id];
+    if (mode !== "drag" && o.groupId) return;
+    const clicked = expandSelection(slide.objects, [o.id]);
+    let ids = selected.includes(o.id)
+      ? expandSelection(slide.objects, selected)
+      : clicked;
     if (mode === "drag" && e.shiftKey) {
       ids = selected.includes(o.id)
-        ? selected.filter((id) => id !== o.id)
-        : [...selected, o.id];
+        ? selected.filter((id) => !clicked.includes(id))
+        : expandSelection(slide.objects, [...selected, ...clicked]);
       setSelected(ids);
       return;
     }
     setSelected(ids);
-    if (o.locked) return;
+    if (isObjectLocked(o, slide.objects)) return;
+    const editable = editableSelection(slide.objects, ids);
     const objects = slide.objects
       .filter(
         (v) =>
-          (mode === "resize" ? v.id === o.id : ids.includes(v.id)) && !v.locked,
+          (mode !== "drag" ? v.id === o.id : editable.includes(v.id)) &&
+          !isObjectLocked(v, slide.objects),
       )
       .map((v) => {
         const c = clone(v),
@@ -1040,6 +1168,9 @@ export default function App() {
       });
     gesture.current = {
       mode,
+      endpoint,
+      slideId: slide.id,
+      deckId: deck.id,
       start: position(e, svg),
       objects,
       current: {},
@@ -1051,20 +1182,113 @@ export default function App() {
   useEffect(() => {
     const move = (e: globalThis.PointerEvent) => {
       const g = gesture.current;
-      if (!g) return;
-      const p = position(e, g.svg),
-        dx = p.x - g.start.x,
-        dy = p.y - g.start.y,
-        next: Record<string, SlideObject> = {};
+      if (!g || e.pointerId !== g.pointerId) return;
+      if (!g.svg.isConnected || !g.svg.getBoundingClientRect().width) {
+        cancelGesture();
+        return;
+      }
+      const p = position(e, g.svg);
+      let dx = p.x - g.start.x,
+        dy = p.y - g.start.y;
+      const next: Record<string, SlideObject> = {};
+      if (g.mode === "draw") {
+        let end = {
+          x: Math.max(0, Math.min(deck.slideSize.width, p.x)),
+          y: Math.max(0, Math.min(deck.slideSize.height, p.y)),
+        };
+        if (grid)
+          end = {
+            x: Math.round(end.x / 20) * 20,
+            y: Math.round(end.y / 20) * 20,
+          };
+        if (e.shiftKey) {
+          const x = end.x - g.start.x,
+            y = end.y - g.start.y;
+          if (g.kind === "line" || g.kind === "arrow") {
+            const angle =
+              Math.round(Math.atan2(y, x) / (Math.PI / 4)) * (Math.PI / 4);
+            const length = Math.hypot(x, y);
+            end = {
+              x: g.start.x + Math.cos(angle) * length,
+              y: g.start.y + Math.sin(angle) * length,
+            };
+          } else {
+            const size = Math.max(Math.abs(x), Math.abs(y));
+            end = {
+              x: g.start.x + (x < 0 ? -size : size),
+              y: g.start.y + (y < 0 ? -size : size),
+            };
+          }
+        }
+        const shape = shapeFromDrag(g.kind!, g.start, end);
+        shape.id = g.objects[0].id;
+        g.current = { [shape.id]: shape };
+        setDraftShape(shape);
+        return;
+      }
+      if (g.mode === "endpoint") {
+        const o = g.objects[0];
+        if (!isLineShape(o)) return;
+        let end = grid
+          ? { x: Math.round(p.x / 20) * 20, y: Math.round(p.y / 20) * 20 }
+          : p;
+        if (e.shiftKey) {
+          const points = lineWorldEndpoints(o);
+          const fixed = g.endpoint === "start" ? points.end : points.start;
+          const x = end.x - fixed.x,
+            y = end.y - fixed.y;
+          const angle =
+            Math.round(Math.atan2(y, x) / (Math.PI / 4)) * (Math.PI / 4);
+          const length = Math.hypot(x, y);
+          end = {
+            x: fixed.x + Math.cos(angle) * length,
+            y: fixed.y + Math.sin(angle) * length,
+          };
+        }
+        g.current = { [o.id]: moveLineEndpoint(o, g.endpoint!, end) };
+        setPreview(g.current);
+        return;
+      }
+      if (g.mode === "drag") {
+        if (grid) {
+          // Snap the selection as a unit so grouped members keep their offsets.
+          const origin = selectionBounds(
+            g.objects,
+            g.objects.map((o) => o.id),
+          );
+          if (origin) {
+            dx = Math.round((origin.x + dx) / 20) * 20 - origin.x;
+            dy = Math.round((origin.y + dy) / 20) * 20 - origin.y;
+          }
+          setGuides([]);
+        } else if (smartGuides && !e.altKey) {
+          const origin = selectionBounds(
+            g.objects,
+            g.objects.map((o) => o.id),
+          );
+          if (origin) {
+            const ids = new Set(g.objects.map((o) => o.id));
+            const targets = slide.objects
+              .filter((o) => o.visible && !ids.has(o.id))
+              .map((o) => objectBounds(o, metrics[o.id]));
+            const snap = snapTranslation(
+              origin,
+              { x: dx, y: dy },
+              targets,
+              deck.slideSize,
+              (6 * deck.slideSize.width) / g.svg.getBoundingClientRect().width,
+            );
+            dx = snap.dx;
+            dy = snap.dy;
+            setGuides(snap.guides);
+          }
+        } else setGuides([]);
+      }
       for (const o of g.objects) {
         const n = clone(o);
         if (g.mode === "drag") {
-          n.transform.x =
-            Math.round((o.transform.x + dx) / (grid ? 20 : 1)) *
-            (grid ? 20 : 1);
-          n.transform.y =
-            Math.round((o.transform.y + dy) / (grid ? 20 : 1)) *
-            (grid ? 20 : 1);
+          n.transform.x = o.transform.x + dx;
+          n.transform.y = o.transform.y + dy;
         } else {
           const w = o.transform.width,
             h = o.transform.height,
@@ -1090,26 +1314,80 @@ export default function App() {
       g.current = next;
       setPreview(next);
     };
-    const end = () => {
+    const end = (e: globalThis.PointerEvent) => {
       const g = gesture.current;
-      if (!g) return;
+      if (!g || e.pointerId !== g.pointerId) return;
+      if (!g.svg.isConnected || !g.svg.getBoundingClientRect().width) {
+        cancelGesture();
+        return;
+      }
+      const distance = Math.hypot(
+        position(e, g.svg).x - g.start.x,
+        position(e, g.svg).y - g.start.y,
+      );
+      if (g.mode === "draw" || Object.keys(g.current).length || distance > 0)
+        move(e);
       gesture.current = null;
-      if (Object.keys(g.current).length)
+      const validDocument =
+        deckRef.current.id === g.deckId &&
+        deckRef.current.slides.some((s) => s.id === g.slideId);
+      if (g.mode === "draw") {
+        const shape = Object.values(g.current)[0];
+        if (
+          validDocument &&
+          shape &&
+          distance >=
+            (4 * deck.slideSize.width) / g.svg.getBoundingClientRect().width
+        ) {
+          change((d) =>
+            d.slides.find((s) => s.id === g.slideId)!.objects.push(shape),
+          );
+          setSelected([shape.id]);
+          setDrawingTool(null);
+        }
+      } else if (
+        validDocument &&
+        Object.keys(g.current).length &&
+        g.objects.some(
+          (o) => JSON.stringify(o) !== JSON.stringify(g.current[o.id] ?? o),
+        )
+      )
         change((d) => {
-          const s = d.slides.find((s) => s.id === slide.id)!;
+          const s = d.slides.find((s) => s.id === g.slideId)!;
           s.objects = s.objects.map((o) => g.current[o.id] ?? o);
         });
       setPreview({});
+      setDraftShape(undefined);
+      setGuides([]);
       if (g.svg.hasPointerCapture(g.pointerId))
         g.svg.releasePointerCapture(g.pointerId);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", end);
+    const cancel = (e: globalThis.PointerEvent) => {
+      if (gesture.current?.pointerId === e.pointerId) cancelGesture();
+    };
+    window.addEventListener("pointercancel", cancel);
+    window.addEventListener("lostpointercapture", cancel);
+    window.addEventListener("blur", cancelGesture);
     return () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("lostpointercapture", cancel);
+      window.removeEventListener("blur", cancelGesture);
     };
-  }, [slide.id, change, metrics, deck.theme.equation.fontSize, grid]);
+  }, [
+    slide,
+    deck.id,
+    deck.slideSize,
+    change,
+    metrics,
+    deck.theme.equation.fontSize,
+    grid,
+    smartGuides,
+    cancelGesture,
+  ]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (showMathLibrary || showSlideTemplates || showAiDraft) {
@@ -1166,10 +1444,16 @@ export default function App() {
       } else if ((e.ctrlKey || e.metaKey) && e.key === "d") {
         e.preventDefault();
         duplicateObjects();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "g") {
+        e.preventDefault();
+        if (e.shiftKey) ungroupSelection();
+        else groupSelection();
       } else if (["Delete", "Backspace"].includes(e.key)) {
         e.preventDefault();
         deleteObjects();
       } else if (e.key === "Escape") {
+        cancelGesture();
+        setDrawingTool(null);
         setSelected([]);
         setShowHelp(false);
         setExportMenu(false);
@@ -1179,11 +1463,12 @@ export default function App() {
       ) {
         e.preventDefault();
         const delta = e.shiftKey ? 10 : 1;
+        const movable = editableSelection(slide.objects, selected);
         change(
           (d) =>
             d.slides
               .find((s) => s.id === slide.id)!
-              .objects.filter((o) => selected.includes(o.id) && !o.locked)
+              .objects.filter((o) => movable.includes(o.id))
               .forEach((o) => {
                 o.transform.x +=
                   e.key === "ArrowLeft"
@@ -1367,28 +1652,89 @@ export default function App() {
         >
           <Sigma size={20} /> Equation
         </button>
-        <button className="tool" onClick={() => imageInput.current?.click()}>
+        <button
+          className="tool"
+          onClick={() => {
+            chooseDrawingTool(null);
+            imageInput.current?.click();
+          }}
+        >
           <ImagePlus size={18} /> Figure
         </button>
         <button
           className="tool"
           disabled={!!busy}
-          onClick={() => videoInput.current?.click()}
+          onClick={() => {
+            chooseDrawingTool(null);
+            videoInput.current?.click();
+          }}
           title={`Insert an MP4 or WebM video · up to ${MAX_VIDEO_BYTES / 1024 / 1024} MB`}
         >
           <Video size={18} /> Video
         </button>
         <IconButton
-          title="Insert rectangle"
-          onClick={() => void insert("rect")}
+          title="Select objects · Escape"
+          active={!drawingTool}
+          onClick={() => chooseDrawingTool(null)}
+        >
+          <MousePointer2 size={17} />
+        </IconButton>
+        <IconButton
+          title="Draw rectangle"
+          active={drawingTool === "rect"}
+          onClick={() =>
+            chooseDrawingTool(drawingTool === "rect" ? null : "rect")
+          }
         >
           <Square size={17} />
         </IconButton>
         <IconButton
-          title="Insert ellipse"
-          onClick={() => void insert("ellipse")}
+          title="Draw ellipse"
+          active={drawingTool === "ellipse"}
+          onClick={() =>
+            chooseDrawingTool(drawingTool === "ellipse" ? null : "ellipse")
+          }
         >
           <Circle size={17} />
+        </IconButton>
+        <IconButton
+          title="Draw line"
+          active={drawingTool === "line"}
+          onClick={() =>
+            chooseDrawingTool(drawingTool === "line" ? null : "line")
+          }
+        >
+          <Minus size={17} />
+        </IconButton>
+        <IconButton
+          title="Draw arrow"
+          active={drawingTool === "arrow"}
+          onClick={() =>
+            chooseDrawingTool(drawingTool === "arrow" ? null : "arrow")
+          }
+        >
+          <ArrowUpRight size={17} />
+        </IconButton>
+        <IconButton
+          title="Group objects · Ctrl+G"
+          disabled={editableSelection(slide.objects, selected).length < 2}
+          onClick={groupSelection}
+        >
+          <Group size={17} />
+        </IconButton>
+        <IconButton
+          title="Ungroup objects · Ctrl+Shift+G"
+          disabled={
+            !slide.objects.some(
+              (o) =>
+                selected.includes(o.id) &&
+                o.groupId &&
+                !isObjectLocked(o, slide.objects),
+            )
+          }
+          onClick={ungroupSelection}
+        >
+          <Ungroup size={17} />
         </IconButton>
         <span className="toolbar-divider" />
         <div className="toolbar-group">
@@ -1415,6 +1761,13 @@ export default function App() {
           </IconButton>
         </div>
         <div className="toolbar-end">
+          <IconButton
+            title="Smart alignment guides · Alt to bypass"
+            active={smartGuides}
+            onClick={() => setSmartGuides(!smartGuides)}
+          >
+            <Magnet size={18} />
+          </IconButton>
           <IconButton
             title="Snap to 20 px grid"
             active={grid}
@@ -1503,7 +1856,10 @@ export default function App() {
               </div>
             </div>
             <span className="canvas-hint">
-              <MousePointer2 size={13} /> Select · drag · double-click to edit
+              <MousePointer2 size={13} />{" "}
+              {drawingTool
+                ? `Drag to draw ${drawingTool === "rect" ? "rectangle" : drawingTool} · Shift to constrain · Escape to cancel`
+                : "Select · Shift for multiple · drag to align"}
             </span>
           </div>
           <div
@@ -1520,10 +1876,17 @@ export default function App() {
                 slideIndex={slideIndex}
                 selected={selected}
                 preview={preview}
+                drawing={!!drawingTool}
+                draftShape={draftShape}
+                guides={guides}
+                onDrawStart={drawingTool ? startDrawing : undefined}
                 metrics={metrics}
                 onMetrics={onMetrics}
                 onPointer={(e, o) => startGesture(e, o, "drag")}
                 onResize={(e, o) => startGesture(e, o, "resize")}
+                onEndpoint={(e, o, endpoint) =>
+                  startGesture(e, o, "endpoint", endpoint)
+                }
                 onEdit={(o) => {
                   setSelected([o.id]);
                   setTimeout(() => {
@@ -1602,9 +1965,11 @@ export default function App() {
                 <div>
                   <h2>{object.name}</h2>
                   <span>
-                    {object.type === "equation"
-                      ? "Native LaTeX object"
-                      : `${object.type[0].toUpperCase() + object.type.slice(1)} object`}
+                    {object.groupId
+                      ? `Group · ${slide.objects.filter((o) => o.groupId === object.groupId).length} objects`
+                      : object.type === "equation"
+                        ? "Native LaTeX object"
+                        : `${object.type[0].toUpperCase() + object.type.slice(1)} object`}
                   </span>
                 </div>
                 <IconButton
@@ -1987,23 +2352,30 @@ export default function App() {
                 <div className="inspector-section">
                   <div className="section-label">APPEARANCE</div>
                   <div className="field-row">
-                    <Field label="Fill">
-                      <input
-                        aria-label="Shape fill"
-                        type="color"
-                        value={object.fill}
-                        onChange={(e) =>
-                          updateObject(object.id, (o) => {
-                            if (o.type === "shape") o.fill = e.target.value;
-                          })
-                        }
-                      />
-                    </Field>
+                    {!isLineShape(object) && (
+                      <Field label="Fill">
+                        <input
+                          aria-label="Shape fill"
+                          type="color"
+                          value={
+                            object.fill === "none" ? "#dcf2eb" : object.fill
+                          }
+                          disabled={object.fill === "none"}
+                          onChange={(e) =>
+                            updateObject(object.id, (o) => {
+                              if (o.type === "shape") o.fill = e.target.value;
+                            })
+                          }
+                        />
+                      </Field>
+                    )}
                     <Field label="Stroke">
                       <input
                         aria-label="Shape stroke"
                         type="color"
-                        value={object.stroke}
+                        value={
+                          object.stroke === "none" ? "#259f87" : object.stroke
+                        }
                         onChange={(e) =>
                           updateObject(object.id, (o) => {
                             if (o.type === "shape") o.stroke = e.target.value;
@@ -2012,9 +2384,26 @@ export default function App() {
                       />
                     </Field>
                   </div>
+                  {!isLineShape(object) && (
+                    <label className="drawing-checkbox">
+                      <input
+                        type="checkbox"
+                        aria-label="No shape fill"
+                        checked={object.fill === "none"}
+                        onChange={(e) =>
+                          updateObject(object.id, (o) => {
+                            if (o.type === "shape")
+                              o.fill = e.target.checked ? "none" : "#dcf2eb";
+                          })
+                        }
+                      />
+                      No fill (transparent)
+                    </label>
+                  )}
                   <Field label="Stroke width">
                     <input
                       type="number"
+                      aria-label="Shape stroke width"
                       min="0"
                       max="20"
                       value={object.strokeWidth}
@@ -2029,6 +2418,96 @@ export default function App() {
                       }
                     />
                   </Field>
+                  <Field label="Line style">
+                    <select
+                      aria-label="Shape line style"
+                      value={object.strokeStyle ?? "solid"}
+                      onChange={(e) =>
+                        updateObject(object.id, (o) => {
+                          if (o.type === "shape")
+                            o.strokeStyle = e.target
+                              .value as ShapeObject["strokeStyle"];
+                        })
+                      }
+                    >
+                      <option value="solid">Solid</option>
+                      <option value="dashed">Dashed</option>
+                      <option value="dotted">Dotted</option>
+                    </select>
+                  </Field>
+                  {isLineShape(object) && (
+                    <>
+                      <Field label="Arrowheads">
+                        <select
+                          aria-label="Arrowheads"
+                          value={`${object.startArrow ? "1" : "0"}${(object.endArrow ?? object.shape === "arrow") ? "1" : "0"}`}
+                          onChange={(e) =>
+                            updateObject(object.id, (o) => {
+                              if (o.type === "shape") {
+                                o.startArrow = e.target.value[0] === "1";
+                                o.endArrow = e.target.value[1] === "1";
+                              }
+                            })
+                          }
+                        >
+                          <option value="00">None</option>
+                          <option value="10">Start</option>
+                          <option value="01">End</option>
+                          <option value="11">Both</option>
+                        </select>
+                      </Field>
+                      <p className="field-hint">
+                        Drag either endpoint to edit the line. Hold Shift for
+                        45° angles.
+                        {object.groupId ? " Ungroup to edit endpoints." : ""}
+                      </p>
+                      {(["start", "end"] as const).map((endpoint) => (
+                        <div className="field-row" key={endpoint}>
+                          {(["x", "y"] as const).map((axis) => (
+                            <Field
+                              label={`${endpoint === "start" ? "Start" : "End"} ${axis.toUpperCase()}`}
+                              key={axis}
+                            >
+                              <input
+                                aria-label={`Line ${endpoint} ${axis}`}
+                                type="number"
+                                disabled={
+                                  !!object.groupId ||
+                                  isObjectLocked(object, slide.objects)
+                                }
+                                value={numeric(
+                                  lineWorldEndpoints(object)[endpoint][axis],
+                                )}
+                                onChange={(e) =>
+                                  updateObject(
+                                    object.id,
+                                    (o) => {
+                                      if (isLineShape(o)) {
+                                        const p =
+                                          lineWorldEndpoints(o)[endpoint];
+                                        p[axis] = Math.max(
+                                          -1_000_000,
+                                          Math.min(
+                                            1_000_000,
+                                            Number(e.target.value),
+                                          ),
+                                        );
+                                        Object.assign(
+                                          o,
+                                          moveLineEndpoint(o, endpoint, p),
+                                        );
+                                      }
+                                    },
+                                    `${endpoint}-${axis}`,
+                                  )
+                                }
+                              />
+                            </Field>
+                          ))}
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </div>
               )}
               {object.type === "figure" && (
@@ -2205,21 +2684,22 @@ export default function App() {
               </div>
               <div className="inspector-section">
                 <div className="section-label">POSITION & SIZE</div>
+                {object.groupId && (
+                  <p className="field-hint">
+                    Position moves the whole group. Ungroup to resize or rotate
+                    a member.
+                  </p>
+                )}
                 <div className="field-row">
                   {(["x", "y"] as const).map((k) => (
                     <Field key={k} label={k.toUpperCase()}>
                       <input
                         aria-label={`Object ${k}`}
                         type="number"
+                        disabled={isObjectLocked(object, slide.objects)}
                         value={numeric(object.transform[k])}
                         onChange={(e) =>
-                          updateObject(
-                            object.id,
-                            (o) => {
-                              o.transform[k] = Number(e.target.value);
-                            },
-                            k,
-                          )
+                          updatePosition(k, Number(e.target.value))
                         }
                       />
                     </Field>
@@ -2231,19 +2711,29 @@ export default function App() {
                       <input
                         aria-label={`Object ${k}`}
                         type="number"
-                        min="1"
-                        disabled={object.type === "equation"}
-                        value={numeric(
-                          object.type === "equation"
-                            ? (metrics[object.id]?.[k] ?? object.transform[k])
-                            : object.transform[k],
-                        )}
+                        min={isLineShape(object) ? 0.01 : 1}
+                        step={isLineShape(object) ? 0.01 : 1}
+                        disabled={
+                          object.type === "equation" ||
+                          !!object.groupId ||
+                          isObjectLocked(object, slide.objects)
+                        }
+                        value={
+                          isLineShape(object)
+                            ? Number(object.transform[k].toFixed(4))
+                            : numeric(
+                                object.type === "equation"
+                                  ? (metrics[object.id]?.[k] ??
+                                      object.transform[k])
+                                  : object.transform[k],
+                              )
+                        }
                         onChange={(e) =>
                           updateObject(
                             object.id,
                             (o) => {
                               o.transform[k] = Math.max(
-                                1,
+                                isLineShape(o) ? 0.01 : 1,
                                 Number(e.target.value),
                               );
                             },
@@ -2259,6 +2749,10 @@ export default function App() {
                     <input
                       aria-label="Object rotation"
                       type="number"
+                      disabled={
+                        !!object.groupId ||
+                        isObjectLocked(object, slide.objects)
+                      }
                       value={object.transform.rotation}
                       onChange={(e) =>
                         updateObject(
@@ -2297,6 +2791,29 @@ export default function App() {
               </div>
               <div className="inspector-section">
                 <div className="section-label">ARRANGE</div>
+                <div className="arrange-buttons">
+                  <button
+                    onClick={groupSelection}
+                    disabled={
+                      editableSelection(slide.objects, selected).length < 2
+                    }
+                  >
+                    <Group size={14} /> Group
+                  </button>
+                  <button
+                    onClick={ungroupSelection}
+                    disabled={
+                      !slide.objects.some(
+                        (o) =>
+                          selected.includes(o.id) &&
+                          o.groupId &&
+                          !isObjectLocked(o, slide.objects),
+                      )
+                    }
+                  >
+                    <Ungroup size={14} /> Ungroup
+                  </button>
+                </div>
                 <div className="arrange-buttons">
                   <button onClick={() => layer(false)}>
                     <Layers size={14} /> Send back
@@ -2599,6 +3116,14 @@ export default function App() {
               <dd>Ctrl / ⌘ + D</dd>
               <dt>Multiple selection</dt>
               <dd>Shift + Click</dd>
+              <dt>Group / Ungroup</dt>
+              <dd>Ctrl / ⌘ + G / Shift + G</dd>
+              <dt>Constrain drawing / endpoints</dt>
+              <dd>Shift · squares, circles and 45° lines</dd>
+              <dt>Bypass alignment guides</dt>
+              <dd>Hold Alt while dragging</dd>
+              <dt>Cancel drawing</dt>
+              <dd>Escape</dd>
               <dt>Move selection</dt>
               <dd>Arrow keys · Shift for 10 px</dd>
               <dt>Delete selection</dt>

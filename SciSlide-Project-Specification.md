@@ -1,11 +1,11 @@
 # SciSlide — Scientific Presentation Editor
 
-**Project specification and technical design draft · v0.5**
+**Project specification and technical design draft · v0.6**
 
 | Field                 | Value                                                                                    |
 | --------------------- | ---------------------------------------------------------------------------------------- |
 | Working name          | SciSlide                                                                                 |
-| Status                | Electron/web prototype v0.4.1; Korean PDF/SVG body fonts and AI CLI drafting             |
+| Status                | Electron/web prototype v0.5.0; scientific drawing, flat groups and alignment guides      |
 | Date                  | 2026-10-03                                                                               |
 | Intended audience     | Contributors, maintainers, and scientific users                                          |
 | Product direction     | Shared web/desktop visual presentation editor with MathJax and installed LaTeX equations |
@@ -16,7 +16,7 @@
 
 This document consolidates the referenced conversation, **웹 기반 프레젠테이션 제작**, into an open-source project specification and records the subsequent implementation. Product goals come from that discussion. Sections identify the working prototype separately from target requirements; future features and release gates are not claims of existing functionality.
 
-The current v0.4.1 prototype is an independent React/TypeScript application with three bundled MathJax fonts, 17 math-package catalog entries, and an Electron host. Native file operations and an explicit Local LaTeX Compile → Apply workflow are implemented. A built-in Scientific starter template provides research-title, key-findings, equation/meaning and figure-comparison layouts. Deck-wide slide numbers, embedded MP4/WebM video objects, and ordered click-triggered appear/fade builds extend this baseline. Video plays in presentation mode; PDF/SVG output remains static and includes a labeled video placeholder. More advanced animation, linked masters, scientific figure tools, and research integrations are planned below. Isolated local compilation currently supports Linux system TeX installations; macOS/Windows compilation and home-installed package access remain future work. [The README](README.md) documents setup and usage. Unsigned, unnotarized macOS installer generation for Apple Silicon and Intel is available via `scripts/package-macos.mjs`; a native macOS build workflow is also provided. Windows x64 portable ZIP and unsigned installer generation is available via `scripts/package-windows.mjs`, with a native Windows build workflow. Windows installation is per-user, and the x64 application has no Node.js or TeX runtime requirement for MathJax editing. Installer checks and CI smoke tests do not establish complete editing, saving and export behavior on physical Windows or Mac desktops. This prototype is not yet a complete scientific MVP or a signed production distribution.
+The current v0.5.0 prototype is an independent React/TypeScript application with three bundled MathJax fonts, 17 math-package catalog entries, and an Electron host. Native file operations and an explicit Local LaTeX Compile → Apply workflow are implemented. A built-in Scientific starter template provides research-title, key-findings, equation/meaning and figure-comparison layouts. Scientific drawing now includes drag-created rectangles, ellipses, lines and arrows, editable line endpoints, stroke styles and unfilled outlines. Flat persistent groups and automatic drag alignment guides support composing figures with labels and equations. Native document format 0.4.0 stores the added geometry and group membership. Deck-wide slide numbers, embedded MP4/WebM video objects, and ordered click-triggered appear/fade builds extend this baseline. Video plays in presentation mode; PDF/SVG output remains static and includes a labeled video placeholder. More advanced animation, linked masters, scientific figure tools, and research integrations are planned below. Isolated local compilation currently supports Linux system TeX installations; macOS/Windows compilation and home-installed package access remain future work. [The README](README.md) documents setup and usage. Unsigned, unnotarized macOS installer generation for Apple Silicon and Intel is available via `scripts/package-macos.mjs`; a native macOS build workflow is also provided. Windows x64 portable ZIP and unsigned installer generation is available via `scripts/package-windows.mjs`, with a native Windows build workflow. Windows installation is per-user, and the x64 application has no Node.js or TeX runtime requirement for MathJax editing. Installer checks and CI smoke tests do not establish complete editing, saving and export behavior on physical Windows or Mac desktops. This prototype is not yet a complete scientific MVP or a signed production distribution.
 
 ## Contents
 
@@ -122,14 +122,14 @@ The document engine must remain independent of the UI framework. Selection, open
 
 ### 2.4 Technology direction
 
-| Area            | Implemented v0.3.0 baseline                                   | Remaining decision or improvement                        |
+| Area            | Implemented v0.5.0 baseline                                   | Remaining decision or improvement                        |
 | --------------- | ------------------------------------------------------------- | -------------------------------------------------------- |
 | Language        | TypeScript; small Electron/CommonJS and compiler/ESM modules  | Shared package extraction when useful                    |
 | UI              | Independent React 19 editor                                   | No PPTist-derived implementation                         |
 | Editor state    | React state with immutable revision history and grouped edits | Extract document command boundaries as complexity grows  |
 | Rendering       | Shared SVG scene and HTML editor controls                     | Profile before adding a canvas path                      |
 | Mathematics     | MathJax 4.1.3 and explicit Local LaTeX adapter                | Additional local engines and OS isolation profiles       |
-| Native document | ZIP plus JSON/assets/outlined local renders, format 0.3.0     | JSON Schema publication and unpacked Git workflow        |
+| Native document | ZIP plus JSON/assets/outlined local renders, format 0.4.0     | JSON Schema publication and unpacked Git workflow        |
 | PDF             | jsPDF and svg2pdf.js, shared geometry/resource preflight      | Broader SVG/PDF fixtures and additional script coverage  |
 | Desktop         | Electron 44.5.1, isolated preload and native file operations  | Signed installers, updates and cross-platform validation |
 
@@ -154,7 +154,7 @@ Dragging updates a temporary preview and commits one movement command on release
 
 ### 3.1 Native package
 
-Implemented `.scislide` files are ZIP containers. New saves use format **0.3.0**:
+Implemented `.scislide` files are ZIP containers. New saves use format **0.4.0**:
 
 ```text
 presentation.scislide
@@ -172,28 +172,30 @@ An unpacked folder representation remains a future target for Git workflows. Sta
 
 ### 3.2 Document model
 
-| Entity        | Required data                                                                                                       |
-| ------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Document      | Format version, ID, title, slide dimensions, theme, page-number settings, slide list, asset registry                |
-| Slide         | ID, title, background, ordered object list, speaker notes                                                           |
-| Common object | ID, type, name, transform, opacity, visibility/lock state, optional click-build record, metadata                    |
-| Text          | Plain Unicode source, typography, alignment; structured text runs may follow later                                  |
-| Equation      | LaTeX source, display mode, optional style overrides, description, renderer and optional local configuration/result |
-| Figure        | Asset ID and alt text; provenance can use metadata; reversible crop remains a target                                |
-| Video         | Embedded asset ID, accessible description, playback preferences; no external streaming URL                          |
-| Shape         | Geometry, fill, stroke                                                                                              |
+| Entity        | Required data                                                                                                             |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Document      | Format version, ID, title, slide dimensions, theme, page-number settings, slide list, asset registry                      |
+| Slide         | ID, title, background, ordered object list, speaker notes                                                                 |
+| Common object | ID, type, name, transform, opacity, visibility/lock state, optional flat-group ID, optional click-build record, metadata  |
+| Text          | Plain Unicode source, typography, alignment; structured text runs may follow later                                        |
+| Equation      | LaTeX source, display mode, optional style overrides, description, renderer and optional local configuration/result       |
+| Figure        | Asset ID and alt text; provenance can use metadata; reversible crop remains a target                                      |
+| Video         | Embedded asset ID, accessible description, playback preferences; no external streaming URL                                |
+| Shape         | Rectangle/ellipse/line/arrow geometry; fill or no fill, stroke color/width/style, line endpoints and start/end arrowheads |
 
 Use logical slide units based on CSS pixels at 96 units per inch, independent of viewport zoom or device pixel ratio. The default slide is 1600 × 900 units. Origin is top-left; `x` and `y` locate an object's unrotated frame; rotation is in degrees about its center. Opacity ranges from 0 to 1. Object array order defines stacking from back to front.
 
 For text, figures, and shapes, frame width and height specify layout. For equations, these dimensions are persisted layout hints derived from source and resolved typography; position and rotation remain authoritative. Equation resizing changes font size uniformly. MathJax regenerates the bounds; local equations require explicit recompilation after typography changes. Future nondestructive cropping should use normalized source coordinates and preserve the original asset.
 
+Line/arrow endpoints define their editable direction and length; their frame follows the resulting geometry. Flat groups share a group identifier within a slide without creating a nested object tree. Group translation preserves each member's size, rotation and relative position. Duplication assigns fresh object and group identifiers. Ungroup removes membership while preserving current object geometry and stacking. Nested groups and collective scaling/rotation are future work.
+
 ### 3.3 Illustrative `document.json`
 
-The following is a minimal 0.3.0 source document with a MathJax equation, not a complete ZIP package. Resource hashes and exact rendering-profile versions belong in the manifest. Local equations add `renderer: "local-latex"` and `localTex` configuration/result records, described in section 4.6.
+The following is a minimal 0.4.0 source document with a MathJax equation, not a complete ZIP package. Resource hashes and exact rendering-profile versions belong in the manifest. Local equations add `renderer: "local-latex"` and `localTex` configuration/result records, described in section 4.6.
 
 ```json
 {
-  "formatVersion": "0.3.0",
+  "formatVersion": "0.4.0",
   "id": "deck-001",
   "title": "Scientific presentation example",
   "slideSize": { "width": 1600, "height": 900, "unit": "px96" },
@@ -254,7 +256,8 @@ This equation is visible in the editor/export and appears at step 1 during prese
 
 ### 3.4 Validation and compatibility
 
-- The implemented TypeScript validator reads 0.1.0, 0.2.0, and 0.3.0. Version 0.1.0 equations migrate to MathJax; older files receive disabled page numbers and no click builds. The next save writes 0.3.0. Unsupported versions are rejected explicitly. Opening does not rewrite the original file.
+- The implemented TypeScript validator reads 0.1.0, 0.2.0, 0.3.0 and 0.4.0. Version 0.1.0 equations migrate to MathJax; 0.1.0/0.2.0 files receive disabled page numbers and no click builds. Version 0.3.0 retains existing page-number/build settings and receives the default shape/group behavior. The next save writes 0.4.0. Unsupported versions are rejected explicitly. Opening does not rewrite the original file.
+- Earlier apps supporting only format 0.3.0 or below cannot read new 0.4.0 documents; there is no editable-format downgrade fallback. Save As preserves an older original, and PDF/SVG provides portable rendered output.
 - Publish a JSON Schema alongside TypeScript types as a follow-up; schema and application versions are separate.
 - Validate unique IDs, references, finite geometry, supported types, and asset integrity before loading.
 - Migrate supported older formats through explicit, tested steps; preserve the original file.
@@ -324,7 +327,7 @@ Retain source and a human-readable description alongside vector output. Supply a
 
 ### 4.6 Implemented Local LaTeX backend
 
-**Status: introduced in Electron v0.2.0 and retained in v0.3.0 on supported Linux system installations.** MathJax remains the default. Local LaTeX is an explicit second renderer for real installed TeX packages, macros and fonts. Installed `.sty` files are processed by the TeX engine, not MathJax's JavaScript parser. See [MathJax's TeX support](https://docs.mathjax.org/en/latest/input/tex/index.html).
+**Status: introduced in Electron v0.2.0 and retained in v0.5.0 on supported Linux system installations.** MathJax remains the default. Local LaTeX is an explicit second renderer for real installed TeX packages, macros and fonts. Installed `.sty` files are processed by the TeX engine, not MathJax's JavaScript parser. See [MathJax's TeX support](https://docs.mathjax.org/en/latest/input/tex/index.html).
 
 | Renderer    | Execution                                                             | Appropriate use                                                                  |
 | ----------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
@@ -345,7 +348,7 @@ See the [dvisvgm manual](https://dvisvgm.de/Manpage/) for the converter's format
 
 **Compile → Apply authoring.** Each equation explicitly selects MathJax or Local LaTeX. Local mode exposes engine, preamble, source, size and color; font selection belongs in the TeX preamble rather than a MathJax font ID. **Compile with LaTeX** produces a draft preview. **Apply equation** commits that exact successful result as one edit. Opening a deck never compiles it. Changing inputs or switching equations cancels the old job and ignores stale responses. Source, preamble, engine, display mode, size or color changes require a new compile; position/rotation edits reuse the saved outlines. Named shared profiles and automatic background compilation remain future work.
 
-**Local-render records, introduced in format 0.2.0 and retained in 0.3.0.** Equations add `renderer: "mathjax" | "local-latex"` and optional `localTex: { engine, preamble, render }`. The saved render contains intrinsic dimensions, an input signature, engine/converter versions, dependency-file hashes and warnings. Its SVG is stored as a SHA-256-indexed `renders/<equation-id>.svg` resource. The reader migrates old 0.1.0 equations to MathJax, accepts 0.2.0 local-render records, and rejects unsupported versions. A valid embedded local render is sufficient for viewing, presenting and exporting without TeX, including in the web editor. Editing and recompiling still require the relevant supported local environment. Missing or mismatched input signatures produce an error instead of exporting stale output.
+**Local-render records, introduced in format 0.2.0 and retained in 0.4.0.** Equations add `renderer: "mathjax" | "local-latex"` and optional `localTex: { engine, preamble, render }`. The saved render contains intrinsic dimensions, an input signature, engine/converter versions, dependency-file hashes and warnings. Its SVG is stored as a SHA-256-indexed `renders/<equation-id>.svg` resource. The reader migrates old 0.1.0 equations to MathJax, accepts supported older local-render records, and rejects unsupported versions. A valid embedded local render is sufficient for viewing, presenting and exporting without TeX, including in the web editor. Editing and recompiling still require the relevant supported local environment. Missing or mismatched input signatures produce an error instead of exporting stale output.
 
 **Reproducibility.** The compiler cache key includes input, template revision and engine/converter versions. Recorded dependency hashes are rechecked before a compiler-cache hit is used; package names alone are not considered an environment identity. Portable local render metadata retains compiler/converter versions and dependency hashes. Saved vector output preserves appearance even if an engine later changes, while editable rerendering is environment-dependent. The prototype does not bundle a TeX distribution or promise byte-identical future recompilation.
 
@@ -361,52 +364,52 @@ See the [dvisvgm manual](https://dvisvgm.de/Manpage/) for the converter's format
 
 **MVP** is a release gate. **Next** is Phase 2. **Future** is Phase 3 or later. **Spike** requires an early feasibility decision.
 
-The table defines product requirements, including capabilities beyond the current prototype. Current implementation status is (app v0.4.1; native document format 0.3.0):
+The table defines product requirements, including capabilities beyond the current prototype. Current implementation status is (app v0.5.0; native document format 0.4.0):
 
-| Area                 | v0.4.1 status                                                                                                                                         |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Editor core          | Slide operations, text/equation/figure/shape/video objects, transforms, alignment, selection, history and notes                                       |
-| Starter templates    | Scientific layout picker with research title, key findings, equation/meaning, figure comparison and blank                                             |
-| Page numbers         | Deck-wide numbering rendered from current slide order in the editor, player and static exports                                                        |
-| Animation foundation | Optional ordered click-triggered appear/fade builds; player state is separate from saved content                                                      |
-| Media                | Embedded MP4/WebM insertion and presentation playback; static PDF/SVG uses a labeled video placeholder                                                |
-| Equations            | Three MathJax fonts and package catalog; explicit Linux Local LaTeX Compile → Apply; portable valid local SVG results                                 |
-| Files and output     | Native Electron Open/Save/Save As and PDF/SVG save; browser download fallback; 0.1.0/0.2.0 migration and 0.3.0 archives                               |
-| Desktop              | Electron host, current-platform apps, unsigned Mac installers and Windows x64 installer/portable ZIP; signing and physical desktop review remain open |
-| Partial requirements | localStorage recovery; Latin PDF body fonts; no figure crop, grouping, smart guides, line shape or equal-spacing control                              |
-| Later features       | PDF figure import/insets, masters, advanced animation, presenter display, shared equation library, citations and native charts                        |
+| Area                 | v0.5.0 status                                                                                                                                                  |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Editor core          | Slide operations, text/equation/figure/shape/video objects, drawing/endpoints/strokes, flat groups, transforms, alignment guides, selection, history and notes |
+| Starter templates    | Scientific layout picker with research title, key findings, equation/meaning, figure comparison and blank                                                      |
+| Page numbers         | Deck-wide numbering rendered from current slide order in the editor, player and static exports                                                                 |
+| Animation foundation | Optional ordered click-triggered appear/fade builds; player state is separate from saved content                                                               |
+| Media                | Embedded MP4/WebM insertion and presentation playback; static PDF/SVG uses a labeled video placeholder                                                         |
+| Equations            | Three MathJax fonts and package catalog; explicit Linux Local LaTeX Compile → Apply; portable valid local SVG results                                          |
+| Files and output     | Native Electron Open/Save/Save As and PDF/SVG save; browser download fallback; 0.1.0/0.2.0/0.3.0 migration and 0.4.0 archives                                  |
+| Desktop              | Electron host, current-platform apps, unsigned Mac installers and Windows x64 installer/portable ZIP; signing and physical desktop review remain open          |
+| Partial requirements | localStorage recovery; Inter/Nanum Gothic body fonts; no figure crop, equal-spacing control, nested groups or collective group scaling/rotation                |
+| Later features       | PDF figure import/insets, masters, advanced animation, presenter display, shared equation library, citations and native charts                                 |
 
-| ID   | Feature                     | Scope                                            | Acceptance criterion                                                                                                                                                  |
-| ---- | --------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| F-01 | Slide management            | Implemented; MVP gate                            | Add, duplicate, delete and reorder slides; order survives reopening                                                                                                   |
-| F-02 | Object editing              | Implemented; MVP gate                            | Insert, select, move, rotate, resize, duplicate, delete and arrange supported objects                                                                                 |
-| F-03 | Layout tools                | Partial; MVP gate                                | Multi-select, numeric transforms, grid snapping, alignment and equal distribution work at different zoom levels                                                       |
-| F-04 | Text and shapes             | Partial; MVP gate                                | Unicode text and rectangle/ellipse/line objects render consistently; line shape remains work; modern Korean PDF/SVG text is supported                                 |
-| F-05 | Equation objects            | Implemented; MVP gate                            | Source remains editable after save/load; font choice and deck inheritance survive reopening                                                                           |
-| F-06 | Figure objects and crop     | Import implemented; crop Next                    | SVG/PNG/JPEG import, reversible normalized crop, aspect-ratio scaling, alt text and provenance                                                                        |
-| F-07 | PDF figure import           | Spike → Next                                     | Select a PDF page/region, retain supported vector scientific plots and identify any raster fallback                                                                   |
-| F-08 | History and recovery        | Partial; MVP gate                                | Editing commands undo/redo; completed revisions recover; failures caused by storage limits remain visible                                                             |
-| F-09 | Native save/load            | Implemented; MVP gate                            | Assets, video bytes, editable source, build records and page-number settings round-trip without original source files                                                 |
-| F-10 | Static PDF/SVG export       | Implemented subset; MVP gate                     | Final build state and current page numbers export; video remains an explicitly labeled static placeholder                                                             |
-| F-11 | Slideshow and media         | Implemented foundation; MVP gate                 | Click builds complete before next-slide navigation; presentation video controls work and playback stops on leaving the slide                                          |
-| F-12 | Notes and presenter display | Notes implemented; separate display Next         | Separate display shows notes/current/next slide/timer without exposing notes on the audience display                                                                  |
-| F-13 | Themes and masters          | Starter layouts implemented; linked masters Next | Deck typography, background, title layout, research-group logo and footer update consistently; deliberate per-slide overrides survive                                 |
-| F-14 | Click builds and animation  | Appear/fade foundation; advanced effects Next    | Persist order/effect; reverse navigation is deterministic; later exit/move/scale/delay/easing do not mutate source objects                                            |
-| F-15 | Object transitions          | Future                                           | Separate stable match keys enable unambiguous cross-slide position/scale/rotation/opacity interpolation                                                               |
-| F-16 | Scientific citations        | Next/Future                                      | BibTeX keys, figure provenance and formatted footnotes round-trip; generate a reference slide and diagnose unresolved entries                                         |
-| F-17 | Reproducible plots          | Future                                           | Store source/parameters/environment metadata and replace a generated asset without changing its layout                                                                |
-| F-18 | Embedded video              | Implemented foundation                           | Import bounded local MP4/WebM, validate media type/container, embed bytes and report unsupported decoding without losing the deck                                     |
-| F-19 | PPTX export                 | Future                                           | Document supported mappings and every fallback; retain equation source metadata where feasible                                                                        |
-| F-20 | Beamer/Typst export         | Future                                           | Export a documented subset and a report of unsupported content                                                                                                        |
-| F-21 | Collaboration               | Future                                           | Define ownership, synchronization, asset sharing and conflict behavior before implementation                                                                          |
-| F-22 | Desktop application         | Implemented prototype; release gate open         | Native menus/files, isolated renderer, signed packages and declared OS support pass distribution fixtures                                                             |
-| F-23 | Installed TeX equations     | Implemented Linux prototype                      | Explicit isolated compile/apply, portable outlines and preserved source/configuration; future OS adapters remain separate                                             |
-| F-24 | Slide page numbers          | Implemented foundation                           | Configurable deck numbering updates after insertion/reorder/deletion and matches player/PDF/SVG without duplicated text objects                                       |
-| F-25 | Grouping and smart guides   | Next                                             | Group/ungroup preserves geometry/stacking; snap to object edges/centers; equal distribution and undo work at multiple zoom levels                                     |
-| F-26 | Enlarged figure insets      | Next                                             | Inset links to an original asset and source region; region edits remain reversible and exporting retains supported vector detail                                      |
-| F-27 | Equation library/macros     | Next                                             | Reuse named equation entries and renderer-scoped shared macros/preambles; edits invalidate only affected results                                                      |
-| F-28 | Editable scientific charts  | Future                                           | CSV data, units and asymmetric error bars remain editable, validated and reproducible after reopening                                                                 |
-| F-29 | Installed AI CLI drafts     | Implemented v0.4.0 prototype                     | Detect compatible Codex/Claude/Gemini CLIs; explicit request, bounded context, schema validation, preview and insert/undo; cancellation and timeout preserve the deck |
+| ID   | Feature                     | Scope                                             | Acceptance criterion                                                                                                                                                     |
+| ---- | --------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| F-01 | Slide management            | Implemented; MVP gate                             | Add, duplicate, delete and reorder slides; order survives reopening                                                                                                      |
+| F-02 | Object editing              | Implemented; MVP gate                             | Insert, select, move, rotate, resize, duplicate, delete and arrange supported objects                                                                                    |
+| F-03 | Layout tools                | Guides/alignment implemented; distribution Next   | Multi-select, numeric transforms, separate grid snapping and automatic drag guides work at different zoom levels; equal distribution remains work                        |
+| F-04 | Text and shapes             | Implemented subset; MVP gate                      | Drag-drawn rectangles/ellipses/lines/arrows, editable endpoints, start/end heads, no-fill and stroke styles render consistently; modern Korean PDF/SVG text is supported |
+| F-05 | Equation objects            | Implemented; MVP gate                             | Source remains editable after save/load; font choice and deck inheritance survive reopening                                                                              |
+| F-06 | Figure objects and crop     | Import implemented; crop Next                     | SVG/PNG/JPEG import, reversible normalized crop, aspect-ratio scaling, alt text and provenance                                                                           |
+| F-07 | PDF figure import           | Spike → Next                                      | Select a PDF page/region, retain supported vector scientific plots and identify any raster fallback                                                                      |
+| F-08 | History and recovery        | Partial; MVP gate                                 | Editing commands undo/redo; completed revisions recover; failures caused by storage limits remain visible                                                                |
+| F-09 | Native save/load            | Implemented; MVP gate                             | Assets, video bytes, editable source, build records and page-number settings round-trip without original source files                                                    |
+| F-10 | Static PDF/SVG export       | Implemented subset; MVP gate                      | Final build state and current page numbers export; video remains an explicitly labeled static placeholder                                                                |
+| F-11 | Slideshow and media         | Implemented foundation; MVP gate                  | Click builds complete before next-slide navigation; presentation video controls work and playback stops on leaving the slide                                             |
+| F-12 | Notes and presenter display | Notes implemented; separate display Next          | Separate display shows notes/current/next slide/timer without exposing notes on the audience display                                                                     |
+| F-13 | Themes and masters          | Starter layouts implemented; linked masters Next  | Deck typography, background, title layout, research-group logo and footer update consistently; deliberate per-slide overrides survive                                    |
+| F-14 | Click builds and animation  | Appear/fade foundation; advanced effects Next     | Persist order/effect; reverse navigation is deterministic; later exit/move/scale/delay/easing do not mutate source objects                                               |
+| F-15 | Object transitions          | Future                                            | Separate stable match keys enable unambiguous cross-slide position/scale/rotation/opacity interpolation                                                                  |
+| F-16 | Scientific citations        | Next/Future                                       | BibTeX keys, figure provenance and formatted footnotes round-trip; generate a reference slide and diagnose unresolved entries                                            |
+| F-17 | Reproducible plots          | Future                                            | Store source/parameters/environment metadata and replace a generated asset without changing its layout                                                                   |
+| F-18 | Embedded video              | Implemented foundation                            | Import bounded local MP4/WebM, validate media type/container, embed bytes and report unsupported decoding without losing the deck                                        |
+| F-19 | PPTX export                 | Future                                            | Document supported mappings and every fallback; retain equation source metadata where feasible                                                                           |
+| F-20 | Beamer/Typst export         | Future                                            | Export a documented subset and a report of unsupported content                                                                                                           |
+| F-21 | Collaboration               | Future                                            | Define ownership, synchronization, asset sharing and conflict behavior before implementation                                                                             |
+| F-22 | Desktop application         | Implemented prototype; release gate open          | Native menus/files, isolated renderer, signed packages and declared OS support pass distribution fixtures                                                                |
+| F-23 | Installed TeX equations     | Implemented Linux prototype                       | Explicit isolated compile/apply, portable outlines and preserved source/configuration; future OS adapters remain separate                                                |
+| F-24 | Slide page numbers          | Implemented foundation                            | Configurable deck numbering updates after insertion/reorder/deletion and matches player/PDF/SVG without duplicated text objects                                          |
+| F-25 | Grouping and smart guides   | Flat groups/guides implemented; richer tools Next | Group/ungroup/duplicate preserves geometry/stacking with independent IDs; drag guides target object edges/centers; equal distribution/nested transforms remain work      |
+| F-26 | Enlarged figure insets      | Next                                              | Inset links to an original asset and source region; region edits remain reversible and exporting retains supported vector detail                                         |
+| F-27 | Equation library/macros     | Next                                              | Reuse named equation entries and renderer-scoped shared macros/preambles; edits invalidate only affected results                                                         |
+| F-28 | Editable scientific charts  | Future                                            | CSV data, units and asymmetric error bars remain editable, validated and reproducible after reopening                                                                    |
+| F-29 | Installed AI CLI drafts     | Implemented v0.4.0 prototype                      | Detect compatible Codex/Claude/Gemini CLIs; explicit request, bounded context, schema validation, preview and insert/undo; cancellation and timeout preserve the deck    |
 
 ### 5.2 Figure workflow
 
@@ -490,7 +493,7 @@ Acceptance: import a small valid MP4 and WebM, move/resize the video, save and r
 
 ### 5.8 Page numbers, themes and linked masters
 
-**Implemented foundation:** an optional `pageNumbers` deck record contains `enabled`, `position`, `format`, `startAt`, `hideFirst`, `fontSize` and `color`. Placement is bottom-left, bottom-center or bottom-right; formatting is a number or number/last-number pair. New decks enable bottom-right numbers starting at 1; older files retain unnumbered appearance unless the user enables numbers. Numbers derive from current order and are resolved by the shared scene, so adding, duplicating, deleting and reordering slides updates the editor, presentation and static exports. Hiding the first number preserves its place in the sequence rather than subtracting it from subsequent numbering. When numbering starts above 1, the denominator is the final displayed slide number. Numbering is separate from ordinary text objects; it must not create extra editable objects on every slide. Preserve settings in format 0.3.0, undo/redo settings changes, and keep numbers legible at the selected placement.
+**Implemented foundation:** an optional `pageNumbers` deck record contains `enabled`, `position`, `format`, `startAt`, `hideFirst`, `fontSize` and `color`. Placement is bottom-left, bottom-center or bottom-right; formatting is a number or number/last-number pair. New decks enable bottom-right numbers starting at 1; 0.1.0/0.2.0 files retain unnumbered appearance unless the user enables numbers, while 0.3.0 files preserve their settings. Numbers derive from current order and are resolved by the shared scene, so adding, duplicating, deleting and reordering slides updates the editor, presentation and static exports. Hiding the first number preserves its place in the sequence rather than subtracting it from subsequent numbering. When numbering starts above 1, the denominator is the final displayed slide number. Numbering is separate from ordinary text objects; it must not create extra editable objects on every slide. Preserve settings in format 0.4.0, undo/redo settings changes, and keep numbers legible at the selected placement.
 
 **Planned themes/masters:** define named masters with title/body styles, background, research-group logo and footer. Apply a master to selected slides or the whole deck, with explicit override/reset behavior. Section numbering, per-slide suppression beyond the first slide, custom footer tokens and custom number templates may extend the basic numbering settings later. Page numbers must not be copied into master assets as fixed text.
 
@@ -498,11 +501,17 @@ Acceptance: change deck numbering, reorder slides and export; all numbers and to
 
 ### 5.9 Grouping, smart guides and distribution
 
-**Planned:** group text, equations, shapes, figures and captions into one movable/resizable selection. Group transforms must preserve child geometry and stacking, avoid nonuniform equation distortion, and support nested groups only after cycle/reference validation is defined. Ungroup restores world coordinates. Copy/paste and duplication must remap child IDs; history treats grouping and group movement as single operations.
+**Implemented foundation in v0.5.0:** Shift+click selects objects for Group/Ungroup. Ctrl+G groups and Ctrl+Shift+G ungroups, with Cmd equivalents on macOS. A flat persistent group selects and translates its members together without changing individual size/rotation. Ungroup preserves current geometry and stacking; duplication remaps object IDs and group IDs so the duplicate remains independent. Ungroup before editing an individual member's size, rotation or line endpoints. Group membership survives save/open and undo/redo. Nested groups and collective group scaling/rotation remain future work and require explicit transform/reference rules.
 
-Add transient smart guides for edges, centers and equal spacing while dragging. Support horizontal/vertical distribution with an explicit policy for object sizes, plus keyboard/numeric equivalents. Current Shift+click multi-selection, alignment commands and grid snapping are useful foundations, but do not imply persistent grouping or automatic object-to-object guides already exist.
+Automatic transient guides align dragged objects or group bounds with another object's edges/centers. Alt bypasses guide snapping. The separate Snap to 20 px grid control takes precedence over object guides when enabled; guides never become saved content or appear in exports. Horizontal/vertical equal distribution and equal-spacing guides remain planned, with an explicit policy for different object sizes and locked/hidden objects.
 
-Acceptance: group a figure/caption/equation, move and rotate it, undo and ungroup; positions and layer order remain correct. Guides/distribution are consistent at several zoom levels, ignore locked or hidden objects according to a documented rule, and never become saved slide content.
+Acceptance for the delivered subset: group a figure/caption/equation, translate it, duplicate, undo and ungroup; member positions, group independence and layer order remain correct after save/reopen. Guides work across zoom levels and Alt bypasses them. Future collective transforms must preserve equation aspect ratios and pass separate acceptance fixtures.
+
+### 5.9.1 Scientific drawing
+
+**Implemented foundation in v0.5.0:** select Draw rectangle, Draw ellipse, Draw line or Draw arrow and drag to create a shape; Shift constrains squares/circles or line direction, and Escape cancels creation. Selected lines/arrows expose draggable endpoints. The Inspector supports solid/dashed/dotted strokes, stroke color/width, no-fill rectangle/ellipse outlines and arrowheads at either or both endpoints. These native shapes remain editable after reopening and render through the shared editor/player/PDF/SVG scene.
+
+Attached connectors that automatically follow object anchors, Bézier paths, freehand drawing and a path editor are future work. They require endpoint/anchor behavior for moving, resizing, duplicating and deleting attached objects; a static arrow does not imply an attached connector.
 
 ### 5.10 Equation library and shared macros
 
@@ -542,7 +551,7 @@ Codex uses read-only enforcement, disabled shell/image/web/MCP/hook integrations
 
 One job runs at a time with a three-minute deadline, bounded process output and prompt/context limits. Cancel, closing the dialog and app shutdown terminate the process tree and remove job files/authentication references. JSON, allowed fields and bounds are validated, and MathJax equations are pre-rendered and fitted before the draft is offered for insertion. Responses cannot execute instructions embedded in imported deck data.
 
-Users review the proposed slides and notes before insertion after the current slide. Existing content stays intact; normal undo restores the preceding deck. A changed document/source slide invalidates application of a stale draft. Generated objects are editable native text/MathJax objects with fresh identifiers; the format remains 0.3.0. Review scientific assertions and references, since the integration does not establish correctness or perform research.
+Users review the proposed slides and notes before insertion after the current slide. Existing content stays intact; normal undo restores the preceding deck. A changed document/source slide invalidates application of a stale draft. Generated objects are editable native text/MathJax objects with fresh identifiers in the current 0.4.0 document format. Review scientific assertions and references, since the integration does not establish correctness or perform research.
 
 Acceptance: cover missing/incompatible/unauthenticated CLIs; leading flags and file-reference text in prompts; shell/MCP/hook restrictions; native Windows launcher handling; malformed/oversized responses; mathematical errors and bounds; cancellation/timeout/process cleanup; late replies and changed source slides; insert/undo and save/reopen. Actual vendor-account generation and physical-platform UI coverage must be reported separately from mocked adapter tests. Later work may add model selection, conversational revisions, references/research with explicit data permissions, image generation and direct API profiles.
 
@@ -550,12 +559,12 @@ Acceptance: cover missing/incompatible/unauthenticated CLIs; leading flags and f
 
 The conversation suggested roughly 1 month for a prototype, 3 months for a scientific MVP, and 6 months for richer presentation features. These are provisional effort windows for each phase, not fixed delivery dates; staffing and feasibility results will determine a calendar.
 
-| Phase                                                                 | Deliverables                                                                                                                                                                      | Exit criteria                                                                                               |
-| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **0 — Prototype and decisions** (initial estimate: ~1 month)          | Delivered independent React editor, bundled fonts, vector export, native formats through 0.3.0, Electron/Linux local compile, page numbers, embedded video and basic click builds | Core choices recorded; publication/license and complete release review remain open                          |
-| **1 — Scientific MVP** (initial estimate: ~3 months after Phase 0)    | Harden delivered core and Korean PDF typography; asset storage, draft recovery, crop/insets, grouping/smart guides/distribution and representative scientific-deck fixtures       | Author/save/reopen/edit/present/export release gates pass on the declared support matrix                    |
-| **2 — Presentation workflow** (initial estimate: ~6 months after MVP) | Advanced animation, linked masters/themes, separate presenter display, equation library/macros, PDF import and distribution improvements                                          | Shared content matches editor/player/export; signed packages and selected OS adapters pass fixtures         |
-| **3 — Research integration** (unscheduled)                            | BibTeX/provenance/references; CSV scientific charts/error bars; reproducible plot tooling; PPTX/Beamer/Typst export; collaboration experiments                                    | Each feature has a documented capability subset, acceptance fixtures, and an approved architecture proposal |
+| Phase                                                                 | Deliverables                                                                                                                                                                                                     | Exit criteria                                                                                               |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **0 — Prototype and decisions** (initial estimate: ~1 month)          | Delivered independent React editor, bundled fonts, vector export, native format 0.4.0, Electron/Linux local compile, scientific drawing, flat groups/guides, page numbers, embedded video and basic click builds | Core choices recorded; publication/license and complete release review remain open                          |
+| **1 — Scientific MVP** (initial estimate: ~3 months after Phase 0)    | Harden delivered core and Korean PDF typography; asset storage, draft recovery, crop/insets, distribution/richer group transforms and representative scientific-deck fixtures                                    | Author/save/reopen/edit/present/export release gates pass on the declared support matrix                    |
+| **2 — Presentation workflow** (initial estimate: ~6 months after MVP) | Advanced animation, linked masters/themes, separate presenter display, equation library/macros, PDF import and distribution improvements                                                                         | Shared content matches editor/player/export; signed packages and selected OS adapters pass fixtures         |
+| **3 — Research integration** (unscheduled)                            | BibTeX/provenance/references; CSV scientific charts/error bars; reproducible plot tooling; PPTX/Beamer/Typst export; collaboration experiments                                                                   | Each feature has a documented capability subset, acceptance fixtures, and an approved architecture proposal |
 
 The Electron host and isolated Linux Local LaTeX backend are implemented in the v0.2.0 prototype. Remaining local-compiler work includes macOS/Windows isolation, explicitly authorized user package/font directories, broader installation detection and additional engine profiles. The roadmap does not commit to a Tauri migration. The initial effort estimates are historical planning figures, not promises or a measured completion timeline.
 
@@ -578,10 +587,10 @@ The working prototype supplies much of the core behavior, but these are full rel
 ### 6.2 Next implementation sequence
 
 1. Select the project license and document publication/contribution boundaries.
-2. Publish format 0.3.0 schema and 0.1.0/0.2.0 migration documentation with mixed-renderer, video, page-number and build fixtures.
+2. Publish format 0.4.0 schema and 0.1.0/0.2.0/0.3.0 migration documentation with drawing/group, mixed-renderer, video, page-number and build fixtures.
 3. Broaden body-font script coverage and review editor/player/export typography together; modern Korean support is implemented.
 4. Move assets/recovery to a bounded IndexedDB store and preserve equation drafts.
-5. Add reversible crop, enlarged insets, grouping, smart guides/equal distribution and the declared PDF page/region import subset.
+5. Add reversible crop, enlarged insets, equal distribution/richer group transforms and the declared PDF page/region import subset; add attached connectors/freehand drawing through separate geometry requirements.
 6. Validate desktop packaging, signing and OS support; implement additional local compiler isolation adapters separately.
 7. Extend click builds with an order panel and advanced effects; add linked themes/masters, equation library/shared macros and a synchronized presenter display.
 8. Add citations/BibTeX/figure provenance and editable CSV charts with units/error bars through documented capability subsets.
@@ -622,7 +631,7 @@ A future extraction into document/equation/renderer/platform packages should fol
 | ----------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | Base project      | Independent React/TypeScript implementation; no PPTist source reuse                      | Select project license and contribution rules                              |
 | State/model       | Typed model and immutable editor history                                                 | Extract reusable command/document boundaries when useful                   |
-| Native format     | Implemented ZIP/JSON/media/local renders, 0.3.0 with 0.1.0/0.2.0 migration               | Publish JSON Schema and unpacked Git workflow                              |
+| Native format     | Implemented ZIP/JSON/media/local renders, 0.4.0 with 0.1.0/0.2.0/0.3.0 migration         | Publish JSON Schema and unpacked Git workflow                              |
 | MathJax           | Fixed bundled font/package profiles and individual vector glyph fallback                 | Reduce loading cost and expand glyph fixtures                              |
 | Installed TeX     | Explicit Electron compile with Linux OS isolation and saved vectors                      | Home resource authorization, broader installations, macOS/Windows adapters |
 | PDF pipeline      | jsPDF/svg2pdf.js with shared geometry and resource preflight                             | Additional body-font scripts and broader supported effects                 |
@@ -645,6 +654,8 @@ pnpm desktop:package
 The desktop integration tests need installed TeX/conversion/isolation tools to exercise compilation. The Linux x64 packaged app has been launched from a relocated app directory and checked through Compile → Apply, draft preservation, typography invalidation, native save/new/open and vector PDF/SVG export. Host checks confirm sandbox/context isolation, secure custom-origin crypto/font access and scoped IPC. The worker enforces a deadline; current cancellation tests are not a dedicated deadline-expiry test. Windows x64 distribution checks verify PE machine type and SHA-256 hashes. The Windows workflow additionally checks installation/uninstallation in a temporary directory; physical Windows 10/11 editing, media playback, native saving and export remain release requirements. Three-OS signing/update verification remains open.
 
 End-to-end fixtures should continue to exercise the author → save → reopen → edit → present → export journey. New fixtures cover page-number resolution after reordering, old-format default migration, grouped click builds and reverse navigation, embedded-media round trips, decoder errors, playback cleanup and static export placeholders. State exact automation/runtime coverage; a passing unit test is not a claim of physical-device media or installer validation.
+
+For the v0.5.0 drawing/group changes, require fixtures for all drag directions, constrained drawing, line endpoint editing, solid/dashed/dotted strokes, both arrowheads, no-fill outlines, flat-group translation/independent duplication/ungroup/undo, alignment guides and Alt bypass at multiple zoom levels, 0.3.0→0.4.0 migration, save/reopen and vector PDF/SVG output. Record actual results separately; this requirement list is not a report of completed checks.
 
 Maintain visual fixtures for nested fractions, roots, integrals, aligned equations, matrices, bold symbols, scientific macros, mixed fonts, rotated/cropped plots, and Unicode text including Korean. Compare editor, slideshow, and exported output; inspect PDFs for retained vector paths in addition to rasterized visual comparisons.
 

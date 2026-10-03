@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, PointerEvent } from "react";
-import type { Deck, Slide, SlideObject, EquationObject } from "../lib/model";
+import type {
+  Deck,
+  Slide,
+  SlideObject,
+  EquationObject,
+  ShapeObject,
+} from "../lib/model";
 import { renderObjectEquation } from "../lib/equation-renderer";
 import type { RenderedEquation } from "../lib/equations";
 import { wrapText } from "../lib/layout";
 import { resolvePageNumber } from "../lib/model";
 import { isVisibleAtStep } from "../lib/presentation";
 import { VideoPlaceholder, VideoView } from "./VideoView";
+import { ShapeView } from "./ShapeView";
+import { isLineShape, lineEndpoints } from "../lib/shape-geometry";
 import {
   exportTextFontFamily,
   exportTextFontWeight,
@@ -102,6 +110,11 @@ export function SlideScene({
   onResize,
   onEdit,
   onBackground,
+  onEndpoint,
+  onDrawStart,
+  drawing = false,
+  guides = [],
+  draftShape,
   onMetrics,
   metrics = {},
   slideIndex = deck.slides.findIndex((candidate) => candidate.id === slide.id),
@@ -116,6 +129,15 @@ export function SlideScene({
   onResize?: (e: PointerEvent<SVGRectElement>, o: SlideObject) => void;
   onEdit?: (o: SlideObject) => void;
   onBackground?: () => void;
+  onEndpoint?: (
+    e: PointerEvent<SVGCircleElement>,
+    o: ShapeObject,
+    endpoint: "start" | "end",
+  ) => void;
+  onDrawStart?: (e: PointerEvent<SVGSVGElement>) => void;
+  drawing?: boolean;
+  guides?: Array<{ axis: "x" | "y"; position: number }>;
+  draftShape?: ShapeObject;
   onMetrics?: (id: string, w: number, h: number) => void;
   metrics?: Record<string, { width: number; height: number }>;
   slideIndex?: number;
@@ -174,11 +196,17 @@ export function SlideScene({
   );
   return (
     <svg
-      className="slide-scene"
+      className={drawing && !playback ? "slide-scene drawing" : "slide-scene"}
       viewBox={`0 0 ${deck.slideSize.width} ${deck.slideSize.height}`}
       xmlns="http://www.w3.org/2000/svg"
       role={playback ? "group" : "img"}
       aria-label={slide.title}
+      onPointerDownCapture={(e) => {
+        if (!drawing || playback) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onDrawStart?.(e);
+      }}
       onPointerDown={(e) => {
         if (e.target === e.currentTarget) onBackground?.();
       }}
@@ -196,6 +224,8 @@ export function SlideScene({
         .map((original) => {
           const o = preview[original.id] ?? original,
             t = o.transform;
+          const line = o.type === "shape" && isLineShape(o);
+          const editable = !o.locked && !o.groupId;
           const m =
               o.type === "equation"
                 ? (localMetrics[o.id] ?? metrics[o.id])
@@ -267,27 +297,7 @@ export function SlideScene({
                   ))}
                 </text>
               )}
-              {o.type === "shape" &&
-                (o.shape === "ellipse" ? (
-                  <ellipse
-                    cx={t.width / 2}
-                    cy={t.height / 2}
-                    rx={t.width / 2}
-                    ry={t.height / 2}
-                    fill={o.fill}
-                    stroke={o.stroke}
-                    strokeWidth={o.strokeWidth}
-                  />
-                ) : (
-                  <rect
-                    width={t.width}
-                    height={t.height}
-                    rx="12"
-                    fill={o.fill}
-                    stroke={o.stroke}
-                    strokeWidth={o.strokeWidth}
-                  />
-                ))}
+              {o.type === "shape" && <ShapeView object={o} />}
               {o.type === "figure" && (
                 <image
                   href={deck.assets.find((a) => a.id === o.assetId)?.dataUrl}
@@ -316,26 +326,78 @@ export function SlideScene({
                     <VideoPlaceholder object={o} missing={!asset} />
                   );
                 })()}
-              {onPointer && (
-                <rect
-                  width={w}
-                  height={h}
-                  fill="transparent"
-                  pointerEvents="all"
-                />
-              )}
-              {selected.includes(o.id) && (
-                <g className="selection">
+              {onPointer &&
+                (line && o.type === "shape" ? (
+                  <path
+                    data-line-hit="true"
+                    d={(() => {
+                      const { start, end } = lineEndpoints(o);
+                      return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
+                    })()}
+                    fill="none"
+                    stroke="transparent"
+                    strokeWidth={Math.max(16, o.strokeWidth)}
+                    pointerEvents="stroke"
+                  />
+                ) : (
                   <rect
                     width={w}
                     height={h}
-                    fill="none"
-                    stroke="#0f9f87"
-                    strokeWidth="2"
-                    vectorEffect="non-scaling-stroke"
-                    pointerEvents="none"
+                    fill="transparent"
+                    pointerEvents="all"
                   />
-                  {!(o.type === "equation" && o.renderer === "local-latex") &&
+                ))}
+              {!playback && selected.includes(o.id) && (
+                <g className="selection">
+                  {line && o.type === "shape" ? (
+                    <>
+                      <path
+                        d={(() => {
+                          const { start, end } = lineEndpoints(o);
+                          return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
+                        })()}
+                        fill="none"
+                        stroke="#0f9f87"
+                        strokeWidth="1"
+                        vectorEffect="non-scaling-stroke"
+                        pointerEvents="none"
+                      />
+                      {editable &&
+                        onEndpoint &&
+                        Object.entries(lineEndpoints(o)).map(([end, point]) => (
+                          <circle
+                            key={end}
+                            cx={point.x}
+                            cy={point.y}
+                            r="7"
+                            fill="white"
+                            stroke="#0f9f87"
+                            strokeWidth="2"
+                            vectorEffect="non-scaling-stroke"
+                            className="endpoint-handle"
+                            role="button"
+                            aria-label={`Move ${end} endpoint`}
+                            onPointerDown={(e) => {
+                              e.stopPropagation();
+                              onEndpoint(e, o, end as "start" | "end");
+                            }}
+                          />
+                        ))}
+                    </>
+                  ) : (
+                    <rect
+                      width={w}
+                      height={h}
+                      fill="none"
+                      stroke="#0f9f87"
+                      strokeWidth="2"
+                      vectorEffect="non-scaling-stroke"
+                      pointerEvents="none"
+                    />
+                  )}
+                  {!line &&
+                    editable &&
+                    !(o.type === "equation" && o.renderer === "local-latex") &&
                     [
                       [0, 0],
                       [w, 0],
@@ -364,6 +426,35 @@ export function SlideScene({
             </g>
           );
         })}
+      {!playback && draftShape && (
+        <g
+          data-drawing-preview="true"
+          pointerEvents="none"
+          opacity={draftShape.opacity}
+          transform={`translate(${draftShape.transform.x} ${draftShape.transform.y}) rotate(${draftShape.transform.rotation} ${draftShape.transform.width / 2} ${draftShape.transform.height / 2})`}
+        >
+          <ShapeView object={draftShape} />
+        </g>
+      )}
+      {!playback && guides.length > 0 && (
+        <g data-alignment-guides="true" pointerEvents="none">
+          {guides.map(({ axis, position }, index) => (
+            <path
+              key={`${axis}:${position}:${index}`}
+              d={
+                axis === "x"
+                  ? `M ${position} 0 V ${deck.slideSize.height}`
+                  : `M 0 ${position} H ${deck.slideSize.width}`
+              }
+              fill="none"
+              stroke="#c026d3"
+              strokeWidth="1"
+              strokeDasharray="5 4"
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+        </g>
+      )}
       {pageNumber && (
         <text
           className="slide-page-number"

@@ -2,7 +2,7 @@
 
 A scientific presentation editor with editable equations, vector output, and an Electron desktop host.
 
-**v0.4.1 is a working prototype.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux systems. The included three-slide cosmology deck uses synthetic demonstration data. The current version also connects compatible installed AI CLIs to generate editable slide drafts. Deck-wide page numbers, embedded video, and ordered click-triggered builds remain available.
+**v0.5.0 is a working prototype.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux systems. Draw rectangles, ellipses, lines and arrows, edit line endpoints, and move persistent groups with automatic alignment guides. The included three-slide cosmology deck uses synthetic demonstration data. Compatible installed AI CLIs generate editable slide drafts. Deck-wide page numbers, embedded video, and ordered click-triggered builds remain available.
 
 ## Getting Started
 
@@ -47,7 +47,7 @@ pnpm desktop:package:mac
 pnpm desktop:package:mac --arch=arm64
 ```
 
-The default output paths are `release/SciSlide-0.4.1-macos-arm64-unsigned.pkg` and `release/SciSlide-0.4.1-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
+The default output paths are `release/SciSlide-0.5.0-macos-arm64-unsigned.pkg` and `release/SciSlide-0.5.0-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
 
 The default `.pkg` implementation uses [Electron's official pure JavaScript packaging](https://packages.electronjs.org/osx-sign/v2.6.0/index.html#pure-javascript-packaging), so it also works on Linux. On macOS with Xcode Command Line Tools, use `pnpm desktop:package:mac --implementation=native` to package with Apple's `pkgbuild` and `productbuild`. **Both methods produce development installers without Developer ID signing or notarization.** macOS security policies may block installation or launch. The packaging process does not change system security settings.
 
@@ -61,7 +61,7 @@ pnpm desktop:package:win
 pnpm desktop:package:win --portable-only
 ```
 
-This command always targets **Intel/AMD x64**, regardless of the build host. It creates `release/SciSlide-0.4.1-windows-x64-setup-unsigned.exe` and `release/SciSlide-0.4.1-windows-x64-portable.zip`, with SHA-256 checksum files. The installer uses an x64 bootstrap executable, installs for the current user under `%LOCALAPPDATA%\Programs\SciSlide`, and adds a Start menu shortcut. The portable ZIP contains the complete app folder; extract it and launch `SciSlide-win32-x64/scislide.exe`. No Node.js or TeX installation is needed to run MathJax editing.
+This command always targets **Intel/AMD x64**, regardless of the build host. It creates `release/SciSlide-0.5.0-windows-x64-setup-unsigned.exe` and `release/SciSlide-0.5.0-windows-x64-portable.zip`, with SHA-256 checksum files. The installer uses an x64 bootstrap executable, installs for the current user under `%LOCALAPPDATA%\Programs\SciSlide`, and adds a Start menu shortcut. The portable ZIP contains the complete app folder; extract it and launch `SciSlide-win32-x64/scislide.exe`. No Node.js or TeX installation is needed to run MathJax editing.
 
 See the [Windows installation and build guide](desktop/WINDOWS.md) for compiler selection, checksums and platform limits. The **Windows x64 development distributions** Actions workflow builds on a Windows x64 runner, verifies the executable architectures and hashes, and checks installation/uninstallation in a temporary directory. Its versioned downloadable artifacts contain both distributions and are retained for 30 days. Windows 10 or later is required; physical Windows 10/11 editing and export validation remains open. Local LaTeX compilation is currently disabled on Windows.
 
@@ -78,6 +78,16 @@ See the [Windows installation and build guide](desktop/WINDOWS.md) for compiler 
 
 The desktop menu provides New Presentation, Open, Save, Save As, undo/redo, presentation mode, and PDF export. A successful save notification appears after the native file write completes. The web version distinguishes starting a download from completing a save to disk.
 
+## Drawing and Groups
+
+Choose **Draw rectangle**, **Draw ellipse**, **Draw line** or **Draw arrow**, then drag across the canvas to draw. Hold **Shift** to constrain a rectangle/ellipse to a square/circle or constrain a line/arrow direction. **Escape** cancels drawing. Select a line or arrow and drag either endpoint to change its direction and length.
+
+The shape Inspector controls stroke color, width and **Solid / Dashed / Dotted** style. Rectangles and ellipses support **No fill** for outlining a region of a scientific figure. Arrowheads can appear at the start, end or both ends of a line, including bidirectional arrows. These shapes remain editable objects and export as vectors in PDF and SVG.
+
+Use **Shift+click** to select several objects, then **Group objects** to keep them together. **Ctrl+G** groups and **Ctrl+Shift+G** ungroups; on macOS use **Cmd** instead of Ctrl. Clicking a grouped member selects the group, and dragging moves its members together. Duplicate creates an independent group; **Ungroup objects** leaves each object's current position intact. Ungroup before resizing, rotating or editing the endpoints of an individual member. Group membership survives save/open and undo/redo. Groups are flat: nested groups and whole-group scaling or rotation are not available yet.
+
+Automatic alignment guides appear while dragging near another object's edges or center. Hold **Alt** to bypass the guides. **Snap to 20 px grid** separately enables grid snapping, which takes precedence over object guides. Guide lines are editor aids and are not saved or exported. Equal distribution, connectors that track attached shapes, freehand paths and a path editor remain future work.
+
 ## AI Slide Drafts
 
 Open **AI draft** in the Electron desktop app, choose an installed **Codex CLI / Claude Code / Gemini CLI**, enter your topic and choose 1–12 slides. Install and sign in to the CLI in your terminal first. **Refresh AI connections** checks its version and required controls; finding an executable does not prove its account is authenticated. Unsupported CLI versions show a reason. A desktop chatbot app alone is not a CLI connection.
@@ -90,7 +100,7 @@ Review the generated slides and notes, then click **Insert draft slides** to add
 
 The host uses fixed provider commands and passes requests through stdin in a private temporary workspace. Codex runs with read-only enforcement and restricted agent integrations; compatible Claude/Gemini modes disable content-generation tools. Gemini reuses existing authentication through private temporary links to known vendor authentication files, or its normal keychain/environment authentication; those links are removed at job completion. User customizations and organization policies can make a connection unavailable. Requests time out after three minutes, output is bounded, and Cancel or closing the dialog terminates the job. Only one generation runs at a time.
 
-The web editor shows the desktop requirement and does not launch local programs. Image generation, file/repository access, web research, full-deck replacement, streaming chat and direct API-key setup are later features. Native `.scislide` documents keep format version **0.3.0**.
+The web editor shows the desktop requirement and does not launch local programs. Image generation, file/repository access, web research, full-deck replacement, streaming chat and direct API-key setup are later features. Native `.scislide` documents use format version **0.4.0**.
 
 ## Korean Text Export
 
@@ -184,7 +194,7 @@ The local worker uses only read-only system TeX and font paths and a temporary w
 
 ## Source Files and Portable Equation Results
 
-New `.scislide` files use **`0.3.0`** as their `formatVersion`. The app reads `0.1.0` and `0.2.0` files, migrates old equations where needed, and saves 0.3.0 on the next save. Older files open with page numbering disabled and no click builds. Opening an existing file does not modify it. Older SciSlide versions may not read the new format.
+New `.scislide` files use **`0.4.0`** as their `formatVersion`, including line/arrow geometry, stroke styles and persistent group membership. The app reads `0.1.0`, `0.2.0` and `0.3.0` files, migrates older data, and writes 0.4.0 on the next save. Version 0.1.0/0.2.0 files receive disabled page numbering and no click builds; 0.3.0 files retain their existing settings. Opening an existing file does not modify it. **SciSlide versions that only support format 0.3.0 or earlier cannot read new 0.4.0 files.** Use Save As to keep an older original if you need it; exporting PDF/SVG provides viewable output, not a downgrade of the editable source.
 
 ```text
 presentation.scislide
@@ -200,11 +210,12 @@ Local LaTeX equations retain their source, preamble, engine, result SVG and dime
 
 - Installed AI CLI discovery, bounded draft generation, slide preview/insertion, cancellation and undo.
 - Four Scientific slide templates and a blank slide; slide creation, duplication, deletion, reordering, titles, backgrounds, and speaker notes.
-- Text, equations, SVG/PNG/JPEG figures, embedded MP4/WebM videos, rectangles, and ellipses.
+- Text, equations, SVG/PNG/JPEG figures, embedded MP4/WebM videos, and drag-drawn rectangles, ellipses, lines and arrows.
+- Editable line endpoints, start/end/bidirectional arrowheads, solid/dashed/dotted strokes and unfilled shape outlines.
 - Deck-wide dynamic page numbers in the editor, slideshow, PDF and SVG.
 - Ordered click-triggered appear/fade builds; editor/thumbnails/static exports show the complete layout.
 - Moving, resizing, rotation, opacity, locking, duplication, and layer ordering.
-- Shift+click multi-selection, alignment, snapping to a 20 px grid, and keyboard movement.
+- Shift+click multi-selection, flat persistent groups, alignment, automatic drag guides, separate 20 px grid snapping, and keyboard movement.
 - Undo/redo and automatic recovery through localStorage in the current editing environment.
 - ZIP-based source file saving and loading, with checksum validation for assets and equation results.
 - MathJax 4.1.3, three equation fonts, and 17 package entries with examples.
@@ -214,7 +225,7 @@ Local LaTeX equations retain their source, preamble, engine, result SVG and dime
 ## Current Limitations
 
 - Modern Korean text is supported in the editor, PDF and SVG through bundled **Nanum Gothic Regular/Bold**. No system font installation or remote font request is needed. Text objects containing Korean use Nanum Gothic; Latin-only objects retain Inter. Korean weights 400/500 use Regular and 600/700 use Bold. Decomposed modern Hangul is normalized to NFC for display/export while the editable source is preserved. PDF text remains selectable, and SVG embeds the required font and its license. Unsupported glyphs, including Hanja and standalone old/combining Jamo, still stop PDF export with a clear error; use native equations for mathematical symbols unavailable in the text font. Local LaTeX equation outlines do not extend body-text font coverage.
-- Figure cropping/PDF region import/insets, persistent groups, smart guides/equal distribution, linked masters, a separate presenter display, equation libraries/shared macros, citations, editable charts, collaboration and PPTX/Beamer conversion are planned. Basic appear/fade click builds are available; advanced motion, exit effects, timing chains, equation-term highlighting and a timeline are not yet available.
+- Figure cropping/PDF region import/insets, equal distribution, linked masters, a separate presenter display, equation libraries/shared macros, citations, editable charts, collaboration and PPTX/Beamer conversion are planned. Group nesting/scaling/rotation, attached connectors, freehand paths and a path editor are also future work. Basic appear/fade click builds are available; advanced motion, exit effects, timing chains, equation-term highlighting and a timeline are not yet available.
 - Local LaTeX is an initial implementation targeting system installations on Linux. Arbitrary complete documents, home package folders, every TeX distribution path, and every package combination are not guaranteed to work.
 - External references and active content in SVG figures are unsupported. PDF export does not support filters, masks, textPath, or some complex SVG effects. These produce an error before export.
 - Automatic recovery uses separate localStorage in the web and Electron environments. Recovery data is not shared automatically, and large figures and embedded videos may exceed storage limits. Save a source file. Recovery of unapplied equation drafts is not guaranteed.
@@ -258,6 +269,6 @@ Electron runtime validation covered sandboxing and context isolation, blocked No
 
 ## Future Development and Licensing
 
-Priorities include bounded asset/draft recovery, figure crop/PDF region import/enlarged insets, grouping/smart guides/equal distribution, themes/masters, equation libraries/shared macros, a separate presenter display, citations/BibTeX and CSV charts with units/error bars. Advanced animation, split font loading and desktop distribution validation remain separate follow-up work. Local TeX isolation on macOS and Windows, along with access to explicitly selected user package folders, requires separate implementation. See the [project specification](SciSlide-Project-Specification.md) for the detailed design and follow-up requirements.
+Priorities include bounded asset/draft recovery, figure crop/PDF region import/enlarged insets, equal distribution and richer group transforms, themes/masters, equation libraries/shared macros, a separate presenter display, citations/BibTeX and CSV charts with units/error bars. Attached connectors, freehand paths, advanced animation, split font loading and desktop distribution validation remain follow-up work. Local TeX isolation on macOS and Windows, along with access to explicitly selected user package folders, requires separate implementation. See the [project specification](SciSlide-Project-Specification.md) for the detailed design and follow-up requirements.
 
 This prototype does not reuse PPTist code. **A project license for the new SciSlide source has not yet been selected.** The license and contribution rules must be finalized before a public release. Bundled dependencies, fonts, and the Electron runtime retain their respective licenses; notices are kept in `third-party-licenses/` and the packaged runtime.

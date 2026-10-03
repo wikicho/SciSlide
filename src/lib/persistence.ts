@@ -77,7 +77,7 @@ interface Resource {
 }
 
 interface Manifest {
-  formatVersion: "0.1.0" | "0.2.0" | "0.3.0";
+  formatVersion: "0.1.0" | "0.2.0" | "0.3.0" | "0.4.0";
   document: "document.json";
   producer: { name: string; version: string };
   renderingProfiles: typeof RENDER_PROFILES;
@@ -747,9 +747,9 @@ export async function buildDeckArchive(input: Deck): Promise<Blob> {
     sha256: await sha256(documentBytes),
   });
   const manifest: Manifest = {
-    formatVersion: "0.3.0",
+    formatVersion: "0.4.0",
     document: "document.json",
-    producer: { name: "SciSlide", version: "0.3.0" },
+    producer: { name: "SciSlide", version: "0.5.0" },
     renderingProfiles: RENDER_PROFILES,
     resources,
   };
@@ -813,7 +813,9 @@ export async function readDeckArchive(file: Blob): Promise<Deck> {
     throw new Error("The SciSlide manifest is invalid.");
   const manifest = candidate as Partial<Manifest>;
   if (
-    !["0.1.0", "0.2.0", "0.3.0"].includes(manifest.formatVersion as string) ||
+    !["0.1.0", "0.2.0", "0.3.0", "0.4.0"].includes(
+      manifest.formatVersion as string,
+    ) ||
     manifest.document !== "document.json" ||
     !Array.isArray(manifest.resources) ||
     manifest.resources.length > 10_501

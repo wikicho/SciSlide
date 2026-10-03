@@ -41,6 +41,8 @@ export interface BaseSlideObject {
   opacity: number;
   visible: boolean;
   locked: boolean;
+  /** Flat groups are local to one slide; all members move as a single unit. */
+  groupId?: string;
   metadata: Record<string, unknown>;
   build?: ObjectBuild;
 }
@@ -89,10 +91,18 @@ export interface VideoObject extends BaseSlideObject {
 
 export interface ShapeObject extends BaseSlideObject {
   type: "shape";
-  shape: "rect" | "ellipse";
+  shape: "rect" | "ellipse" | "line" | "arrow";
   fill: string;
   stroke: string;
   strokeWidth: number;
+  strokeStyle?: "solid" | "dashed" | "dotted";
+  /** Endpoints relative to the object's unrotated frame, between zero and one. */
+  line?: {
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+  };
+  startArrow?: boolean;
+  endArrow?: boolean;
 }
 
 export type SlideObject =
@@ -117,7 +127,7 @@ export interface Asset {
 }
 
 export interface Deck {
-  formatVersion: "0.3.0";
+  formatVersion: "0.4.0";
   id: string;
   title: string;
   slideSize: { width: number; height: number; unit: "px96" };
@@ -304,11 +314,14 @@ function uniqueId(value: unknown, at: string, identifiers: Set<string>): void {
 /** Validate before a loaded document can replace the current deck. Unknown metadata is retained. */
 export function validateDeck(value: unknown): Deck {
   const deck = record(value, "Document");
-  if (!["0.1.0", "0.2.0", "0.3.0"].includes(deck.formatVersion as string))
+  if (
+    !["0.1.0", "0.2.0", "0.3.0", "0.4.0"].includes(deck.formatVersion as string)
+  )
     throw new Error(
-      `Unsupported SciSlide format: ${String(deck.formatVersion)}. This build reads 0.1.0, 0.2.0 and 0.3.0.`,
+      `Unsupported SciSlide format: ${String(deck.formatVersion)}. This build reads 0.1.0, 0.2.0, 0.3.0 and 0.4.0.`,
     );
   const identifiers = new Set<string>();
+  const groupOwners = new Map<string, string>();
   uniqueId(deck.id, "Document ID", identifiers);
   string(deck.title, "Document title");
   const size = record(deck.slideSize, "Slide size");
@@ -408,6 +421,13 @@ export function validateDeck(value: unknown): Deck {
       number(object.opacity, "Object opacity", 0, 1);
       boolean(object.visible, "Object visibility");
       boolean(object.locked, "Object lock");
+      if (object.groupId !== undefined) {
+        id(object.groupId, "Group ID");
+        const owner = groupOwners.get(object.groupId);
+        if (owner && owner !== slide.id)
+          throw new Error("A group cannot span multiple slides.");
+        groupOwners.set(object.groupId, slide.id as string);
+      }
       record(object.metadata, "Object metadata");
       if (object.build !== undefined) {
         const build = record(object.build, "Object build");
@@ -539,27 +559,62 @@ export function validateDeck(value: unknown): Deck {
           boolean(object.controls, "Video controls");
           break;
         case "shape":
-          if (!["rect", "ellipse"].includes(object.shape as string))
+          if (
+            !["rect", "ellipse", "line", "arrow"].includes(
+              object.shape as string,
+            )
+          )
             throw new Error("Unsupported shape.");
           color(object.fill, "Shape fill");
           color(object.stroke, "Shape stroke");
           number(object.strokeWidth, "Shape stroke width", 0, 1000);
+          if (
+            object.strokeStyle !== undefined &&
+            !["solid", "dashed", "dotted"].includes(
+              object.strokeStyle as string,
+            )
+          )
+            throw new Error("Unsupported shape stroke style.");
+          if (object.startArrow !== undefined)
+            boolean(object.startArrow, "Start arrow");
+          if (object.endArrow !== undefined)
+            boolean(object.endArrow, "End arrow");
+          if (object.line !== undefined) {
+            if (!["line", "arrow"].includes(object.shape as string))
+              throw new Error("Only lines and arrows can have line endpoints.");
+            const line = record(object.line, "Line endpoints");
+            for (const endpoint of ["start", "end"]) {
+              const point = record(line[endpoint], `Line ${endpoint}`);
+              number(point.x, `Line ${endpoint} x`, 0, 1);
+              number(point.y, `Line ${endpoint} y`, 0, 1);
+            }
+          }
           break;
         default:
           throw new Error(`Unsupported slide object: ${String(object.type)}.`);
       }
     });
   });
+  for (const groupId of groupOwners.keys())
+    if (identifiers.has(groupId))
+      throw new Error(`Group ID duplicates the identifier “${groupId}”.`);
   const snapshot = JSON.parse(
-    JSON.stringify({ ...deck, formatVersion: "0.3.0" }),
+    JSON.stringify({ ...deck, formatVersion: "0.4.0" }),
   ) as Deck;
-  for (const slide of snapshot.slides)
+  for (const slide of snapshot.slides) {
+    const groups = new Map<string, number>();
+    for (const object of slide.objects)
+      if (object.groupId)
+        groups.set(object.groupId, (groups.get(object.groupId) ?? 0) + 1);
     for (const object of slide.objects) {
+      if (object.groupId && groups.get(object.groupId) === 1)
+        delete object.groupId;
       if (object.type === "equation" && object.localTex?.render)
         object.localTex.render.svg = sanitizeLocalEquationSvg(
           object.localTex.render.svg,
         );
     }
+  }
   return snapshot;
 }
 
@@ -1002,7 +1057,7 @@ export function createDemoDeck(): Deck {
     ],
   };
   return {
-    formatVersion: "0.3.0",
+    formatVersion: "0.4.0",
     pageNumbers: { ...DEFAULT_PAGE_NUMBERS },
     id: newId(),
     title: "Signals from the early Universe",

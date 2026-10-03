@@ -4,6 +4,7 @@ import type { AnySlideObject, Asset, Deck, Slide } from "./model";
 import { renderObjectEquation } from "./equation-renderer";
 import { wrapText } from "./layout";
 import { resolvePageNumber } from "./model";
+import { shapeGeometry } from "./shape-geometry";
 import koreanFontLicense from "../../third-party-licenses/nanum-gothic/OFL.txt?raw";
 import {
   fontDefinitions,
@@ -256,22 +257,8 @@ async function objectSvg(
     );
     group.append(text);
   } else if (object.type === "shape") {
-    const attributes = {
-      fill: object.fill,
-      stroke: object.stroke,
-      "stroke-width": object.strokeWidth,
-    };
-    group.append(
-      object.shape === "ellipse"
-        ? svgElement("ellipse", {
-            ...attributes,
-            cx: width / 2,
-            cy: height / 2,
-            rx: width / 2,
-            ry: height / 2,
-          })
-        : svgElement("rect", { ...attributes, width, height, rx: 12 }),
-    );
+    for (const primitive of shapeGeometry(object))
+      group.append(svgElement(primitive.tag, primitive.attributes));
   } else if (object.type === "equation") {
     let equation;
     try {

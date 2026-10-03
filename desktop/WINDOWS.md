@@ -1,18 +1,24 @@
-# SciSlide 0.4.1 — Windows x64
+# SciSlide 0.5.0 — Windows x64
 
 This development build contains the **x64 (Intel/AMD 64-bit)** SciSlide app for Windows 10 or later. Windows 11 x64 is the intended desktop target. Node.js, a development server and TeX are not required for MathJax editing. Physical Windows 10/11 desktop validation is still a release requirement.
 
 ## Install or run the portable app
 
-Run `SciSlide-0.4.1-windows-x64-setup-unsigned.exe` to install for your current user. The default destination is `%LOCALAPPDATA%\Programs\SciSlide`, with a Start menu shortcut. Administrator privileges are not requested. Quit SciSlide before installing an update. Remove it through Windows' installed-app settings. Uninstallation does not remove presentations you saved elsewhere or the app's user-data folder.
+Run `SciSlide-0.5.0-windows-x64-setup-unsigned.exe` to install for your current user. The default destination is `%LOCALAPPDATA%\Programs\SciSlide`, with a Start menu shortcut. Administrator privileges are not requested. Quit SciSlide before installing an update. Remove it through Windows' installed-app settings. Uninstallation does not remove presentations you saved elsewhere or the app's user-data folder.
 
-Alternatively, extract **all** of `SciSlide-0.4.1-windows-x64-portable.zip`, then open `SciSlide-win32-x64\scislide.exe`. Keep the runtime files, DLLs and `resources` directory together. The portable edition runs without installation, but still uses Electron's ordinary per-user app-data directory; recovery data is not stored beside the executable.
+Alternatively, extract **all** of `SciSlide-0.5.0-windows-x64-portable.zip`, then open `SciSlide-win32-x64\scislide.exe`. Keep the runtime files, DLLs and `resources` directory together. The portable edition runs without installation, but still uses Electron's ordinary per-user app-data directory; recovery data is not stored beside the executable.
 
 Both distributions are **unsigned development builds**. Windows security policies may block installation or launch. Code signing and publisher reputation are later release work; these builds do not change system security settings. The application binary is x64, and the installer uses an x64 bootstrap executable. A separate native ARM64 or 32-bit Windows edition is not provided.
 
 ## Use the editor
 
 **New slide** or the slide list's **+** opens the Scientific template picker. Research title, Key findings, Equation + meaning, Figure comparison and Blank create editable slide objects. **Open / Save / Save As** use native file dialogs; **Export** saves the whole presentation as PDF or the current slide as SVG. Keyboard shortcuts use Ctrl on Windows.
+
+Choose **Draw rectangle**, **Draw ellipse**, **Draw line** or **Draw arrow**, then drag on the canvas. Shift constrains squares/circles or line direction; Escape cancels drawing. Selected lines/arrows have editable endpoint handles. The Inspector provides solid/dashed/dotted strokes, stroke width/color, no-fill outlines and arrowheads at the start, end or both ends. Shapes export as vectors in PDF/SVG.
+
+Shift+click selects objects for **Group objects / Ungroup objects**; Ctrl+G groups and Ctrl+Shift+G ungroups. Flat groups move together and duplicate independently, with membership preserved by save/open and undo/redo. Ungroup before resizing, rotating or editing an individual member's endpoints. Automatic alignment guides appear while dragging; Alt bypasses them. **Snap to 20 px grid** enables grid snapping with precedence over object guides. Nested groups, collective group scaling/rotation, equal distribution, attached connectors and freehand paths remain planned.
+
+New saves use native format **0.4.0**. Versions 0.1.0/0.2.0/0.3.0 are migrated on opening; the original is untouched until Save. Apps that support only 0.3.0 or earlier cannot read new 0.4.0 files. Use Save As to preserve an older original when needed; PDF/SVG does not downgrade editable source.
 
 MathJax, AMS notation and the bundled STIX Two, Fira Math and Latin Modern equation fonts work without a TeX installation. **Local LaTeX compilation is currently disabled on Windows**, even when MiKTeX or TeX Live is installed, until the Windows compiler isolation worker is implemented. Valid vector results already saved in a `.scislide` document can be viewed, presented and exported without TeX.
 
@@ -23,8 +29,8 @@ Bundled editable examples are in the app's `examples` folder. Copy one to your d
 Each distribution has a matching `.sha256` file. In PowerShell, compare its recorded hash with the result of:
 
 ```powershell
-Get-FileHash .\SciSlide-0.4.1-windows-x64-setup-unsigned.exe -Algorithm SHA256
-Get-Content .\SciSlide-0.4.1-windows-x64-setup-unsigned.exe.sha256
+Get-FileHash .\SciSlide-0.5.0-windows-x64-setup-unsigned.exe -Algorithm SHA256
+Get-Content .\SciSlide-0.5.0-windows-x64-setup-unsigned.exe.sha256
 ```
 
 Use the portable ZIP's filename to verify that distribution. A matching checksum detects file changes; it does not certify a publisher or replace code signing.

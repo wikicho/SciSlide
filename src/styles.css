@@ -241,6 +241,27 @@ button .lucide {
   border-bottom: 1px solid var(--line);
   gap: 6px;
   flex-shrink: 0;
+  overflow-x: auto;
+}
+.toolbar > * {
+  flex-shrink: 0;
+}
+.drawing-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 12px;
+  color: #617185;
+  font-size: 12px;
+}
+.drawing-checkbox input {
+  accent-color: var(--teal);
+}
+.endpoint-handle {
+  cursor: crosshair;
+}
+.slide-scene.drawing {
+  cursor: crosshair;
 }
 .toolbar-group {
   display: flex;
