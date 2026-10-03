@@ -749,7 +749,7 @@ export async function buildDeckArchive(input: Deck): Promise<Blob> {
   const manifest: Manifest = {
     formatVersion: "0.4.0",
     document: "document.json",
-    producer: { name: "SciSlide", version: "0.5.1" },
+    producer: { name: "SciSlide", version: "0.5.2" },
     renderingProfiles: RENDER_PROFILES,
     resources,
   };

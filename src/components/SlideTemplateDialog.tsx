@@ -69,11 +69,14 @@ export function SlideTemplateDialog({
       >
         <header>
           <div>
-            <span className="library-eyebrow">SCIENTIFIC TEMPLATE</span>
-            <h2 id="template-dialog-title">Start with a slide layout.</h2>
+            <div className="template-heading-meta">
+              <span className="library-eyebrow">SCIENTIFIC STARTERS</span>
+              <span className="template-count">{layouts.length} layouts</span>
+            </div>
+            <h2 id="template-dialog-title">Choose a slide layout.</h2>
             <p id="template-dialog-description">
-              발표에 맞는 레이아웃을 선택하세요. 모든 텍스트와 수식을 직접
-              편집할 수 있습니다.
+              From your opening question to your next steps. All objects are
+              editable.
             </p>
           </div>
           <button
@@ -106,7 +109,7 @@ export function SlideTemplateDialog({
           ))}
         </div>
         <footer>
-          <span>선택한 슬라이드 다음에 추가됩니다.</span>
+          <span>Inserted after the current slide.</span>
           <button className="button light" onClick={() => onChoose("blank")}>
             <FilePlus2 size={15} /> Blank slide
           </button>

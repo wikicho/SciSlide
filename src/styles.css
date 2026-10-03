@@ -1615,7 +1615,9 @@ button .lucide {
 .template-dialog {
   width: min(850px, calc(100vw - 40px));
   max-height: calc(100dvh - 40px);
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -1860,10 +1862,25 @@ button .lucide {
 }
 .template-dialog > header {
   display: flex;
+  flex-shrink: 0;
   align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
   padding: 25px 28px 20px;
+}
+.template-heading-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.template-count {
+  border: 1px solid #dbe9e5;
+  border-radius: 20px;
+  padding: 3px 8px;
+  font-size: 10px;
+  color: #3e8579;
+  background: #f0f6f5;
 }
 .template-dialog h2 {
   margin: 7px 0 8px;
@@ -1881,8 +1898,14 @@ button .lucide {
 .template-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: max-content;
+  align-content: start;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   gap: 17px;
-  padding: 0 28px 25px;
+  padding: 4px 28px 25px;
 }
 .template-card {
   min-width: 0;
@@ -1936,6 +1959,7 @@ button .lucide {
 }
 .template-dialog > footer {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -1956,9 +1980,23 @@ button .lucide {
   }
   .template-grid {
     grid-template-columns: 1fr;
-    padding: 0 20px 20px;
+    padding: 4px 20px 20px;
   }
   .template-dialog h2 {
     font-size: 21px;
+  }
+}
+@media (max-height: 480px) {
+  .template-dialog > header {
+    padding-top: 14px;
+    padding-bottom: 12px;
+  }
+  .template-dialog h2 {
+    margin: 5px 0;
+    font-size: 21px;
+  }
+  .template-dialog > footer {
+    padding-top: 10px;
+    padding-bottom: 10px;
   }
 }
