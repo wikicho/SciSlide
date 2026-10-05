@@ -110,6 +110,8 @@ describe("PDF and SVG figure import in the editor", () => {
   let saved: Deck | undefined;
 
   beforeEach(() => {
+    // Keep shortcut labels deterministic across CI operating systems.
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("Linux x86_64");
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     vi.stubGlobal(

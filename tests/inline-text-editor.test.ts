@@ -71,6 +71,8 @@ describe("editing text directly on the slide", () => {
   let packaged: Deck | undefined;
 
   beforeEach(() => {
+    // Keep shortcut labels deterministic across CI operating systems.
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("Linux x86_64");
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     vi.stubGlobal(

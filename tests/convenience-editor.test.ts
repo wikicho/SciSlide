@@ -55,6 +55,8 @@ describe("editor convenience flows", () => {
   let saved: Deck;
 
   beforeEach(() => {
+    // Keep shortcut labels deterministic across CI operating systems.
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("Linux x86_64");
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({

@@ -87,6 +87,8 @@ describe("inline mathematics inside editable slide text", () => {
   let actualMath: typeof import("../src/lib/equations");
 
   beforeEach(async () => {
+    // Keep shortcut labels deterministic across CI operating systems.
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("Linux x86_64");
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     vi.stubGlobal("crypto", webcrypto);
