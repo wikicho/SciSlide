@@ -4,6 +4,17 @@ A scientific presentation editor with editable equations, vector output, and an 
 
 **v0.5.3 is a working prototype.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux systems. Fourteen starter layouts combine scientific presentation structure with minimal Keynote-inspired composition. Draw rectangles, ellipses, lines and arrows, edit line endpoints, and move persistent groups. Smart guides help align centers and edges, match dimensions while resizing, and arrange objects with equal gaps. The included three-slide cosmology deck uses synthetic demonstration data. Compatible installed AI CLIs generate editable slide drafts. Deck-wide page numbers, embedded video, and ordered click-triggered builds remain available.
 
+## Download macOS installers
+
+Download the **v0.5.3 development build** from [GitHub Releases](https://github.com/wikicho/SciSlide/releases/tag/v0.5.3):
+
+| Mac                         | Installer                                                                                                                     |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Apple Silicon (M1 or later) | [Download arm64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.5.3/SciSlide-0.5.3-macos-arm64-unsigned.pkg) |
+| Intel                       | [Download x64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.5.3/SciSlide-0.5.3-macos-x64-unsigned.pkg)     |
+
+Matching SHA-256 checksum files and installation instructions are included in the release. These installers are unsigned and unnotarized; macOS may block installation or launch. See the [macOS installation guide](desktop/MACOS.md). Node.js and TeX are not required for MathJax editing.
+
 ## Getting Started
 
 Use Node.js 22.12 or later and pnpm. Install the dependencies, then launch the desktop app:

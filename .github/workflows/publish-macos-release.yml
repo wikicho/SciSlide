@@ -1,0 +1,180 @@
+name: Publish verified macOS installers
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful macOS installer workflow run to publish
+        required: true
+        default: "37160480599"
+        type: string
+  push:
+    branches: [main]
+    paths: [.github/workflows/publish-macos-release.yml]
+
+permissions: {}
+
+concurrency:
+  group: macos-release-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'wikicho/SciSlide' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN_ID: ${{ inputs.run_id || '37160480599' }}
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Resolve trusted source run and immutable artifacts
+        id: source
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, writeFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          const repo = process.env.GITHUB_REPOSITORY;
+          const id = process.env.SOURCE_RUN_ID;
+          const require = (ok, message) => { if (!ok) throw new Error(message); };
+          require(repo === 'wikicho/SciSlide' && /^[1-9][0-9]*$/.test(id), 'Invalid repository or run ID');
+          async function api(path) {
+            const r = await fetch(`https://api.github.com/repos/${repo}/${path}`, {
+              headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json' }
+            });
+            require(r.ok, `GitHub API request failed (${r.status})`);
+            return r.json();
+          }
+          const run = await api(`actions/runs/${id}`);
+          require(String(run.id) === id && run.status === 'completed' && run.conclusion === 'success', 'Run must have completed successfully');
+          require(run.repository.full_name === repo && run.head_repository.full_name === repo && run.head_branch === 'main', 'Run must belong to the trusted main branch');
+          require(run.name === 'macOS development installers' && run.path === '.github/workflows/macos-package.yml' && ['push', 'workflow_dispatch'].includes(run.event), 'Unexpected source workflow');
+          require(/^[0-9a-f]{40}$/.test(run.head_sha), 'Invalid source commit');
+          async function sourceFile(path) {
+            const file = await api(`contents/${path}?ref=${run.head_sha}`);
+            require(file.type === 'file' && file.encoding === 'base64', 'Unexpected source file');
+            return Buffer.from(file.content, 'base64');
+          }
+          const version = JSON.parse(await sourceFile('package.json')).version;
+          const semver = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
+          require(typeof version === 'string' && semver.test(version), 'Invalid application version');
+          const listing = await api(`actions/runs/${id}/artifacts?per_page=100`);
+          require(listing.total_count === listing.artifacts.length, 'Incomplete artifact listing');
+          const prefix = `SciSlide-${version}-macos-`;
+          const artifacts = ['arm64', 'x64'].map(arch => {
+            const matches = listing.artifacts.filter(a => a.name === `${prefix}${arch}-unsigned`);
+            require(matches.length === 1, `Missing or duplicate ${arch} artifact`);
+            const a = matches[0];
+            require(Number.isSafeInteger(a.id) && a.id > 0 && !a.expired && a.workflow_run.id === run.id && a.workflow_run.head_sha === run.head_sha && /^sha256:[0-9a-f]{64}$/.test(a.digest), 'Invalid or expired artifact');
+            return { id: a.id, name: a.name, arch };
+          });
+          const guideDigest = createHash('sha256').update(await sourceFile('desktop/MACOS.md')).digest('hex');
+          writeFileSync('macos-source.json', JSON.stringify({ repo, id, sha: run.head_sha, version, artifacts, guideDigest }));
+          appendFileSync(process.env.GITHUB_OUTPUT, `run_id=${id}\nartifact_ids=${artifacts.map(a => a.id).join(',')}\n`);
+          console.log(`Verified macOS ${version} source: ${run.head_sha}`);
+          NODE
+
+      - name: Download the two validated artifacts into separate directories
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ steps.source.outputs.artifact_ids }}
+          run-id: ${{ steps.source.outputs.run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: downloaded
+          merge-multiple: false
+          digest-mismatch: error
+
+      - name: Verify packages and publish a complete development prerelease
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync, readdirSync, lstatSync, mkdirSync, copyFileSync, appendFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          import { execFileSync } from 'node:child_process';
+          const source = JSON.parse(readFileSync('macos-source.json', 'utf8'));
+          const { repo, sha, version } = source;
+          const tag = `v${version}`;
+          const require = (ok, message) => { if (!ok) throw new Error(message); };
+          const digest = bytes => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+          async function api(path, missing = false) {
+            const r = await fetch(`https://api.github.com/repos/${repo}/${path}`, {
+              headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json' }
+            });
+            if (missing && r.status === 404) return null;
+            require(r.ok, `GitHub API request failed (${r.status})`);
+            return r.json();
+          }
+          const files = new Map();
+          mkdirSync('publish');
+          for (const artifact of source.artifacts) {
+            const dir = `downloaded/${artifact.name}`;
+            const pkg = `SciSlide-${version}-macos-${artifact.arch}-unsigned.pkg`;
+            const names = [pkg, `${pkg}.sha256`, 'MACOS-INSTALL.md'];
+            require(JSON.stringify(readdirSync(dir).sort()) === JSON.stringify([...names].sort()), 'Unexpected artifact files');
+            for (const name of names) require(lstatSync(`${dir}/${name}`).isFile(), 'Artifact files must be regular files');
+            const bytes = readFileSync(`${dir}/${pkg}`);
+            require(bytes.subarray(0, 4).toString() === 'xar!', 'Invalid macOS installer');
+            require(readFileSync(`${dir}/${pkg}.sha256`, 'utf8') === `${digest(bytes).slice(7)}  ${pkg}\n`, `Checksum mismatch: ${pkg}`);
+            require(digest(readFileSync(`${dir}/MACOS-INSTALL.md`)).slice(7) === source.guideDigest, 'Installation guide differs from the source commit');
+            for (const name of names) {
+              const content = readFileSync(`${dir}/${name}`);
+              files.set(name, { size: content.length, digest: digest(content) });
+              copyFileSync(`${dir}/${name}`, `publish/${name}`);
+            }
+          }
+          async function tagCommit() {
+            let ref = await api(`git/ref/tags/${encodeURIComponent(tag)}`, true);
+            if (!ref) return null;
+            let object = ref.object;
+            for (let i = 0; object.type === 'tag' && i < 5; i++) object = (await api(`git/tags/${object.sha}`)).object;
+            require(object.type === 'commit', 'Tag does not resolve to a commit');
+            return object.sha;
+          }
+          const existingTag = await tagCommit();
+          require(!existingTag || existingTag === sha, 'Existing tag points to a different source commit');
+          let release;
+          for (let page = 1; !release; page++) {
+            const entries = await api(`releases?per_page=100&page=${page}`);
+            release = entries.find(r => r.tag_name === tag);
+            if (entries.length < 100) break;
+          }
+          const notes = `Native macOS development installers built from ${sha}.\n\n- Apple Silicon (M1 or later): arm64 package\n- Intel Mac: x64 package\n\nUnsigned and unnotarized: macOS may block installation or launch. Local LaTeX compilation on macOS remains unavailable.\n\n[Verified source build](https://github.com/${repo}/actions/runs/${source.id}) · [Installation guide](https://github.com/${repo}/blob/${sha}/desktop/MACOS.md)\n\nDownload the matching .pkg and .sha256; verify with shasum -a 256 -c FILE.pkg.sha256.\n`;
+          writeFileSync('release-notes.md', notes);
+          const gh = args => execFileSync('gh', args, { stdio: 'inherit' });
+          if (!release) {
+            gh(['release', 'create', tag, '--repo', repo, '--target', sha, '--draft', '--prerelease', '--title', `SciSlide ${version} — macOS development installers`, '--notes-file', 'release-notes.md']);
+            release = (await api('releases?per_page=100')).find(r => r.tag_name === tag);
+          }
+          require(release && release.target_commitish === sha && release.prerelease, 'Existing release does not match this development source');
+          async function checkedAssets(complete = false) {
+            const assets = await api(`releases/${release.id}/assets?per_page=100`);
+            const missing = [];
+            for (const [name, expected] of files) {
+              const found = assets.filter(a => a.name === name);
+              require(found.length <= 1, `Duplicate release asset: ${name}`);
+              if (!found.length) { missing.push(name); continue; }
+              require(found[0].state === 'uploaded' && found[0].size === expected.size && found[0].digest === expected.digest, `Release asset mismatch: ${name}`);
+            }
+            require(!complete || missing.length === 0, 'Release upload is incomplete');
+            return missing;
+          }
+          const missing = await checkedAssets();
+          require(release.draft || missing.length === 0, 'Published release is missing expected assets');
+          for (const name of missing) gh(['release', 'upload', tag, `publish/${name}`, '--repo', repo]);
+          await checkedAssets(true);
+          const publicationTag = await tagCommit();
+          require(!publicationTag || publicationTag === sha, 'Release tag changed during publication');
+          if (release.draft) gh(['release', 'edit', tag, '--repo', repo, '--draft=false', '--prerelease', '--latest=false']);
+          require(await tagCommit() === sha, 'Published tag does not match the verified source');
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Published [SciSlide ${version} macOS installers](https://github.com/${repo}/releases/tag/${tag}) from verified run ${source.id}.\n`);
+          NODE
