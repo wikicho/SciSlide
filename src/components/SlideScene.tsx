@@ -10,11 +10,16 @@ import type {
 import { renderObjectEquation } from "../lib/equation-renderer";
 import type { RenderedEquation } from "../lib/equations";
 import { wrapText } from "../lib/layout";
+import { hasInlineMath, inlinePlainText } from "../lib/inline-math";
+import { InlineMathText } from "./InlineMathText";
 import { resolvePageNumber } from "../lib/model";
 import { isVisibleAtStep } from "../lib/presentation";
 import { VideoPlaceholder, VideoView } from "./VideoView";
 import { ShapeView } from "./ShapeView";
+import { FigureView } from "./FigureView";
 import { SmartGuideOverlay } from "./SmartGuideOverlay";
+import { InlineTextEditor } from "./InlineTextEditor";
+import type { CanvasTextEditing } from "./InlineTextEditor";
 import type { SceneGuide } from "./SmartGuideOverlay";
 import { isLineShape, lineEndpoints } from "../lib/shape-geometry";
 import {
@@ -123,6 +128,8 @@ export function SlideScene({
   slideIndex = deck.slides.findIndex((candidate) => candidate.id === slide.id),
   presentationStep,
   playback = false,
+  playMedia = true,
+  textEditing,
 }: {
   deck: Deck;
   slide: Slide;
@@ -147,7 +154,19 @@ export function SlideScene({
   slideIndex?: number;
   presentationStep?: number;
   playback?: boolean;
+  /** Presenter previews follow builds without starting a second media player. */
+  playMedia?: boolean;
+  textEditing?: CanvasTextEditing;
 }) {
+  const editingObject =
+    !playback && textEditing
+      ? slide.objects.find(
+          (object) =>
+            object.id === textEditing.objectId &&
+            object.type === "text" &&
+            object.visible,
+        )
+      : undefined;
   const pageNumber = resolvePageNumber(deck, slideIndex);
   const [localMetrics, setLocalMetrics] = useState<
     Record<string, { width: number; height: number }>
@@ -203,7 +222,7 @@ export function SlideScene({
       className={drawing && !playback ? "slide-scene drawing" : "slide-scene"}
       viewBox={`0 0 ${deck.slideSize.width} ${deck.slideSize.height}`}
       xmlns="http://www.w3.org/2000/svg"
-      role={playback ? "group" : "img"}
+      role={playback || onEdit ? "group" : "img"}
       aria-label={slide.title}
       onPointerDownCapture={(e) => {
         if (!drawing || playback) return;
@@ -260,57 +279,60 @@ export function SlideScene({
               onPointerDown={(e) => onPointer?.(e, o)}
               onDoubleClick={() => onEdit?.(o)}
             >
-              {o.type === "text" && (
-                <text
-                  fill={o.color}
-                  fontSize={o.fontSize}
-                  fontWeight={exportTextFontWeight(
-                    o.text,
-                    o.fontFamily,
-                    o.fontWeight,
-                  )}
-                  fontFamily={exportTextFontFamily(o.text, o.fontFamily)}
-                  textAnchor={
-                    o.align === "center"
-                      ? "middle"
-                      : o.align === "right"
-                        ? "end"
-                        : "start"
-                  }
-                >
-                  {wrapText(
-                    o.text,
-                    t.width,
-                    o.fontSize,
-                    o.fontFamily,
-                    o.fontWeight,
-                  ).map((line, i) => (
-                    <tspan
-                      key={i}
-                      x={
-                        o.align === "center"
-                          ? t.width / 2
-                          : o.align === "right"
-                            ? t.width
-                            : 0
-                      }
-                      y={o.fontSize + i * o.fontSize * 1.3}
-                    >
-                      {line || " "}
-                    </tspan>
-                  ))}
-                </text>
-              )}
+              {o.type === "text" &&
+                editingObject?.id !== o.id &&
+                (hasInlineMath(o.text) ? (
+                  <InlineMathText object={o} deck={deck} />
+                ) : (
+                  <text
+                    fill={o.color}
+                    fontSize={o.fontSize}
+                    fontWeight={exportTextFontWeight(
+                      inlinePlainText(o.text),
+                      o.fontFamily,
+                      o.fontWeight,
+                    )}
+                    fontFamily={exportTextFontFamily(
+                      inlinePlainText(o.text),
+                      o.fontFamily,
+                    )}
+                    textAnchor={
+                      o.align === "center"
+                        ? "middle"
+                        : o.align === "right"
+                          ? "end"
+                          : "start"
+                    }
+                  >
+                    {wrapText(
+                      inlinePlainText(o.text),
+                      t.width,
+                      o.fontSize,
+                      o.fontFamily,
+                      o.fontWeight,
+                    ).map((line, i) => (
+                      <tspan
+                        key={i}
+                        x={
+                          o.align === "center"
+                            ? t.width / 2
+                            : o.align === "right"
+                              ? t.width
+                              : 0
+                        }
+                        y={o.fontSize + i * o.fontSize * 1.3}
+                      >
+                        {line || " "}
+                      </tspan>
+                    ))}
+                  </text>
+                ))}
               {o.type === "shape" && <ShapeView object={o} />}
               {o.type === "figure" && (
-                <image
-                  href={deck.assets.find((a) => a.id === o.assetId)?.dataUrl}
-                  width={t.width}
-                  height={t.height}
-                  preserveAspectRatio="xMidYMid meet"
-                >
-                  <title>{o.alt}</title>
-                </image>
+                <FigureView
+                  object={o}
+                  asset={deck.assets.find((a) => a.id === o.assetId)}
+                />
               )}
               {o.type === "equation" && (
                 <EquationView
@@ -324,13 +346,14 @@ export function SlideScene({
                   const asset = deck.assets.find(
                     (candidate) => candidate.id === o.assetId,
                   );
-                  return playback && asset ? (
+                  return playback && playMedia && asset ? (
                     <VideoView object={o} asset={asset} />
                   ) : (
                     <VideoPlaceholder object={o} missing={!asset} />
                   );
                 })()}
               {onPointer &&
+                editingObject?.id !== o.id &&
                 (line && o.type === "shape" ? (
                   <path
                     data-line-hit="true"
@@ -400,6 +423,7 @@ export function SlideScene({
                     />
                   )}
                   {!line &&
+                    editingObject?.id !== o.id &&
                     editable &&
                     !(o.type === "equation" && o.renderer === "local-latex") &&
                     [
@@ -462,6 +486,13 @@ export function SlideScene({
         >
           {pageNumber.text}
         </text>
+      )}
+      {editingObject?.type === "text" && textEditing && (
+        <InlineTextEditor
+          key={editingObject.id}
+          object={editingObject}
+          editing={textEditing}
+        />
       )}
     </svg>
   );

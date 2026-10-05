@@ -16,6 +16,7 @@ const {
   MAX_DOCUMENT_BYTES,
   parseDevUrl,
   isTrustedPage,
+  isPresenterPage,
   isAppOrigin,
   allowsFullscreen,
   isAllowedRequest,
@@ -25,6 +26,12 @@ const {
   validateJobId,
   resolveAsset,
 } = require("./host-utils.cjs");
+const { pdfResourcePolicy } = require("./pdf-policy.cjs");
+const {
+  buildMenuTemplate,
+  dispatchMenuCommand,
+  protectTextComposition,
+} = require("./menu-commands.cjs");
 
 app.setName("SciSlide");
 app.enableSandbox();
@@ -56,6 +63,7 @@ let quittingAfterCleanup = false;
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
@@ -66,6 +74,9 @@ const MIME = {
   ".woff2": "font/woff2",
   ".ttf": "font/ttf",
   ".otf": "font/otf",
+  ".pfb": "application/octet-stream",
+  ".bcmap": "application/octet-stream",
+  ".wasm": "application/wasm",
   ".ico": "image/x-icon",
 };
 const csp = [
@@ -76,7 +87,7 @@ const csp = [
   "media-src data: blob:",
   "font-src 'self' data:",
   `connect-src 'self'${devUrl ? " ws://127.0.0.1:5173" : ""}`,
-  "worker-src 'none'",
+  "worker-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",
   "frame-ancestors 'none'",
@@ -231,7 +242,10 @@ function registerIpc() {
     const request = validateSaveExport(value);
     return withFileOperation(async () => {
       const result = await dialog.showSaveDialog(mainWindow, {
-        title: `Export ${request.kind.toUpperCase()}`,
+        title:
+          request.kind === "json"
+            ? "Export equation library"
+            : `Export ${request.kind.toUpperCase()}`,
         defaultPath: request.suggestedName,
         filters: [
           { name: request.kind.toUpperCase(), extensions: [request.kind] },
@@ -276,86 +290,23 @@ function registerIpc() {
 }
 
 function sendCommand(command) {
-  if (COMMANDS.has(command) && mainWindow && !mainWindow.isDestroyed())
-    if (command === "present") {
-      const contents = mainWindow.webContents;
-      if (!isTrustedPage(contents.getURL(), devUrl)) return;
-      // A native menu event has no renderer transient activation. This fixed
-      // action grants a gesture only to the app's explicit Present command.
-      void contents
-        .executeJavaScript("document.documentElement.requestFullscreen()", true)
-        .catch(() => undefined)
-        .finally(() => {
-          if (!contents.isDestroyed())
-            contents.send("scislide:command", command);
-        });
-    } else mainWindow.webContents.send("scislide:command", command);
+  if (!COMMANDS.has(command) || !mainWindow || mainWindow.isDestroyed()) return;
+  const contents = mainWindow.webContents;
+  if (!isTrustedPage(contents.getURL(), devUrl)) return;
+  void dispatchMenuCommand(contents, command);
 }
 
 function installMenu() {
-  const item = (label, accelerator, command) => ({
-    label,
-    accelerator,
-    click: () => sendCommand(command),
+  const template = buildMenuTemplate(process.platform, sendCommand, {
+    development: Boolean(devUrl),
+    onAbout: () =>
+      dialog.showMessageBox(mainWindow, {
+        type: "info",
+        title: "SciSlide",
+        message: "SciSlide",
+        detail: `Scientific Presentation Editor\nVersion ${app.getVersion()}\nMathJax and local LaTeX equation editing`,
+      }),
   });
-  const template = [
-    ...(process.platform === "darwin" ? [{ role: "appMenu" }] : []),
-    {
-      label: "File",
-      submenu: [
-        item("New presentation", "CmdOrCtrl+N", "new"),
-        item("Open…", "CmdOrCtrl+O", "open"),
-        item("Save", "CmdOrCtrl+S", "save"),
-        item("Save As…", "CmdOrCtrl+Shift+S", "saveAs"),
-        { type: "separator" },
-        item("Export PDF…", "CmdOrCtrl+Alt+P", "exportPdf"),
-        { type: "separator" },
-        { role: process.platform === "darwin" ? "close" : "quit" },
-      ],
-    },
-    {
-      label: "Edit",
-      submenu: [
-        item("Undo", "CmdOrCtrl+Z", "undo"),
-        item("Redo", "CmdOrCtrl+Shift+Z", "redo"),
-        { type: "separator" },
-        { role: "cut" },
-        { role: "copy" },
-        { role: "paste" },
-        { role: "selectAll" },
-      ],
-    },
-    {
-      label: "View",
-      submenu: [
-        item("Present", "CmdOrCtrl+Enter", "present"),
-        { type: "separator" },
-        { role: "togglefullscreen" },
-        ...(devUrl
-          ? [
-              { type: "separator" },
-              { role: "reload" },
-              { role: "toggleDevTools" },
-            ]
-          : []),
-      ],
-    },
-    {
-      label: "Help",
-      submenu: [
-        {
-          label: "About SciSlide",
-          click: () =>
-            dialog.showMessageBox(mainWindow, {
-              type: "info",
-              title: "SciSlide",
-              message: "SciSlide",
-              detail: `Scientific Presentation Editor\nVersion ${app.getVersion()}\nMathJax and local LaTeX equation editing`,
-            }),
-        },
-      ],
-    },
-  ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
@@ -384,7 +335,9 @@ async function configureSession() {
     callback({
       responseHeaders: {
         ...details.responseHeaders,
-        "Content-Security-Policy": [csp],
+        "Content-Security-Policy": [
+          pdfResourcePolicy(details.url, csp, devUrl),
+        ],
         "X-Content-Type-Options": ["nosniff"],
       },
     }),
@@ -401,7 +354,11 @@ async function configureSession() {
       return new Response(body, {
         headers: {
           "Content-Type": type,
-          "Content-Security-Policy": csp,
+          "Content-Security-Policy": pdfResourcePolicy(
+            request.url,
+            csp,
+            devUrl,
+          ),
           "X-Content-Type-Options": "nosniff",
           "Cache-Control":
             path.extname(asset) === ".html"
@@ -435,7 +392,48 @@ async function createMainWindow() {
       webviewTag: false,
     },
   });
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  protectTextComposition(mainWindow.webContents);
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (!isPresenterPage(url, devUrl)) return { action: "deny" };
+    return {
+      action: "allow",
+      overrideBrowserWindowOptions: {
+        title: "SciSlide · Presenter display",
+        width: 1100,
+        height: 800,
+        minWidth: 620,
+        minHeight: 550,
+        autoHideMenuBar: true,
+        webPreferences: {
+          contextIsolation: true,
+          sandbox: true,
+          nodeIntegration: false,
+          nodeIntegrationInWorker: false,
+          webSecurity: true,
+          allowRunningInsecureContent: false,
+          webviewTag: false,
+        },
+      },
+    };
+  });
+  mainWindow.webContents.on("did-create-window", (presenterWindow) => {
+    presenterWindow.setMenu(null);
+    presenterWindow.webContents.setWindowOpenHandler(() => ({
+      action: "deny",
+    }));
+    presenterWindow.webContents.on("will-navigate", (event) =>
+      event.preventDefault(),
+    );
+    presenterWindow.webContents.on("will-frame-navigate", (event) =>
+      event.preventDefault(),
+    );
+    presenterWindow.webContents.on("will-attach-webview", (event) =>
+      event.preventDefault(),
+    );
+    mainWindow.once("closed", () => {
+      if (!presenterWindow.isDestroyed()) presenterWindow.close();
+    });
+  });
   mainWindow.webContents.on("will-navigate", (event) => event.preventDefault());
   mainWindow.webContents.on("will-frame-navigate", (event) =>
     event.preventDefault(),

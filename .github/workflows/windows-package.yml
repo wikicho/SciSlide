@@ -2,6 +2,11 @@ name: Windows x64 development distributions
 
 on:
   workflow_dispatch:
+  workflow_call:
+    outputs:
+      artifact_ids:
+        description: Immutable ID of the verified Windows artifact
+        value: ${{ jobs.package.outputs.artifact_ids }}
   push:
     branches: [main]
     paths:
@@ -32,6 +37,8 @@ jobs:
   package:
     runs-on: windows-2022
     timeout-minutes: 30
+    outputs:
+      artifact_ids: ${{ steps.artifact.outputs.artifact-id }}
     defaults:
       run:
         shell: pwsh
@@ -40,6 +47,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: ${{ github.sha }}
 
       - name: Set up Node.js x64
         uses: actions/setup-node@v7
@@ -122,6 +130,7 @@ jobs:
           }
 
       - name: Upload Windows x64 development distributions
+        id: artifact
         uses: actions/upload-artifact@v7
         with:
           name: SciSlide-${{ env.SCISLIDE_VERSION }}-windows-x64-unsigned

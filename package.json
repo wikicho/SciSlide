@@ -1,6 +1,6 @@
 {
   "name": "scislide",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,13 +8,15 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
+    "test:release": "node --test --test-isolation=none tests/release-publish.test.mjs",
     "format": "prettier --write src tests desktop scripts index.html vite.config.ts vitest.config.ts tsconfig.json package.json README.md",
     "desktop": "pnpm build && electron .",
     "desktop:dev": "node scripts/desktop-dev.mjs",
     "desktop:package": "pnpm build && node scripts/package-desktop.mjs",
-    "test:desktop": "node --test --test-isolation=none desktop/host-utils.test.cjs tests/desktop-tex.test.mjs tests/desktop-package.test.mjs tests/windows-package.test.mjs tests/desktop-ai.test.mjs",
+    "test:desktop": "node --test --test-isolation=none desktop/host-utils.test.cjs tests/desktop-tex.test.mjs tests/desktop-package.test.mjs tests/windows-package.test.mjs tests/linux-package.test.mjs tests/desktop-ai.test.mjs tests/desktop-pdf-policy.test.mjs",
     "desktop:package:mac": "pnpm build && node scripts/package-macos.mjs",
-    "desktop:package:win": "pnpm build && node scripts/package-windows.mjs"
+    "desktop:package:win": "pnpm build && node scripts/package-windows.mjs",
+    "desktop:package:linux": "pnpm build && node scripts/package-linux.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.0",
@@ -26,11 +28,13 @@
     "jspdf": "^3.0.0",
     "jszip": "^3.10.1",
     "lucide-react": "^0.468.0",
+    "pdfjs-dist": "6.4.299",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "svg2pdf.js": "^2.5.0"
   },
   "devDependencies": {
+    "@electron/osx-sign": "2.7.1",
     "@electron/packager": "^20.3.0",
     "@types/node": "^26.6.3",
     "@types/react": "^19.1.0",
@@ -41,8 +45,7 @@
     "prettier": "^3.9.9",
     "typescript": "^5.8.0",
     "vite": "^6.3.0",
-    "vitest": "^3.1.0",
-    "@electron/osx-sign": "2.7.1"
+    "vitest": "^3.1.0"
   },
   "packageManager": "pnpm@11.25.0",
   "main": "desktop/main.cjs",

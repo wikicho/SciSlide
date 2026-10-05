@@ -1,0 +1,101 @@
+name: SciSlide development release
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact main commit to build and release (40 characters)
+        required: true
+        type: string
+      publish_prerelease:
+        description: Publish all verified installers as one development prerelease
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scislide-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out the requested source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Verify main source and release publication boundaries
+        env:
+          EXPECTED_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { access, readFile } from 'node:fs/promises';
+          const { GITHUB_REPOSITORY: repo, GITHUB_REF: ref, GITHUB_SHA: sha, EXPECTED_SOURCE_SHA: expected } = process.env;
+          if (repo !== 'wikicho/SciSlide' || ref !== 'refs/heads/main' || !/^[0-9a-f]{40}$/.test(expected) || expected !== sha) {
+            throw new Error('Dispatch main with its exact current source SHA.');
+          }
+          const { version } = JSON.parse(await readFile('package.json', 'utf8'));
+          await access(`docs/releases/v${version}.md`);
+          console.log(`Preparing SciSlide ${version} from ${sha}`);
+          NODE
+          node --test --test-isolation=none tests/release-publish.test.mjs
+
+  macos:
+    needs: source
+    uses: ./.github/workflows/macos-package.yml
+
+  windows:
+    needs: source
+    uses: ./.github/workflows/windows-package.yml
+
+  linux:
+    needs: source
+    # The reusable workflow defines an optional publisher; this call disables it.
+    permissions:
+      actions: read
+      contents: write
+    uses: ./.github/workflows/linux-release.yml
+    with:
+      publish_prerelease: false
+
+  publish:
+    needs: [source, macos, windows, linux]
+    if: inputs.publish_prerelease
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Check out the exact verified source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Download only verified artifacts from this run
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.macos.outputs.artifact_ids }},${{ needs.windows.outputs.artifact_ids }},${{ needs.linux.outputs.artifact_ids }}
+          path: publish
+          merge-multiple: true
+          digest-mismatch: error
+      - name: Verify and publish the complete development prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/publish-release.mjs publish

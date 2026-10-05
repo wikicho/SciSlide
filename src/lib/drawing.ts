@@ -224,9 +224,16 @@ export function cloneObjectsWithGroups(
   offset: Point = { x: 0, y: 0 },
 ): SlideObject[] {
   const groups = new Map<string, string>();
+  const objectIds = new Map(objects.map((object) => [object.id, newId()]));
   const copies = objects.map((object) => {
     const copy = structuredClone(object);
-    copy.id = newId();
+    copy.id = objectIds.get(object.id)!;
+    const placeholderFor = copy.metadata.mediaPlaceholderFor;
+    if (typeof placeholderFor === "string") {
+      const copiedFrame = objectIds.get(placeholderFor);
+      if (copiedFrame) copy.metadata.mediaPlaceholderFor = copiedFrame;
+      else delete copy.metadata.mediaPlaceholderFor;
+    }
     copy.transform.x += offset.x;
     copy.transform.y += offset.y;
     if (copy.groupId) {

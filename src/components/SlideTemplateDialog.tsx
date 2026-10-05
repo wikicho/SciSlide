@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, FilePlus2, X } from "lucide-react";
 import type { Deck } from "../lib/model";
-import { SLIDE_TEMPLATES, createTemplateSlide } from "../lib/slide-templates";
-import type { SlideTemplateId } from "../lib/slide-templates";
+import {
+  createThemedSlide,
+  getDeckLayouts,
+  getDeckTheme,
+} from "../lib/deck-themes";
+import type { DeckSlideLayoutId } from "../lib/deck-themes";
 import { SlideScene } from "./SlideScene";
 
 const layoutCategories = [
@@ -17,7 +21,7 @@ export function SlideTemplateDialog({
   onClose,
 }: {
   deck: Deck;
-  onChoose: (id: SlideTemplateId) => void;
+  onChoose: (id: DeckSlideLayoutId) => void;
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLElement>(null);
@@ -26,17 +30,18 @@ export function SlideTemplateDialog({
     useState<(typeof layoutCategories)[number]["id"]>("all");
   const layouts = useMemo(
     () =>
-      SLIDE_TEMPLATES.filter((template) => template.id !== "blank").map(
-        (template) => ({
+      getDeckLayouts(deck)
+        .filter((template) => template.id !== "blank")
+        .map((template) => ({
           ...template,
-          slide: createTemplateSlide(template.id, deck.theme),
-        }),
-      ),
-    [deck.theme],
+          slide: createThemedSlide(template.id, deck),
+        })),
+    [deck],
   );
   const visibleLayouts = layouts.filter(
     (template) => category === "all" || template.category === category,
   );
+  const dedicatedTheme = getDeckTheme(deck)?.id === "keynote-white";
   useEffect(() => {
     const previous = document.activeElement;
     dialog.current?.querySelector<HTMLButtonElement>(".template-card")?.focus();
@@ -82,15 +87,19 @@ export function SlideTemplateDialog({
         <header>
           <div>
             <div className="template-heading-meta">
-              <span className="library-eyebrow">SLIDE LAYOUTS</span>
+              <span className="library-eyebrow">
+                {dedicatedTheme ? "KEYNOTE WHITE LAYOUTS" : "SLIDE LAYOUTS"}
+              </span>
               <span className="template-count" aria-live="polite">
                 {visibleLayouts.length} layouts
               </span>
             </div>
             <h2 id="template-dialog-title">Choose a slide layout.</h2>
             <p id="template-dialog-description">
-              Scientific and Keynote-inspired starters. All objects are
-              editable.
+              {dedicatedTheme
+                ? "Coordinated white layouts with bold type and media placeholders."
+                : "Scientific and Keynote-inspired starters."}{" "}
+              All objects are editable.
             </p>
           </div>
           <button
@@ -101,26 +110,28 @@ export function SlideTemplateDialog({
             <X size={19} />
           </button>
         </header>
-        <div
-          className="template-filters"
-          role="group"
-          aria-label="Slide layout category"
-        >
-          {layoutCategories.map((item) => (
-            <button
-              key={item.id}
-              className="template-filter"
-              aria-pressed={category === item.id}
-              onClick={(event) => {
-                setCategory(item.id);
-                if (grid.current) grid.current.scrollTop = 0;
-                event.currentTarget.focus();
-              }}
-            >
-              {item.name}
-            </button>
-          ))}
-        </div>
+        {!dedicatedTheme && (
+          <div
+            className="template-filters"
+            role="group"
+            aria-label="Slide layout category"
+          >
+            {layoutCategories.map((item) => (
+              <button
+                key={item.id}
+                className="template-filter"
+                aria-pressed={category === item.id}
+                onClick={(event) => {
+                  setCategory(item.id);
+                  if (grid.current) grid.current.scrollTop = 0;
+                  event.currentTarget.focus();
+                }}
+              >
+                {item.name}
+              </button>
+            ))}
+          </div>
+        )}
         <div ref={grid} className="template-grid">
           {visibleLayouts.map((template) => (
             <button

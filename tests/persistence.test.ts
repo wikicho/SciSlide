@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { webcrypto } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import JSZip from "jszip";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createDemoDeck } from "../src/lib/model";
@@ -128,6 +129,140 @@ describe("portable native files", () => {
 });
 
 describe("safe SVG figures and browser recovery", () => {
+  const minimalTtf = btoa(
+    "\u0000\u0001\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+  );
+
+  function styledSvg(css: string) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"><style>${css}</style><text class="label" x="5" y="20">Scientific label</text></svg>`;
+  }
+
+  it("retains bounded embedded font rules while flattening plot styles and removing active content", () => {
+    const svg = styledSvg(
+      `@font-face {font-family: 'Plot Font'; font-style:normal; font-weight:400 700; font-stretch:normal; unicode-range:U+0000-00FF, U+AC00-D7AF; font-display:swap; src:url('data:font/ttf;base64,${minimalTtf}') format('truetype')} .label {font-family:'Plot Font';fill:#102030}`,
+    ).replace(
+      "</svg>",
+      '<script>alert(1)</script><image href="https://example.com/tracking.png"/></svg>',
+    );
+    const clean = sanitizeSvg(svg);
+    const parsed = new DOMParser().parseFromString(clean, "image/svg+xml");
+    const css = parsed.querySelector("style")?.textContent;
+    expect(css).toContain('@font-face{font-family:"Plot Font"');
+    expect(css).toContain(
+      `url("data:font/ttf;base64,${minimalTtf}") format("truetype")`,
+    );
+    expect(css).toContain("font-weight:400 700");
+    expect(css).not.toContain(".label");
+    expect(parsed.querySelector("text")?.getAttribute("fill")).toBe("#102030");
+    expect(clean).not.toContain("example.com");
+    expect(clean).not.toContain("script");
+    expect(sanitizeSvg(clean)).toBe(clean);
+  });
+
+  it.each([
+    ["otf", "OTTO", "opentype"],
+    ["woff", "wOFF", "woff"],
+    ["woff2", "wOF2", "woff2"],
+  ])(
+    "retains an embedded %s binary font with the matching format",
+    (mime, magic, format) => {
+      const encoded = btoa(`${magic}${"\u0000".repeat(8)}`);
+      expect(
+        sanitizeSvg(
+          styledSvg(
+            `@font-face{font-family:Plot;src:url(data:font/${mime};base64,${encoded}) format('${format}')}`,
+          ),
+        ),
+      ).toContain(`data:font/${mime};base64,${encoded}`);
+    },
+  );
+
+  it.each([
+    `@font-face{font-family:Plot;src:url(https://example.com/font.ttf)}`,
+    `@font-face{font-family:Plot;src:url(data:font/ttf;base64,${minimalTtf}),url(https://example.com/font.ttf)}`,
+    `@font-face{font-family:Plot;src:local(Inter),url(data:font/ttf;base64,${minimalTtf})}`,
+    `@font-face{font-family:Plot;src:url(data:image/svg+xml;base64,${btoa("<svg/>")})}`,
+    `@font-face{font-family:Plot;src:url(data:font/ttf;base64,${btoa("<svg onload='alert(1)'/>")})}`,
+    `@font-face{font-family:Plot;src:url(data:font/ttf;base64,${minimalTtf}) format('woff')}`,
+    `@font-face{font-family:Plot;src:url(data:font/ttf;base64,${minimalTtf});font-display:expression(alert(1))}`,
+    `@font-face{font-family:Plot;src:url(data:font/ttf;base64,${minimalTtf});background:url(https://example.com/image)}`,
+    `@font-face{font-family:Plot;src:url(data:font/ttf;base64,${minimalTtf});font-family:Other}`,
+    `@font-face{font-family:Plot;src:url(data:font/ttf;base64,${minimalTtf});font-weight:400!important}`,
+    `@font-face{font-family:Plot;src:url(data:font/ttf;base64,${minimalTtf});unicode-range:U+0000;@import url(https://example.com/font.css)}`,
+    String.raw`@font-face{font-family:Plot;src:url(\64 ata:font/ttf;base64,AAAA)}`,
+    `@media screen{@font-face{font-family:Plot;src:url(data:font/ttf;base64,${minimalTtf})}}`,
+  ])("rejects unsafe or unsupported font stylesheet %s", (css) => {
+    expect(() => sanitizeSvg(styledSvg(css))).toThrow("unsupported stylesheet");
+  });
+
+  it("rejects excessive embedded font resources before copying their contents", () => {
+    const rule = `@font-face{font-family:Plot;src:url(data:font/ttf;base64,${minimalTtf})}`;
+    expect(() => sanitizeSvg(styledSvg(rule.repeat(17)))).toThrow(
+      "unsupported stylesheet",
+    );
+    const overlarge = btoa(
+      `\u0000\u0001\u0000\u0000${"\u0000".repeat(8 * 1024 * 1024)}`,
+    );
+    expect(() =>
+      sanitizeSvg(
+        styledSvg(
+          `@font-face{font-family:Plot;src:url(data:font/ttf;base64,${overlarge})}`,
+        ),
+      ),
+    ).toThrow("unsupported stylesheet");
+  });
+
+  it("imports SciSlide's actual exported SVG fonts and preserves them through native save/reopen", async () => {
+    const exported = await readFile(
+      "examples/scientific-equation-template.svg",
+      "utf8",
+    );
+    const expectedFonts = [...exported.matchAll(/@font-face\{/g)].length;
+    expect(expectedFonts).toBeGreaterThan(0);
+    const asset = await importFigure(
+      new File([exported], "scientific-equation-template.svg", {
+        type: "image/svg+xml",
+      }),
+    );
+    expect(asset).toMatchObject({
+      width: 1600,
+      height: 900,
+      mime: "image/svg+xml",
+    });
+    const clean = new TextDecoder().decode(
+      Uint8Array.from(atob(asset.dataUrl.split(",")[1]), (char) =>
+        char.charCodeAt(0),
+      ),
+    );
+    expect([...clean.matchAll(/@font-face\{/g)]).toHaveLength(expectedFonts);
+    expect(clean).toContain("data:font/ttf;base64,");
+    expect(clean).toContain("Equation + meaning");
+    const deck = createDemoDeck();
+    deck.assets = [asset];
+    deck.slides = [
+      {
+        ...deck.slides[0],
+        objects: [
+          {
+            id: "exported-svg-figure",
+            type: "figure",
+            name: "Exported scientific figure",
+            assetId: asset.id,
+            alt: "Scientific equations and labels",
+            transform: { x: 100, y: 100, width: 800, height: 450, rotation: 0 },
+            opacity: 1,
+            visible: true,
+            locked: false,
+            metadata: {},
+          },
+        ],
+      },
+    ];
+    const reopened = await readDeckArchive(await buildDeckArchive(deck));
+    expect(reopened.assets).toEqual(deck.assets);
+    expect(reopened.slides).toEqual(deck.slides);
+  });
+
   it("preserves class-styled plot appearance, specificity, and inline overrides", () => {
     const clean = sanitizeSvg(
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><style>* {stroke-linejoin:round;stroke-linecap:butt}.curve {fill:none;stroke:#26867a;stroke-width:2} path {stroke:#cccccc}.curve.highlight {stroke:#6d78c4}</style><path class="curve highlight" d="M0 0L100 100"/><path class="curve" style="stroke:#ff0000" d="M0 100L100 0"/></svg>',

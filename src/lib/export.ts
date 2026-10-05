@@ -1,7 +1,13 @@
 import { jsPDF } from "jspdf";
 import { svg2pdf } from "svg2pdf.js";
 import type { AnySlideObject, Asset, Deck, Slide } from "./model";
+import { figureViewport } from "./figure-editing";
 import { renderObjectEquation } from "./equation-renderer";
+import {
+  hasInlineMath,
+  inlinePlainText,
+  layoutInlineText,
+} from "./inline-math";
 import { wrapText } from "./layout";
 import { resolvePageNumber } from "./model";
 import { shapeGeometry } from "./shape-geometry";
@@ -218,44 +224,83 @@ async function objectSvg(
   title.textContent = object.name;
   group.append(title);
   if (object.type === "text") {
-    const renderedText = normalizeRenderedText(object.text);
-    const family = exportTextFontFamily(renderedText, object.fontFamily);
-    const weight = exportTextFontWeight(
-      renderedText,
-      object.fontFamily,
-      object.fontWeight,
-    );
-    if (isKoreanFontFamily(family)) await loadKoreanFonts();
-    const x =
-      object.align === "center"
-        ? width / 2
-        : object.align === "right"
-          ? width
-          : 0;
-    const text = svgElement("text", {
-      fill: object.color,
-      "font-family": family,
-      "font-size": object.fontSize,
-      "font-weight": weight,
-      "font-style": "normal",
-      "text-anchor":
+    if (hasInlineMath(object.text)) {
+      try {
+        const layout = await layoutInlineText(object, deck);
+        if (isKoreanFontFamily(layout.fontFamily)) await loadKoreanFonts();
+        for (const [lineIndex, line] of layout.lines.entries()) {
+          for (const [runIndex, run] of line.runs.entries()) {
+            if (run.type === "text") {
+              const text = svgElement("text", {
+                x: run.x,
+                y: line.baseline,
+                fill: object.color,
+                "font-family": layout.fontFamily,
+                "font-size": object.fontSize,
+                "font-weight": layout.fontWeight,
+                "font-style": "normal",
+                "text-anchor": "start",
+                "xml:space": "preserve",
+              });
+              text.textContent = normalizeRenderedText(run.text);
+              group.append(text);
+            } else {
+              const nested = parseSvg(run.svg, "Inline equation");
+              prefixIds(nested, `${prefix}-inline-${lineIndex}-${runIndex}`);
+              nested.setAttribute("x", String(run.x));
+              nested.setAttribute("y", String(run.y));
+              nested.setAttribute("width", String(run.width));
+              nested.setAttribute("height", String(run.height));
+              nested.setAttribute("data-inline-math", "true");
+              group.append(nested);
+            }
+          }
+        }
+      } catch (error) {
+        throw new Error(
+          `Text “${object.name}” cannot be exported: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    } else {
+      const renderedText = normalizeRenderedText(inlinePlainText(object.text));
+      const family = exportTextFontFamily(renderedText, object.fontFamily);
+      const weight = exportTextFontWeight(
+        renderedText,
+        object.fontFamily,
+        object.fontWeight,
+      );
+      if (isKoreanFontFamily(family)) await loadKoreanFonts();
+      const x =
         object.align === "center"
-          ? "middle"
+          ? width / 2
           : object.align === "right"
-            ? "end"
-            : "start",
-    });
-    wrapText(renderedText, width, object.fontSize, family, weight).forEach(
-      (line, index) => {
-        const span = svgElement("tspan", {
-          x,
-          y: object.fontSize + index * object.fontSize * 1.3,
-        });
-        span.textContent = line || " ";
-        text.append(span);
-      },
-    );
-    group.append(text);
+            ? width
+            : 0;
+      const text = svgElement("text", {
+        fill: object.color,
+        "font-family": family,
+        "font-size": object.fontSize,
+        "font-weight": weight,
+        "font-style": "normal",
+        "text-anchor":
+          object.align === "center"
+            ? "middle"
+            : object.align === "right"
+              ? "end"
+              : "start",
+      });
+      wrapText(renderedText, width, object.fontSize, family, weight).forEach(
+        (line, index) => {
+          const span = svgElement("tspan", {
+            x,
+            y: object.fontSize + index * object.fontSize * 1.3,
+          });
+          span.textContent = line || " ";
+          text.append(span);
+        },
+      );
+      group.append(text);
+    }
   } else if (object.type === "shape") {
     for (const primitive of shapeGeometry(object))
       group.append(svgElement(primitive.tag, primitive.attributes));
@@ -309,6 +354,21 @@ async function objectSvg(
     if (!asset)
       throw new Error(`Figure “${object.name}” is missing its asset.`);
     const label = `Figure “${asset.name}”`;
+    const geometry = figureViewport(object, asset);
+    const viewport = svgElement("svg", {
+      ...geometry.attributes,
+      "data-figure-viewport": "true",
+    });
+    const clipId = `${prefix}-figure-region`;
+    const definitions = svgElement("defs");
+    const clip = svgElement("clipPath", {
+      id: clipId,
+      clipPathUnits: "userSpaceOnUse",
+    });
+    clip.append(svgElement("rect", geometry.region));
+    definitions.append(clip);
+    const content = svgElement("g", { "clip-path": `url(#${clipId})` });
+    viewport.append(definitions, content);
     if (asset.mime === "image/svg+xml") {
       const nested = parseSvg(decodeSvg(asset), label);
       verifySelfContained(nested, label);
@@ -323,31 +383,33 @@ async function objectSvg(
       nested.setAttribute("y", "0");
       if (!nested.hasAttribute("viewBox"))
         nested.setAttribute("viewBox", `0 0 ${asset.width} ${asset.height}`);
-      nested.setAttribute("width", String(width));
-      nested.setAttribute("height", String(height));
-      nested.setAttribute("preserveAspectRatio", "xMidYMid meet");
+      nested.setAttribute("width", String(geometry.sourceWidth));
+      nested.setAttribute("height", String(geometry.sourceHeight));
+      // Retain the source's own viewBox mapping (including none/slice). The
+      // enclosing crop viewport handles fitting into the figure's slide frame.
       for (const image of nested.querySelectorAll("image")) {
         const href =
           image.getAttribute("href") ??
           image.getAttributeNS("http://www.w3.org/1999/xlink", "href");
         if (href && !href.startsWith("#")) await verifyImage(href, label);
       }
-      group.append(nested);
+      content.append(nested);
     } else if (asset.mime === "image/png" || asset.mime === "image/jpeg") {
       await verifyImage(asset.dataUrl, label);
       const image = svgElement("image", {
         href: asset.dataUrl,
-        width,
-        height,
+        width: geometry.sourceWidth,
+        height: geometry.sourceHeight,
         preserveAspectRatio: "xMidYMid meet",
       });
       const description = svgElement("title");
       description.textContent = object.alt;
       image.append(description);
-      group.append(image);
+      content.append(image);
     } else {
       throw new Error(`${label} has an unsupported format.`);
     }
+    group.append(viewport);
   }
   group.setAttribute(
     "transform",

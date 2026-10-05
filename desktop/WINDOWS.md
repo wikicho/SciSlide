@@ -1,24 +1,32 @@
-# SciSlide 0.5.3 — Windows x64
+# SciSlide 0.6.0 — Windows x64
 
 This development build contains the **x64 (Intel/AMD 64-bit)** SciSlide app for Windows 10 or later. Windows 11 x64 is the intended desktop target. Node.js, a development server and TeX are not required for MathJax editing. Physical Windows 10/11 desktop validation is still a release requirement.
 
 ## Install or run the portable app
 
-Run `SciSlide-0.5.3-windows-x64-setup-unsigned.exe` to install for your current user. The default destination is `%LOCALAPPDATA%\Programs\SciSlide`, with a Start menu shortcut. Administrator privileges are not requested. Quit SciSlide before installing an update. Remove it through Windows' installed-app settings. Uninstallation does not remove presentations you saved elsewhere or the app's user-data folder.
+Run `SciSlide-0.6.0-windows-x64-setup-unsigned.exe` to install for your current user. The default destination is `%LOCALAPPDATA%\Programs\SciSlide`, with a Start menu shortcut. Administrator privileges are not requested. Quit SciSlide before installing an update. Remove it through Windows' installed-app settings. Uninstallation does not remove presentations you saved elsewhere or the app's user-data folder.
 
-Alternatively, extract **all** of `SciSlide-0.5.3-windows-x64-portable.zip`, then open `SciSlide-win32-x64\scislide.exe`. Keep the runtime files, DLLs and `resources` directory together. The portable edition runs without installation, but still uses Electron's ordinary per-user app-data directory; recovery data is not stored beside the executable.
+Alternatively, extract **all** of `SciSlide-0.6.0-windows-x64-portable.zip`, then open `SciSlide-win32-x64\scislide.exe`. Keep the runtime files, DLLs and `resources` directory together. The portable edition runs without installation, but still uses Electron's ordinary per-user app-data directory; recovery data is not stored beside the executable.
 
 Both distributions are **unsigned development builds**. Windows security policies may block installation or launch. Code signing and publisher reputation are later release work; these builds do not change system security settings. The application binary is x64, and the installer uses an x64 bootstrap executable. A separate native ARM64 or 32-bit Windows edition is not provided.
 
 ## Use the editor
 
-**New slide** or the slide list's **+** opens the template picker. **All layouts**, **Scientific** and **Keynote-inspired** filter fourteen editable layouts; **Blank slide** creates an empty slide. The eight Scientific layouts cover research titles, findings, equations, comparisons, sections, methods, results and conclusions. Six Keynote-inspired layouts add minimal white/black titles and findings, a navy statement and a figure showcase. Layouts insert after the current slide and can be undone. **Open / Save / Save As** use native file dialogs; **Export** saves the whole presentation as PDF or the current slide as SVG. Keyboard shortcuts use Ctrl on Windows.
+Start by choosing **Scientific**, **Minimal White**, **Minimal Black**, **Navy** or **Keynote White**, then **Create presentation**. Keynote White has fifteen coordinated white/black layouts; the other themes retain the fourteen Scientific/Keynote-inspired layouts. **New slide** or **+** opens the theme's picker, including **Blank slide**. Layouts insert after the current slide and can be undone. **Open / Save / Save As** use native file dialogs; **Export** saves the whole presentation as PDF or the current slide as SVG.
+
+Double-click text or press **Enter** on a selected text box to edit directly on the slide. **Enter** adds a line, **Ctrl+Enter** or clicking outside applies one undoable edit, and **Escape** cancels. Korean IME input and plain-text paste are supported. Write `$\chi$` or `\(\frac{1}{2}\)` inside text to render inline MathJax formulas. They match the surrounding font's lowercase height, retain their mathematical baseline and remain vectors in PDF/SVG; editing and native saves preserve the original syntax.
+
+Choose **Figure** to import PNG, JPEG, sanitized SVG or a selected PDF page. PDF preview/selection embeds a high-resolution PNG; original PDF vector preservation is not implemented. **CROP & INSET** lets you apply/reset a reversible crop or create an independent enlarged inset. **Replace figure** preserves the frame and normalized crop. Selecting a Keynote White photo/video placeholder before **Figure / Video** fills its frame; photo crops remain adjustable. Video layouts use imported MP4/WebM, with no live-camera feed.
 
 Choose **Draw rectangle**, **Draw ellipse**, **Draw line** or **Draw arrow**, then drag on the canvas. Shift constrains squares/circles or line direction; Escape cancels drawing. Selected lines/arrows have editable endpoint handles. The Inspector provides solid/dashed/dotted strokes, stroke width/color, no-fill outlines and arrowheads at the start, end or both ends. Shapes export as vectors in PDF/SVG.
 
-Shift+click selects objects for **Group objects / Ungroup objects**; Ctrl+G groups and Ctrl+Shift+G ungroups. Flat groups move together and duplicate independently, with membership preserved by save/open and undo/redo. Ungroup before resizing, rotating or editing an individual member's endpoints. Automatic alignment guides appear while dragging; Alt bypasses them. **Snap to 20 px grid** enables grid snapping with precedence over object guides. Nested groups, collective group scaling/rotation, equal distribution, attached connectors and freehand paths remain planned.
+Shift+click selects objects for **Group objects / Ungroup objects**; **Ctrl+G** groups and **Ctrl+Shift+G** ungroups. Flat groups move together and duplicate independently. Ungroup before resizing, rotating or editing an individual member's endpoints. Use six-way alignment and equal-gap distribution to arrange a selection. Automatic guides appear while dragging/resizing; **Alt** bypasses them. **Snap to 20 px grid** takes precedence over object guides. The **OBJECTS & LAYERS** list selects hidden or covered objects and controls visibility, locks and order. Object copy/cut/paste works across slides or decks in one session. Nested groups, whole-group scaling/rotation, attached connectors and freehand paths remain planned.
 
-New saves use native format **0.4.0**. Versions 0.1.0/0.2.0/0.3.0 are migrated on opening; the original is untouched until Save. Apps that support only 0.3.0 or earlier cannot read new 0.4.0 files. Use Save As to preserve an older original when needed; PDF/SVG does not downgrade editable source.
+Keyboard shortcuts use **Ctrl** and **Alt**. **Ctrl+O / Ctrl+S / Ctrl+Shift+S** open/save/save as; **Ctrl+Z / Ctrl+Y** undo/redo, with **Ctrl+Shift+Z** also accepted for Redo. **Ctrl+Enter** presents from the canvas. **Ctrl+Alt+P / Ctrl+Alt+S** export PDF/current-slide SVG. **Ctrl+Shift+/** opens shortcut help. During text editing, Ctrl+Enter applies the edit without starting a slideshow; text-field clipboard and IME behavior are preserved.
+
+**My equations** stores named/tagged formulas locally and transfers them through JSON import/export. **Presenter display** opens a separate window with current/next previews, notes, navigation and a timer; move it to your presenter screen. Recovery uses IndexedDB, bounded to 100 MiB, and retains up to 200 unfinished equation drafts, with a localStorage fallback. Libraries and unapplied drafts are local workspace data; continue saving portable files explicitly.
+
+New saves use native format **0.5.0**, including reversible figure crops. Versions **0.1.0–0.4.0** are migrated on opening; the original is untouched until Save. Apps that support only 0.4.0 or earlier cannot read new 0.5.0 files. Use **Save As** to preserve an older original; PDF/SVG does not downgrade editable source.
 
 MathJax, AMS notation and the bundled STIX Two, Fira Math and Latin Modern equation fonts work without a TeX installation. **Local LaTeX compilation is currently disabled on Windows**, even when MiKTeX or TeX Live is installed, until the Windows compiler isolation worker is implemented. Valid vector results already saved in a `.scislide` document can be viewed, presented and exported without TeX.
 
@@ -29,8 +37,8 @@ Bundled editable examples are in the app's `examples` folder. Copy one to your d
 Each distribution has a matching `.sha256` file. In PowerShell, compare its recorded hash with the result of:
 
 ```powershell
-Get-FileHash .\SciSlide-0.5.3-windows-x64-setup-unsigned.exe -Algorithm SHA256
-Get-Content .\SciSlide-0.5.3-windows-x64-setup-unsigned.exe.sha256
+Get-FileHash .\SciSlide-0.6.0-windows-x64-setup-unsigned.exe -Algorithm SHA256
+Get-Content .\SciSlide-0.6.0-windows-x64-setup-unsigned.exe.sha256
 ```
 
 Use the portable ZIP's filename to verify that distribution. A matching checksum detects file changes; it does not certify a publisher or replace code signing.

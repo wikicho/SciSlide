@@ -79,13 +79,13 @@ describe("document model", () => {
     expect(original.title).not.toBe("Edited");
   });
 
-  it.each(["0.1.0", "0.2.0", "0.3.0"])(
+  it.each(["0.1.0", "0.2.0", "0.3.0", "0.4.0"])(
     "migrates %s without adding page numbers or hiding legacy objects",
     (formatVersion) => {
       const deck = createDemoDeck();
       delete deck.pageNumbers;
       const migrated = validateDeck({ ...deck, formatVersion });
-      expect(migrated.formatVersion).toBe("0.4.0");
+      expect(migrated.formatVersion).toBe("0.5.0");
       expect(migrated.pageNumbers).toBeUndefined();
       expect(resolvePageNumber(migrated, 0)).toBeNull();
       expect(migrated.slides).toEqual(deck.slides);

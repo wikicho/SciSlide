@@ -292,6 +292,10 @@ export interface RenderedEquation {
   svg: string;
   width: number;
   height: number;
+  /** Logical pixels from the SVG's top edge to its mathematical baseline. */
+  baseline?: number;
+  /** The selected math font's lowercase x-height at the requested font size. */
+  xHeight?: number;
   /** Unicode code points rendered with bundled STIX paths when the chosen font lacks them. */
   fallbackGlyphs?: number[];
 }
@@ -508,6 +512,8 @@ async function convert(
     svg: adaptor.serializeXML(svg),
     width,
     height,
+    baseline: (-viewBox[1] * fontSize) / 1000,
+    xHeight: output.font.params.x_height * fontSize,
     ...(fallbackGlyphs?.size
       ? { fallbackGlyphs: [...fallbackGlyphs].sort((a, b) => a - b) }
       : {}),

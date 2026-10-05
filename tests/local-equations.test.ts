@@ -188,8 +188,8 @@ describe("native Local LaTeX portability", () => {
     const stored = document.slides[0].objects.find(
       (o: EquationObject) => o.id === equation.id,
     );
-    expect(manifest.formatVersion).toBe("0.4.0");
-    expect(document.formatVersion).toBe("0.4.0");
+    expect(manifest.formatVersion).toBe("0.5.0");
+    expect(document.formatVersion).toBe("0.5.0");
     expect(stored.localTex.render.svg).toBeUndefined();
     expect(stored.localTex.render.path).toBe(`renders/${equation.id}.svg`);
     const resource = manifest.resources.find(
@@ -256,7 +256,7 @@ describe("native Local LaTeX portability", () => {
     ).latex;
     expect(
       validateDeck({ ...deck, formatVersion: "0.1.0" }).formatVersion,
-    ).toBe("0.4.0");
+    ).toBe("0.5.0");
     const zip = await JSZip.loadAsync(
       await bytes(await buildDeckArchive(deck)),
     );
@@ -277,7 +277,7 @@ describe("native Local LaTeX portability", () => {
     sourceResource.sha256 = createHash("sha256").update(source).digest("hex");
     zip.file("manifest.json", JSON.stringify(manifest));
     const loaded = await readDeckArchive(await blob(zip));
-    expect(loaded.formatVersion).toBe("0.4.0");
+    expect(loaded.formatVersion).toBe("0.5.0");
     expect(
       (
         loaded.slides[0].objects.find(

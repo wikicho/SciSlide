@@ -77,7 +77,7 @@ interface Resource {
 }
 
 interface Manifest {
-  formatVersion: "0.1.0" | "0.2.0" | "0.3.0" | "0.4.0";
+  formatVersion: "0.1.0" | "0.2.0" | "0.3.0" | "0.4.0" | "0.5.0";
   document: "document.json";
   producer: { name: string; version: string };
   renderingProfiles: typeof RENDER_PROFILES;
@@ -228,10 +228,146 @@ function stylesheetError(): Error {
   );
 }
 
-/** Flatten ordinary scientific-plot CSS before removing style tags from untrusted SVG. */
-function inlineSvgStyles(document: Document): void {
+const MAX_SVG_FONT_BYTES = 8 * 1024 * 1024;
+const MAX_SVG_FONT_TOTAL_BYTES = 16 * 1024 * 1024;
+
+/** Accept one embedded binary font source and reconstruct every descriptor. */
+function safeSvgFontFace(
+  body: string,
+  budget: { bytes: number; count: number },
+): string {
+  if (body.length > Math.ceil((MAX_SVG_FONT_BYTES * 4) / 3) + 4096)
+    throw stylesheetError();
+  // Font data contains a semicolon inside url(), so split declarations only
+  // outside parentheses/quotes instead of treating it as a declaration end.
+  const parts: string[] = [];
+  let start = 0,
+    depth = 0,
+    quote = "";
+  for (let i = 0; i < body.length; i++) {
+    const char = body[i];
+    if (quote) {
+      if (char === quote) quote = "";
+    } else if (char === '"' || char === "'") quote = char;
+    else if (char === "(") depth++;
+    else if (char === ")") {
+      if (--depth < 0) throw stylesheetError();
+    } else if (char === ";" && !depth) {
+      parts.push(body.slice(start, i));
+      start = i + 1;
+    }
+  }
+  if (quote || depth) throw stylesheetError();
+  parts.push(body.slice(start));
+  const descriptors = new Map<string, string>();
+  for (const part of parts.filter((value) => value.trim())) {
+    const declaration = /^\s*([a-z-]+)\s*:\s*([\s\S]+?)\s*$/i.exec(part);
+    if (!declaration) throw stylesheetError();
+    const property = declaration[1].toLowerCase();
+    const value = declaration[2];
+    if (descriptors.has(property)) throw stylesheetError();
+    let safe: string;
+    if (property === "font-family") {
+      const family =
+        /^(?:"([a-zA-Z_][\w .+-]{0,99})"|'([a-zA-Z_][\w .+-]{0,99})'|([a-zA-Z_][\w .+-]{0,99}))$/.exec(
+          value,
+        );
+      if (!family) throw stylesheetError();
+      safe = `"${family[1] ?? family[2] ?? family[3]}"`;
+    } else if (property === "src") {
+      const source =
+        /^url\(\s*(["']?)data:font\/(ttf|otf|woff|woff2);base64,([a-zA-Z0-9+/=\s]+)\1\s*\)\s*(?:format\(\s*(["']?)(truetype|opentype|woff|woff2)\4\s*\))?$/i.exec(
+          value,
+        );
+      if (!source) throw stylesheetError();
+      const type = source[2].toLowerCase() as "ttf" | "otf" | "woff" | "woff2";
+      const encoded = source[3].replace(/\s/g, "");
+      const size =
+        encoded.length * 0.75 -
+        (encoded.endsWith("==") ? 2 : encoded.endsWith("=") ? 1 : 0);
+      if (
+        size < 12 ||
+        size > MAX_SVG_FONT_BYTES ||
+        budget.bytes + size > MAX_SVG_FONT_TOTAL_BYTES ||
+        budget.count >= 16
+      )
+        throw stylesheetError();
+      if (encoded.length % 4 || !/^[a-zA-Z0-9+/]*={0,2}$/.test(encoded))
+        throw stylesheetError();
+      const signature = atob(encoded.slice(0, 16)).slice(0, 4);
+      const magic = {
+        ttf: "\u0000\u0001\u0000\u0000",
+        otf: "OTTO",
+        woff: "wOFF",
+        woff2: "wOF2",
+      }[type];
+      const format = {
+        ttf: "truetype",
+        otf: "opentype",
+        woff: "woff",
+        woff2: "woff2",
+      }[type];
+      if (
+        signature !== magic ||
+        (source[5] && source[5].toLowerCase() !== format)
+      )
+        throw stylesheetError();
+      budget.bytes += size;
+      budget.count++;
+      safe = `url("data:font/${type};base64,${encoded}") format("${format}")`;
+    } else if (property === "font-style") {
+      if (
+        !/^(?:normal|italic|oblique(?:\s+-?\d{1,2}(?:\.\d{1,2})?deg)?)$/i.test(
+          value,
+        )
+      )
+        throw stylesheetError();
+      safe = value.toLowerCase();
+    } else if (property === "font-weight") {
+      if (
+        !/^(?:normal|bold|(?:[1-9]\d{0,2}|1000)(?:\s+(?:[1-9]\d{0,2}|1000))?)$/i.test(
+          value,
+        )
+      )
+        throw stylesheetError();
+      const weights = value.split(/\s+/).map(Number);
+      if (weights.length === 2 && weights[0] > weights[1])
+        throw stylesheetError();
+      safe = value.toLowerCase();
+    } else if (property === "font-stretch") {
+      if (
+        !/^(?:normal|(?:ultra-|extra-|semi-)?(?:condensed|expanded)|(?:[5-9]\d|1\d{2}|200)%)$/i.test(
+          value,
+        )
+      )
+        throw stylesheetError();
+      safe = value.toLowerCase();
+    } else if (property === "unicode-range") {
+      if (
+        !/^U\+[a-fA-F0-9?]{1,6}(?:-[a-fA-F0-9]{1,6})?(?:\s*,\s*U\+[a-fA-F0-9?]{1,6}(?:-[a-fA-F0-9]{1,6})?)*$/i.test(
+          value,
+        )
+      )
+        throw stylesheetError();
+      safe = value.toUpperCase();
+    } else if (property === "font-display") {
+      if (!/^(?:auto|block|swap|fallback|optional)$/i.test(value))
+        throw stylesheetError();
+      safe = value.toLowerCase();
+    } else throw stylesheetError();
+    descriptors.set(property, safe);
+  }
+  if (!descriptors.has("font-family") || !descriptors.has("src"))
+    throw stylesheetError();
+  return `@font-face{${[...descriptors].map(([key, value]) => `${key}:${value}`).join(";")}}`;
+}
+
+/** Flatten ordinary plot CSS; return reconstructed, embedded-only font rules. */
+function inlineSvgStyles(document: Document): string[] {
   const styles = [...document.querySelectorAll("style")];
-  if (!styles.length) return;
+  const fonts: string[] = [];
+  const fontBudget = { bytes: 0, count: 0 };
+  if (!styles.length) return fonts;
   type Winner = { value: string; specificity: number[]; order: number };
   const winners = new Map<Element, Map<string, Winner>>();
   let order = 0;
@@ -251,15 +387,24 @@ function inlineSvgStyles(document: Document): void {
       continue;
     }
     if (
-      css.length > 128_000 ||
-      /[@\\]|expression\s*\(|javascript\s*:|var\s*\(/i.test(css)
+      css.length > (MAX_FIGURE_BYTES * 4) / 3 + 128_000 ||
+      /[\\]|expression\s*\(|javascript\s*:|var\s*\(/i.test(css)
     )
       throw stylesheetError();
-    // A deliberately flat CSS subset avoids imports, media queries, font loading, and animation.
+    // Flat rules exclude nested media queries, imports and animation. Embedded
+    // font rules are reconstructed separately; ordinary plot CSS is flattened.
     const blocks = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
     if (!blocks.length || css.replace(/([^{}]+)\{([^{}]*)\}/g, "").trim())
       throw stylesheetError();
+    let ordinaryLength = 0;
     for (const block of blocks) {
+      if (/^@font-face$/i.test(block[1].trim())) {
+        fonts.push(safeSvgFontFace(block[2], fontBudget));
+        continue;
+      }
+      ordinaryLength += block[0].length;
+      if (ordinaryLength > 128_000 || block[1].includes("@"))
+        throw stylesheetError();
       let rule: CSSStyleRule;
       try {
         const sheet = new CSSStyleSheet();
@@ -347,6 +492,7 @@ function inlineSvgStyles(document: Document): void {
   for (const [element, declarations] of winners)
     for (const [property, declaration] of declarations)
       element.setAttribute(property, declaration.value);
+  return fonts;
 }
 
 /** Removes active content and references that could fetch resources or execute code. */
@@ -357,7 +503,7 @@ export function sanitizeSvg(source: string): string {
     parsed.documentElement.localName !== "svg"
   )
     throw new Error("The SVG file is not a valid SVG image.");
-  inlineSvgStyles(parsed);
+  const fonts = inlineSvgStyles(parsed);
   const clean = DOMPurify.sanitize(
     new XMLSerializer().serializeToString(parsed.documentElement),
     {
@@ -420,6 +566,16 @@ export function sanitizeSvg(source: string): string {
     "xmlns",
     "http://www.w3.org/2000/svg",
   );
+  // Raw style elements remain forbidden in DOMPurify. Add only font CSS whose
+  // URLs, binary signatures, sizes and descriptors were reconstructed above.
+  if (fonts.length) {
+    const style = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "style",
+    );
+    style.textContent = fonts.join("\n");
+    root.insertBefore(style, root.firstChild);
+  }
   return new XMLSerializer().serializeToString(root);
 }
 
@@ -747,7 +903,7 @@ export async function buildDeckArchive(input: Deck): Promise<Blob> {
     sha256: await sha256(documentBytes),
   });
   const manifest: Manifest = {
-    formatVersion: "0.4.0",
+    formatVersion: "0.5.0",
     document: "document.json",
     producer: { name: "SciSlide", version: "0.5.3" },
     renderingProfiles: RENDER_PROFILES,
@@ -813,7 +969,7 @@ export async function readDeckArchive(file: Blob): Promise<Deck> {
     throw new Error("The SciSlide manifest is invalid.");
   const manifest = candidate as Partial<Manifest>;
   if (
-    !["0.1.0", "0.2.0", "0.3.0", "0.4.0"].includes(
+    !["0.1.0", "0.2.0", "0.3.0", "0.4.0", "0.5.0"].includes(
       manifest.formatVersion as string,
     ) ||
     manifest.document !== "document.json" ||

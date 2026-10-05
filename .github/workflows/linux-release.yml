@@ -1,0 +1,181 @@
+name: Linux x64 development packages
+
+on:
+  workflow_call:
+    inputs:
+      publish_prerelease:
+        type: boolean
+        required: false
+        default: false
+      release_tag:
+        type: string
+        required: false
+        default: ""
+    outputs:
+      artifact_ids:
+        description: Immutable ID of the verified Debian artifact
+        value: ${{ jobs.package.outputs.artifact_id }}
+  workflow_dispatch:
+    inputs:
+      publish_prerelease:
+        description: Publish this verified build as a GitHub development prerelease
+        required: true
+        default: false
+        type: boolean
+      release_tag:
+        description: New tag, for example v0.6.0-linux-dev.1 (only when publishing)
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-package-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+      artifact_id: ${{ steps.artifact.outputs.artifact-id }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js x64
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          architecture: x64
+          package-manager-cache: false
+
+      - name: Set up pinned pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.25.0
+          run_install: false
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check editor and desktop host
+        run: |
+          pnpm test
+          pnpm test:desktop
+          pnpm build
+
+      - name: Build the Linux x64 app and Debian package
+        id: package
+        run: |
+          command -v dpkg-deb
+          node scripts/package-linux.mjs --arch=x64
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "SCISLIDE_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Verify checksum, metadata and extracted payload
+        run: |
+          package="release/SciSlide-${SCISLIDE_VERSION}-linux-x64.deb"
+          (cd release && sha256sum -c "$(basename "$package").sha256")
+          test "$(dpkg-deb --field "$package" Package)" = scislide
+          test "$(dpkg-deb --field "$package" Architecture)" = amd64
+          test "$(dpkg-deb --field "$package" Version)" = "${SCISLIDE_VERSION/-/~}"
+          extract="$RUNNER_TEMP/scislide-deb-review"
+          dpkg-deb --extract "$package" "$extract"
+          test -s "$extract/opt/scislide/resources/app.asar"
+          test -x "$extract/opt/scislide/scislide"
+          test "$(readlink "$extract/usr/bin/scislide")" = /opt/scislide/scislide
+          test -s "$extract/usr/share/applications/scislide.desktop"
+          test -s "$extract/usr/share/icons/hicolor/scalable/apps/scislide.svg"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const file = join(process.env.RUNNER_TEMP, 'scislide-deb-review', 'opt/scislide/scislide');
+          const bytes = readFileSync(file);
+          if (bytes.subarray(0, 4).toString('hex') !== '7f454c46' || bytes[4] !== 2 || bytes[5] !== 1 || bytes.readUInt16LE(18) !== 62) {
+            throw new Error('Packaged Electron executable must be Linux x86-64 ELF.');
+          }
+          NODE
+
+      - name: Upload Linux x64 development package
+        id: artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: SciSlide-${{ env.SCISLIDE_VERSION }}-linux-x64-deb
+          path: |
+            release/SciSlide-*-linux-x64.deb
+            release/SciSlide-*-linux-x64.deb.sha256
+            release/LINUX-INSTALL.md
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+  publish:
+    needs: package
+    if: inputs.publish_prerelease && github.repository == 'wikicho/SciSlide' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SCISLIDE_VERSION: ${{ needs.package.outputs.version }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      SOURCE_SHA: ${{ github.sha }}
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Download the verified artifact from this run
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.package.outputs.artifact_id }}
+          path: publish
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Verify and publish a new development prerelease
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, lstatSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          import { execFileSync } from 'node:child_process';
+          const { GITHUB_REPOSITORY: repo, SCISLIDE_VERSION: version, RELEASE_TAG: tag, SOURCE_SHA: sha } = process.env;
+          const require = (ok, message) => { if (!ok) throw new Error(message); };
+          require(repo === 'wikicho/SciSlide' && /^[0-9a-f]{40}$/.test(sha), 'Unexpected release source');
+          require(tag.startsWith(`v${version}-linux-dev.`) && /^[1-9][0-9]*$/.test(tag.slice(`v${version}-linux-dev.`.length)), 'Use a new v<version>-linux-dev.<number> tag');
+          const deb = `SciSlide-${version}-linux-x64.deb`;
+          const names = [deb, `${deb}.sha256`, 'LINUX-INSTALL.md'];
+          require(JSON.stringify(readdirSync('publish').sort()) === JSON.stringify([...names].sort()), 'Unexpected release files');
+          for (const name of names) require(lstatSync(`publish/${name}`).isFile(), 'Release files must be regular files');
+          const bytes = readFileSync(`publish/${deb}`);
+          require(bytes.subarray(0, 8).toString() === '!<arch>\n', 'Invalid Debian archive');
+          const hash = createHash('sha256').update(bytes).digest('hex');
+          require(readFileSync(`publish/${deb}.sha256`, 'utf8') === `${hash}  ${deb}\n`, 'Debian package checksum mismatch');
+          async function absent(path) {
+            const response = await fetch(`https://api.github.com/repos/${repo}/${path}`, {
+              headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json' }
+            });
+            require(response.status === 404, `Existing or inaccessible release/tag: ${path}`);
+          }
+          await absent(`git/ref/tags/${encodeURIComponent(tag)}`);
+          await absent(`releases/tags/${encodeURIComponent(tag)}`);
+          const notes = `Linux x64 development package built from ${sha}.\n\nDownload the .deb and .sha256 together, then run:\n\n\`\`\`sh\nsha256sum -c ${deb}.sha256\nsudo apt install ./${deb}\nscislide\n\`\`\`\n\nThis download does not register an APT repository or automatic update source. Snap distribution remains planned.\n\n[Installation guide](https://github.com/${repo}/blob/${sha}/desktop/LINUX.md) · [Verified source build](https://github.com/${repo}/actions/runs/${process.env.GITHUB_RUN_ID})\n`;
+          writeFileSync('release-notes.md', notes);
+          const gh = args => execFileSync('gh', args, { stdio: 'inherit' });
+          gh(['release', 'create', tag, '--repo', repo, '--target', sha, '--title', `SciSlide ${version} — Linux x64 development package`, '--notes-file', 'release-notes.md', '--draft', '--prerelease']);
+          gh(['release', 'upload', tag, '--repo', repo, ...names.map(name => `publish/${name}`)]);
+          gh(['release', 'edit', tag, '--repo', repo, '--draft=false', '--prerelease', '--latest=false']);
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Published [${tag}](https://github.com/${repo}/releases/tag/${tag}) from \`${sha}\`.\n`);
+          NODE

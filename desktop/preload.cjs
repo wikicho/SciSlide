@@ -9,6 +9,15 @@ const commands = new Set([
   "redo",
   "present",
   "exportPdf",
+  "exportSvg",
+  "cut",
+  "copy",
+  "paste",
+  "selectAll",
+  "duplicate",
+  "group",
+  "ungroup",
+  "showShortcuts",
 ]);
 
 contextBridge.exposeInMainWorld("scislideDesktop", {

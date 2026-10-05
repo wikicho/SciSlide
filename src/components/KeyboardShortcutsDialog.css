@@ -1,0 +1,220 @@
+.modal-backdrop.keyboard-shortcuts-backdrop {
+  z-index: 1400;
+  padding: 20px;
+}
+
+.keyboard-shortcuts-dialog {
+  width: 840px;
+  max-width: 100%;
+  max-height: calc(100dvh - 40px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #203447;
+  background: #fff;
+  border: 1px solid #d8e3e9;
+  border-radius: 16px;
+  box-shadow: 0 18px 70px #16344738;
+}
+
+.keyboard-shortcuts-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 25px 28px 20px;
+  flex-shrink: 0;
+}
+
+.keyboard-shortcuts-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #42776d;
+  font-size: 11px;
+  margin: 0 0 8px;
+}
+
+.keyboard-shortcuts-header h2 {
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -0.7px;
+  margin: 0;
+}
+
+.keyboard-shortcuts-header div > p:last-child {
+  margin: 8px 0 0;
+  color: #718493;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.keyboard-shortcuts-close {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #718493;
+}
+
+.keyboard-shortcuts-close:hover {
+  color: #203447;
+  background: #f0f4f6;
+}
+
+.keyboard-shortcuts-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 28px 14px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #e5ecef;
+}
+
+.keyboard-shortcuts-tabs button {
+  padding: 9px 13px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  color: #687c8b;
+}
+
+.keyboard-shortcuts-tabs button[aria-selected="true"] {
+  color: #286c60;
+  background: #edf6f2;
+  border-color: #cee5da;
+}
+
+.keyboard-shortcuts-tabs span {
+  margin-left: 6px;
+  font-size: 9px;
+  color: #718493;
+}
+
+.keyboard-shortcuts-dialog button:focus-visible,
+.keyboard-shortcuts-body:focus-visible {
+  outline: 2px solid #3d8a78;
+  outline-offset: 2px;
+}
+
+.keyboard-shortcuts-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 24px 28px;
+  padding: 24px 28px;
+  overflow: auto;
+  min-height: 0;
+}
+
+.keyboard-shortcuts-group h3 {
+  margin: 0 0 9px;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #3c5d70;
+}
+
+.keyboard-shortcuts-group dl {
+  margin: 0;
+}
+
+.keyboard-shortcuts-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid #edf1f3;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.keyboard-shortcuts-row dt {
+  color: #567082;
+}
+
+.keyboard-shortcuts-row dd {
+  margin: 0;
+  text-align: right;
+  flex-shrink: 0;
+  max-width: 62%;
+}
+
+.keyboard-shortcuts-row kbd {
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 500;
+  color: #203447;
+  background: #f6f8fa;
+  border: 1px solid #e5ecef;
+  border-radius: 4px;
+  padding: 3px 5px;
+  box-decoration-break: clone;
+}
+
+.keyboard-shortcuts-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #718493;
+}
+
+.keyboard-shortcuts-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 15px 28px;
+  flex-shrink: 0;
+  border-top: 1px solid #e5ecef;
+  background: #f8fafb;
+}
+
+.keyboard-shortcuts-footer p {
+  margin: 0;
+  color: #718493;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.keyboard-shortcuts-footer button {
+  border: 1px solid #d1dfe5;
+  border-radius: 7px;
+  background: #fff;
+  padding: 8px 19px;
+  color: #203447;
+  font-size: 12px;
+}
+
+@media (max-width: 600px) {
+  .keyboard-shortcuts-backdrop {
+    padding: 10px;
+  }
+  .keyboard-shortcuts-dialog {
+    max-height: calc(100dvh - 20px);
+  }
+  .keyboard-shortcuts-header,
+  .keyboard-shortcuts-body {
+    padding: 20px;
+  }
+  .keyboard-shortcuts-tabs {
+    padding: 0 20px 14px;
+    flex-wrap: wrap;
+  }
+  .keyboard-shortcuts-tabs button {
+    padding: 8px;
+  }
+  .keyboard-shortcuts-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
+  }
+  .keyboard-shortcuts-footer {
+    padding: 14px 20px;
+  }
+}

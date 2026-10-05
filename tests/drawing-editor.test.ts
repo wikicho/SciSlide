@@ -60,6 +60,10 @@ describe("drawing editor gestures and history", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      font: "",
+      measureText: (text: string) => ({ width: [...text].length * 10 }),
+    } as CanvasRenderingContext2D);
     vi.stubGlobal("PointerEvent", TestPointerEvent);
     vi.stubGlobal(
       "ResizeObserver",
@@ -165,6 +169,7 @@ describe("drawing editor gestures and history", () => {
   async function render(deck: Deck) {
     vi.mocked(loadRecovery).mockReturnValue(deck);
     await act(async () => root.render(createElement(App)));
+    await click("Resume previous work");
     await persist();
   }
 
@@ -421,14 +426,17 @@ describe("drawing editor gestures and history", () => {
   });
 
   it("matches photo widths without stretching and allows Alt and the guide toggle to bypass resize snapping", async () => {
+    const asset = createDemoDeck().assets[0];
     const photo: FigureObject = {
       ...rectangle(100, 100, 200, 100),
       type: "figure",
-      assetId: "missing",
+      assetId: asset.id,
       alt: "Test photo",
     };
     const target = rectangle(700, 500, 300, 220);
-    await render(blankDeck([photo, target]));
+    const deck = blankDeck([photo, target]);
+    deck.assets = [asset];
+    await render(deck);
     async function resize(options: PointerEventInit = {}) {
       await pointer(objectElement(0), "pointerdown", 110, 110);
       await pointer(window, "pointerup", 110, 110);

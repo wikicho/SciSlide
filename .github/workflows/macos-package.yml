@@ -2,6 +2,11 @@ name: macOS development installers
 
 on:
   workflow_dispatch:
+  workflow_call:
+    outputs:
+      artifact_ids:
+        description: Immutable IDs of both verified installer artifacts
+        value: ${{ jobs.package.outputs.artifact_ids }}
   push:
     branches: [main]
     paths:
@@ -32,11 +37,14 @@ jobs:
   package:
     runs-on: macos-15
     timeout-minutes: 30
+    outputs:
+      artifact_ids: ${{ steps.arm64.outputs.artifact-id }},${{ steps.x64.outputs.artifact-id }}
     steps:
       - name: Check out source
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: ${{ github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -77,6 +85,7 @@ jobs:
           node -e "require('fs').appendFileSync(process.env.GITHUB_ENV, 'SCISLIDE_VERSION=' + require('./package.json').version + '\n')"
 
       - name: Upload Apple Silicon development installer
+        id: arm64
         uses: actions/upload-artifact@v7
         with:
           name: SciSlide-${{ env.SCISLIDE_VERSION }}-macos-arm64-unsigned
@@ -89,6 +98,7 @@ jobs:
           retention-days: 30
 
       - name: Upload Intel development installer
+        id: x64
         uses: actions/upload-artifact@v7
         with:
           name: SciSlide-${{ env.SCISLIDE_VERSION }}-macos-x64-unsigned

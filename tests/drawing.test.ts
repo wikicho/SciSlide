@@ -252,7 +252,7 @@ describe("alignment guides", () => {
 });
 
 describe("drawing document compatibility", () => {
-  it("round trips lines, dash styles, arrowheads, transparent fills and groups in native format0.4.0", async () => {
+  it("round trips lines, dash styles, arrowheads, transparent fills and groups in native format 0.5.0", async () => {
     const deck = createDemoDeck();
     const line = shape("line");
     const arrow = shape("arrow");
@@ -270,11 +270,11 @@ describe("drawing document compatibility", () => {
       await zip.file("manifest.json")!.async("string"),
     );
     expect(manifest).toMatchObject({
-      formatVersion: "0.4.0",
+      formatVersion: "0.5.0",
       producer: { name: "SciSlide", version: "0.5.3" },
     });
     const loaded = await readDeckArchive(archive);
-    expect(loaded.formatVersion).toBe("0.4.0");
+    expect(loaded.formatVersion).toBe("0.5.0");
     expect(loaded.slides[0].objects.slice(-3)).toEqual(objects);
     expect(await readDeckArchive(await buildDeckArchive(loaded))).toEqual(
       loaded,

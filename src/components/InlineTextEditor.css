@@ -1,0 +1,25 @@
+.inline-text-editor {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  background: rgb(71 184 164 / 6%);
+  line-height: 1.3;
+  resize: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  caret-color: currentColor;
+  outline: 2px solid #0f9f87;
+  outline-offset: -2px;
+  box-shadow: none;
+  user-select: text;
+  cursor: text;
+}
+
+.inline-text-editor:focus-visible {
+  outline: 2px solid #0f9f87;
+  outline-offset: -2px;
+}

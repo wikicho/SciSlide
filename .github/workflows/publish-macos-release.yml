@@ -6,11 +6,11 @@ on:
       run_id:
         description: Successful macOS installer workflow run to publish
         required: true
-        default: "37160480599"
         type: string
-  push:
-    branches: [main]
-    paths: [.github/workflows/publish-macos-release.yml]
+      source_sha:
+        description: Exact source commit of the verified installer run
+        required: true
+        type: string
 
 permissions: {}
 
@@ -28,7 +28,8 @@ jobs:
       contents: write
     env:
       GH_TOKEN: ${{ github.token }}
-      SOURCE_RUN_ID: ${{ inputs.run_id || '37160480599' }}
+      SOURCE_RUN_ID: ${{ inputs.run_id }}
+      EXPECTED_SOURCE_SHA: ${{ inputs.source_sha }}
     steps:
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -59,6 +60,7 @@ jobs:
           require(run.repository.full_name === repo && run.head_repository.full_name === repo && run.head_branch === 'main', 'Run must belong to the trusted main branch');
           require(run.name === 'macOS development installers' && run.path === '.github/workflows/macos-package.yml' && ['push', 'workflow_dispatch'].includes(run.event), 'Unexpected source workflow');
           require(/^[0-9a-f]{40}$/.test(run.head_sha), 'Invalid source commit');
+          require(/^[0-9a-f]{40}$/.test(process.env.EXPECTED_SOURCE_SHA) && run.head_sha === process.env.EXPECTED_SOURCE_SHA, 'Run does not match the explicitly requested source commit');
           async function sourceFile(path) {
             const file = await api(`contents/${path}?ref=${run.head_sha}`);
             require(file.type === 'file' && file.encoding === 'base64', 'Unexpected source file');

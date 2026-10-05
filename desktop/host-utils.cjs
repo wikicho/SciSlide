@@ -12,6 +12,15 @@ const COMMANDS = new Set([
   "redo",
   "present",
   "exportPdf",
+  "exportSvg",
+  "cut",
+  "copy",
+  "paste",
+  "selectAll",
+  "duplicate",
+  "group",
+  "ungroup",
+  "showShortcuts",
 ]);
 
 function parseDevUrl(value) {
@@ -60,6 +69,11 @@ function isTrustedPage(value, devUrl = null) {
     (parsed.pathname === "/" || parsed.pathname === "/index.html") &&
     !parsed.search
   );
+}
+
+function isPresenterPage(value, devUrl = null) {
+  if (!isTrustedPage(value, devUrl)) return false;
+  return /^#presenter=[a-zA-Z0-9-]{20,100}$/.test(new URL(value).hash);
 }
 
 function allowsFullscreen(permission, mainPageUrl, details, devUrl = null) {
@@ -148,8 +162,8 @@ function validateSaveDocument(value) {
 function validateSaveExport(value) {
   assertRecord(value, "Export request");
   assertKeys(value, ["bytes", "suggestedName", "kind"], "Export request");
-  if (value.kind !== "pdf" && value.kind !== "svg")
-    throw new Error("Choose PDF or SVG export.");
+  if (!["pdf", "svg", "json"].includes(value.kind))
+    throw new Error("Choose PDF, SVG or equation-library JSON export.");
   const bytes = checkedBytes(value.bytes, MAX_EXPORT_BYTES, "Export");
   if (
     value.kind === "pdf" &&
@@ -161,6 +175,24 @@ function validateSaveExport(value) {
     !/<svg[\s>]/i.test(bytes.subarray(0, 4096).toString("utf8"))
   )
     throw new Error("Invalid SVG export.");
+  if (value.kind === "json") {
+    if (bytes.byteLength > 8 * 1024 * 1024)
+      throw new Error("Equation library exceeds the 8 MB limit.");
+    let library;
+    try {
+      library = JSON.parse(bytes.toString("utf8"));
+    } catch {
+      throw new Error("Invalid equation-library JSON export.");
+    }
+    if (
+      !library ||
+      library.format !== "scislide-equation-library" ||
+      library.version !== 1 ||
+      !Array.isArray(library.entries) ||
+      library.entries.length > 300
+    )
+      throw new Error("Invalid equation-library JSON export.");
+  }
   return {
     bytes,
     suggestedName: suggestedName(value.suggestedName, value.kind),
@@ -253,6 +285,7 @@ module.exports = {
   parseDevUrl,
   isAppOrigin,
   isTrustedPage,
+  isPresenterPage,
   allowsFullscreen,
   isAllowedRequest,
   validateSaveDocument,

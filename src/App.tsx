@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type { PointerEvent, ReactNode } from "react";
 import {
   Atom,
@@ -10,6 +17,9 @@ import {
   ChevronRight,
   Circle,
   Copy,
+  ClipboardPaste,
+  Scissors,
+  BookOpen,
   Download,
   FilePlus2,
   FolderOpen,
@@ -45,18 +55,19 @@ import {
 } from "lucide-react";
 import {
   createDemoDeck,
-  createBlankSlide,
   newId,
   DEFAULT_PAGE_NUMBERS,
   validateDeck,
 } from "./lib/model";
 import type {
+  Asset,
   Deck,
   SlideObject,
   EquationObject,
   TextObject,
   ShapeObject,
   VideoObject,
+  FigureObject,
 } from "./lib/model";
 import {
   buildDeckArchive,
@@ -66,7 +77,6 @@ import {
   MAX_VIDEO_BYTES,
   downloadBlob,
   loadRecovery,
-  saveRecovery,
 } from "./lib/persistence";
 import { renderEquation, FONT_OPTIONS } from "./lib/equations";
 import { exportDeckPdf, exportSlideSvg } from "./lib/export";
@@ -76,6 +86,33 @@ import {
   previousBuildStep,
 } from "./lib/presentation";
 import { cloneDeck, pruneUnusedAssets } from "./lib/deck-editing";
+import {
+  alignSelection,
+  distributeSelection,
+  selectionLayoutUnits,
+} from "./lib/selection-layout";
+import type { SelectionAlignment } from "./lib/selection-layout";
+import {
+  captureObjectClipboard,
+  pasteObjectClipboard,
+} from "./lib/object-clipboard";
+import type { ObjectClipboard } from "./lib/object-clipboard";
+import { ObjectLayers } from "./components/ObjectLayers";
+import { FigureTools } from "./components/FigureTools";
+import { createFigureInset } from "./lib/figure-editing";
+import { EquationLibraryDialog } from "./components/EquationLibraryDialog";
+import { createLibraryEquationObject } from "./lib/equation-library";
+import type { EquationLibraryEntry } from "./lib/equation-library";
+import {
+  loadWorkspaceRecovery,
+  saveWorkspaceRecovery,
+} from "./lib/workspace-recovery";
+import type {
+  EquationDraft,
+  RecoveredEquationDraft,
+} from "./lib/workspace-recovery";
+import { presenterChannelName, isPresenterAction } from "./lib/presenter";
+import type { PresenterMessage } from "./lib/presenter";
 import {
   shapeFromDrag,
   isLineShape,
@@ -96,10 +133,27 @@ import { snapMove, snapResize, type SmartGuide } from "./lib/smart-guides";
 import { SlideScene } from "./components/SlideScene";
 import { MathSupportDialog } from "./components/MathSupportDialog";
 import { SlideTemplateDialog } from "./components/SlideTemplateDialog";
+import { ThemeChooser } from "./components/ThemeChooser";
+import { KeyboardShortcutsDialog } from "./components/KeyboardShortcutsDialog";
+import {
+  getKeyboardPlatform,
+  matchShortcut,
+  shortcutLabel,
+} from "./lib/shortcuts";
+import type { ShortcutAction } from "./lib/shortcuts";
+import {
+  createThemeDeck,
+  createThemedSlide,
+  getDeckTheme,
+} from "./lib/deck-themes";
+import type { DeckSlideLayoutId, DeckThemeId } from "./lib/deck-themes";
+import {
+  fillMediaPlaceholder,
+  mediaPlaceholderCrop,
+  selectedMediaPlaceholder,
+} from "./lib/media-placeholders";
 import { AIDraftDialog, aiAnchorFingerprint } from "./components/AIDraftDialog";
 import type { AIDraftApplication } from "./components/AIDraftDialog";
-import { createTemplateSlide } from "./lib/slide-templates";
-import type { SlideTemplateId } from "./lib/slide-templates";
 import type { EquationFontId } from "./lib/equations";
 import { desktop, DEFAULT_LOCAL_PREAMBLE } from "./lib/desktop";
 import type { TexCapabilities } from "./lib/desktop";
@@ -112,39 +166,68 @@ import {
   moveLeadingPackagesToPreamble,
 } from "./lib/local-tex-draft";
 
-interface EquationDraft {
-  latex: string;
-  font: string;
-  size: number;
-  color: string;
-  renderer: "mathjax" | "local-latex";
-  engine: "latex" | "xelatex";
-  preamble: string;
-}
+const PdfFigureDialog = lazy(() =>
+  import("./components/PdfFigureDialog").then((module) => ({
+    default: module.PdfFigureDialog,
+  })),
+);
+const FIGURE_FILE_TYPES =
+  ".pdf,.svg,.png,.jpg,.jpeg,application/pdf,image/svg+xml,image/png,image/jpeg";
+type FigureImportTarget = {
+  deckId: string;
+  slideId: string;
+  objectId?: string;
+  placeholderId?: string;
+};
+type PdfFigureRequest = FigureImportTarget & { file: File };
+
 type LocalRender = NonNullable<
   NonNullable<EquationObject["localTex"]>["render"]
 >;
 
 const clone = <T,>(v: T): T => structuredClone(v);
 const numeric = (n: number) => Math.round(n * 10) / 10;
+function isTextInput(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const field = target.closest(
+    "input,textarea,select,[contenteditable]:not([contenteditable='false'])",
+  );
+  if (field instanceof HTMLInputElement)
+    return ![
+      "checkbox",
+      "radio",
+      "range",
+      "color",
+      "file",
+      "button",
+      "image",
+      "submit",
+      "reset",
+      "hidden",
+    ].includes(field.type);
+  return !!field;
+}
 function IconButton({
   title,
   onClick,
   children,
   disabled = false,
   active = false,
+  ariaLabel,
 }: {
   title: string;
   onClick: () => void;
   children: ReactNode;
   disabled?: boolean;
   active?: boolean;
+  ariaLabel?: string;
 }) {
   return (
     <button
       className={`icon-button ${active ? "active" : ""}`}
       title={title}
-      aria-label={title}
+      aria-label={ariaLabel ?? title}
       onClick={onClick}
       disabled={disabled}
     >
@@ -162,9 +245,54 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export default function App() {
-  const [deck, setDeck] = useState<Deck>(
-    () => loadRecovery() ?? createDemoDeck(),
+  const [keyboardPlatform] = useState(() =>
+    getKeyboardPlatform(desktop?.platform),
   );
+  const shortcutTitle = (label: string, action: ShortcutAction) =>
+    `${label} · ${shortcutLabel(action, keyboardPlatform)}`;
+  const [initialRecovery] = useState(() => loadRecovery());
+  const [deck, setDeck] = useState<Deck>(
+    () => initialRecovery ?? createDemoDeck(),
+  );
+  const [showThemeChooser, setShowThemeChooser] = useState(true);
+  const [themeChooserFromEditor, setThemeChooserFromEditor] = useState(false);
+  const [canResumeWorkspace, setCanResumeWorkspace] =
+    useState(!!initialRecovery);
+  const workspaceActive = useRef(false);
+  type TextEdit = {
+    deckId: string;
+    slideId: string;
+    objectId: string;
+    original: string;
+    value: string;
+  };
+  const [textEditing, setTextEditing] = useState<TextEdit | null>(null);
+  const textEditingRef = useRef<TextEdit | null>(null);
+  const [recoveryLoaded, setRecoveryLoaded] = useState(false);
+  const [showEquationLibrary, setShowEquationLibrary] = useState(false);
+  const [pdfFigure, setPdfFigure] = useState<PdfFigureRequest | null>(null);
+  const closePdfFigure = useCallback(() => setPdfFigure(null), []);
+  const [hasClipboard, setHasClipboard] = useState(false);
+  const [presenterUrl, setPresenterUrl] = useState<string | null>(null);
+  const clipboard = useRef<ObjectClipboard | null>(null);
+  const pasteSequence = useRef({ deckId: "", slideId: "", count: 0 });
+  const recoveryWritable = useRef(false);
+  const recoveredDrafts = useRef<RecoveredEquationDraft[]>([]);
+  const [draftRevision, setDraftRevision] = useState(0);
+  const presenter = useRef<{
+    channel: BroadcastChannel;
+    popup: Window;
+    startedAt: number;
+    lastDeck: Deck | null;
+  } | null>(null);
+  const presenterControls = useRef<(action: string) => void>(() => {});
+  const presenterState = useRef({ slideId: "", step: 0 });
+  const replaceFigureInput = useRef<HTMLInputElement>(null);
+  const replaceFigureTarget = useRef<{
+    deckId: string;
+    slideId: string;
+    objectId: string;
+  } | null>(null);
   const deckRef = useRef(deck);
   deckRef.current = deck;
   const [slideId, setSlideId] = useState(deck.slides[0].id),
@@ -196,7 +324,7 @@ export default function App() {
     [zoom, setZoom] = useState(100),
     [grid, setGrid] = useState(false),
     [fitWidth, setFitWidth] = useState(650);
-  const [draft, setDraft] = useState<EquationDraft>({
+  const [draft, setEquationDraft] = useState<EquationDraft>({
       latex: "",
       font: "mathjax-stix2",
       size: 48,
@@ -236,6 +364,32 @@ export default function App() {
       live = false;
     };
   }, []);
+  useEffect(() => {
+    let live = true;
+    const initial = deckRef.current;
+    loadWorkspaceRecovery()
+      .then((recovery) => {
+        if (!live) return;
+        recoveryWritable.current = true;
+        if (recovery && deckRef.current === initial) {
+          setCanResumeWorkspace(true);
+          deckRef.current = recovery.deck;
+          setDeck(recovery.deck);
+          setSlideId(recovery.deck.slides[0].id);
+          recoveredDrafts.current = recovery.equationDrafts;
+          setDraftRevision((revision) => revision + 1);
+        }
+      })
+      .catch(() => {
+        if (live) setRecoveryStatus("Recovery unavailable");
+      })
+      .finally(() => {
+        if (live) setRecoveryLoaded(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
   const closeMathLibrary = useCallback(() => setShowMathLibrary(false), []);
   const closeAiDraft = useCallback(() => setShowAiDraft(false), []);
   const closeSlideTemplates = useCallback(
@@ -250,6 +404,7 @@ export default function App() {
   const slide = deck.slides.find((s) => s.id === slideId) ?? deck.slides[0];
   const slideIndex = deck.slides.indexOf(slide),
     object = slide.objects.find((o) => o.id === selected[0]);
+  presenterState.current = { slideId: slide.id, step: presentationStep };
   const pageNumbers = {
     ...DEFAULT_PAGE_NUMBERS,
     ...deck.pageNumbers,
@@ -299,7 +454,7 @@ export default function App() {
     observer.observe(host);
     resize();
     return () => observer.disconnect();
-  }, [presenting]);
+  }, [presenting, recoveryLoaded, showThemeChooser]);
   const notify = useCallback((message: string) => setToast(message), []);
   useEffect(() => {
     if (!toast) return;
@@ -307,17 +462,30 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [toast]);
   useEffect(() => {
+    if (!recoveryLoaded || !recoveryWritable.current || showThemeChooser)
+      return;
+    let live = true;
     const timer = setTimeout(() => {
-      try {
-        saveRecovery(deck);
-        setRecoveryStatus("Recovered locally");
-      } catch {
-        setRecoveryStatus("Recovery unavailable");
-        notify("브라우저 저장 공간이 부족합니다. 파일로 저장해주세요.");
-      }
+      saveWorkspaceRecovery(deck, recoveredDrafts.current)
+        .then((storage) => {
+          if (live)
+            setRecoveryStatus(
+              storage === "indexeddb"
+                ? "Recovered locally"
+                : "Recovered locally · limited storage",
+            );
+        })
+        .catch(() => {
+          if (!live) return;
+          setRecoveryStatus("Recovery unavailable");
+          notify("자동 복구를 저장하지 못했습니다. 원본 파일로 저장해주세요.");
+        });
     }, 700);
-    return () => clearTimeout(timer);
-  }, [deck, notify]);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [deck, draftRevision, recoveryLoaded, showThemeChooser, notify]);
   const commit = useCallback((next: Deck, key = "") => {
     const now = Date.now();
     if (
@@ -342,6 +510,57 @@ export default function App() {
     },
     [commit],
   );
+  const finishTextEditing = useCallback(
+    (apply = true) => {
+      const session = textEditingRef.current;
+      textEditingRef.current = null;
+      setTextEditing(null);
+      if (!apply || !session || session.value === session.original) return;
+      const current = deckRef.current;
+      const targetSlide = current.slides.find((s) => s.id === session.slideId);
+      const target = targetSlide?.objects.find(
+        (o) => o.id === session.objectId,
+      );
+      if (
+        current.id !== session.deckId ||
+        target?.type !== "text" ||
+        !targetSlide ||
+        isObjectLocked(target, targetSlide.objects) ||
+        target.text !== session.original
+      )
+        return;
+      change((next) => {
+        const object = next.slides
+          .find((s) => s.id === session.slideId)!
+          .objects.find((o) => o.id === session.objectId)! as TextObject;
+        object.text = session.value;
+      });
+    },
+    [change],
+  );
+  const beginTextEditing = (target: TextObject) => {
+    if (isObjectLocked(target, slide.objects) || !target.visible) return;
+    finishTextEditing();
+    cancelGesture();
+    setDrawingTool(null);
+    setSelected([target.id]);
+    const session = {
+      deckId: deck.id,
+      slideId: slide.id,
+      objectId: target.id,
+      original: target.text,
+      value: target.text,
+    };
+    textEditingRef.current = session;
+    setTextEditing(session);
+  };
+  const changeInlineText = (value: string) => {
+    const session = textEditingRef.current;
+    if (!session) return;
+    const next = { ...session, value };
+    textEditingRef.current = next;
+    setTextEditing(next);
+  };
   const applyAiDraft = (application: AIDraftApplication) => {
     const current = deckRef.current;
     const anchor = current.slides.find((s) => s.id === application.anchorId);
@@ -400,6 +619,7 @@ export default function App() {
     );
   };
   const history = (direction: "undo" | "redo") => {
+    finishTextEditing();
     cancelGesture();
     setDrawingTool(null);
     const from = direction === "undo" ? undo.current : redo.current,
@@ -414,17 +634,49 @@ export default function App() {
     setHistoryTick((t) => t + 1);
   };
   const activeEquation = object?.type === "equation" ? object : undefined;
+  const setDraft = (next: EquationDraft) => {
+    draftRef.current = next;
+    setEquationDraft(next);
+    if (!activeEquation) return;
+    const entry: RecoveredEquationDraft = {
+      deckId: deck.id,
+      slideId: slide.id,
+      equationId: activeEquation.id,
+      draft: { ...next },
+      updatedAt: new Date().toISOString(),
+    };
+    recoveredDrafts.current = [
+      ...recoveredDrafts.current.filter(
+        (item) =>
+          !(
+            item.deckId === entry.deckId &&
+            item.slideId === entry.slideId &&
+            item.equationId === entry.equationId
+          ),
+      ),
+      entry,
+    ].slice(-200);
+    setDraftRevision((revision) => revision + 1);
+  };
   useEffect(() => {
     if (!activeEquation) return;
-    setDraft({
-      latex: activeEquation.latex,
-      font: activeEquation.style.fontSetId ?? deck.theme.equation.fontSetId,
-      size: activeEquation.style.fontSize ?? deck.theme.equation.fontSize,
-      color: activeEquation.style.color ?? deck.theme.equation.color,
-      renderer: activeEquation.renderer ?? "mathjax",
-      engine: activeEquation.localTex?.engine ?? "latex",
-      preamble: activeEquation.localTex?.preamble ?? DEFAULT_LOCAL_PREAMBLE,
-    });
+    const recovered = recoveredDrafts.current.find(
+      (entry) =>
+        entry.deckId === deck.id &&
+        entry.slideId === slide.id &&
+        entry.equationId === activeEquation.id,
+    );
+    setEquationDraft(
+      recovered?.draft ?? {
+        latex: activeEquation.latex,
+        font: activeEquation.style.fontSetId ?? deck.theme.equation.fontSetId,
+        size: activeEquation.style.fontSize ?? deck.theme.equation.fontSize,
+        color: activeEquation.style.color ?? deck.theme.equation.color,
+        renderer: activeEquation.renderer ?? "mathjax",
+        engine: activeEquation.localTex?.engine ?? "latex",
+        preamble: activeEquation.localTex?.preamble ?? DEFAULT_LOCAL_PREAMBLE,
+      },
+    );
     setDraftTexRender(activeEquation.localTex?.render);
   }, [
     activeEquation?.id,
@@ -604,6 +856,10 @@ export default function App() {
               draft.color,
               activeEquation.displayMode,
             );
+      recoveredDrafts.current = recoveredDrafts.current.filter(
+        (entry) =>
+          !(entry.deckId === deck.id && entry.equationId === activeEquation.id),
+      );
       updateObject(activeEquation.id, (o) => {
         if (o.type === "equation") {
           o.latex = draft.latex;
@@ -632,6 +888,7 @@ export default function App() {
     }
   };
   const switchSlide = (id: string) => {
+    finishTextEditing();
     cancelGesture();
     setDrawingTool(null);
     setSlideId(id);
@@ -644,8 +901,8 @@ export default function App() {
     setExportMenu(false);
     setShowSlideTemplates(true);
   };
-  const addTemplateSlide = (id: SlideTemplateId) => {
-    const s = createTemplateSlide(id, deck.theme);
+  const addTemplateSlide = (id: DeckSlideLayoutId) => {
+    const s = createThemedSlide(id, deck);
     change((d) => {
       d.slides.splice(slideIndex + 1, 0, s);
     });
@@ -709,10 +966,10 @@ export default function App() {
         ...base("text"),
         type: "text",
         text: "Write your idea here",
-        fontFamily: "Inter",
+        fontFamily: deck.theme.fontFamily,
         fontSize: 40,
         fontWeight: 400,
-        color: "#132d40",
+        color: getDeckTheme(deck)?.palette.ink ?? "#132d40",
         align: "left",
       } as TextObject;
     else if (type === "equation") {
@@ -720,7 +977,7 @@ export default function App() {
         "E = mc^2",
         deck.theme.equation.fontSetId,
         48,
-        "#132d40",
+        deck.theme.equation.color,
       );
       o = {
         ...base("equation"),
@@ -743,6 +1000,7 @@ export default function App() {
       } as ShapeObject;
     change((d) => d.slides.find((s) => s.id === slide.id)!.objects.push(o));
     setSelected([o.id]);
+    if (o.type === "text") beginTextEditing(o);
   };
   const deleteObjects = () => {
     const ids = editableSelection(slide.objects, selected);
@@ -784,45 +1042,136 @@ export default function App() {
     );
     notify("Objects ungrouped.");
   };
-  const align = (where: "left" | "center" | "right") => {
+  const copyObjects = (cut = false) => {
+    const ids = cut
+      ? editableSelection(slide.objects, selected)
+      : expandSelection(slide.objects, selected);
+    const copied = captureObjectClipboard(deck, slide, ids);
+    if (!copied) return;
+    clipboard.current = copied;
+    pasteSequence.current = { deckId: "", slideId: "", count: 0 };
+    setHasClipboard(true);
+    if (cut) {
+      change((d) => {
+        const current = d.slides.find((s) => s.id === slide.id)!;
+        current.objects = current.objects.filter((o) => !ids.includes(o.id));
+        cleanupGroups(current.objects);
+        pruneUnusedAssets(d);
+      });
+      setSelected([]);
+    }
+    notify(
+      cut
+        ? "Objects cut. Paste on any slide."
+        : "Objects copied. Paste on any slide.",
+    );
+  };
+  const pasteObjects = () => {
+    if (!clipboard.current) return;
+    cancelGesture();
+    setDrawingTool(null);
+    const next = cloneDeck(deckRef.current);
+    try {
+      const previous = pasteSequence.current;
+      const count =
+        previous.deckId === next.id && previous.slideId === slide.id
+          ? previous.count + 1
+          : 1;
+      const ids = pasteObjectClipboard(next, slide.id, clipboard.current, {
+        x: count * 32,
+        y: count * 32,
+      });
+      validateDeck(next);
+      commit(next);
+      pasteSequence.current = { deckId: next.id, slideId: slide.id, count };
+      setSelected(ids);
+    } catch (e) {
+      notify((e as Error).message);
+    }
+  };
+  const align = (where: SelectionAlignment) => {
+    const next = cloneDeck(deckRef.current);
+    if (
+      alignSelection(
+        next.slides.find((s) => s.id === slide.id)!.objects,
+        selected,
+        where,
+        next.slideSize,
+        metrics,
+      )
+    )
+      commit(next);
+  };
+  const distribute = (axis: "x" | "y") => {
+    const next = cloneDeck(deckRef.current);
+    if (
+      distributeSelection(
+        next.slides.find((s) => s.id === slide.id)!.objects,
+        selected,
+        axis,
+        metrics,
+      )
+    )
+      commit(next);
+    else
+      notify(
+        "Select at least three objects or groups with room for equal gaps.",
+      );
+  };
+  const moveLayer = (id: string, direction: "up" | "down") => {
+    if (!editableSelection(slide.objects, [id]).length) return;
+    const unitKey = (o: SlideObject) =>
+      o.groupId ? `group:${o.groupId}` : `object:${o.id}`;
+    const object = slide.objects.find((o) => o.id === id);
+    if (!object) return;
+    const order = [
+      ...new Set([...slide.objects].reverse().map(unitKey)),
+    ].reverse();
+    const index = order.indexOf(unitKey(object));
+    const target = index + (direction === "up" ? 1 : -1);
+    if (target < 0 || target >= order.length) return;
+    [order[index], order[target]] = [order[target], order[index]];
     change((d) => {
-      const s = d.slides.find((s) => s.id === slide.id)!;
-      const ids = editableSelection(s.objects, selected);
-      const units = new Map<string, SlideObject[]>();
-      for (const o of s.objects.filter((o) => ids.includes(o.id))) {
-        const key = o.groupId ?? o.id;
-        units.set(key, [...(units.get(key) ?? []), o]);
-      }
-      const bounds = [...units.values()].map((objects) => ({
-        objects,
-        bounds: selectionBounds(
-          objects,
-          objects.map((o) => o.id),
-          metrics,
-        )!,
-      }));
-      if (!bounds.length) return;
-      const left = Math.min(...bounds.map((u) => u.bounds.x));
-      const right = Math.max(...bounds.map((u) => u.bounds.x + u.bounds.width));
-      for (const unit of bounds) {
-        const b = unit.bounds;
-        const x =
-          bounds.length === 1
-            ? where === "left"
-              ? 80
-              : where === "right"
-                ? deck.slideSize.width - 80 - b.width
-                : (deck.slideSize.width - b.width) / 2
-            : where === "left"
-              ? left
-              : where === "right"
-                ? right - b.width
-                : (left + right - b.width) / 2;
-        unit.objects.forEach((o) => {
-          o.transform.x += x - b.x;
-        });
-      }
+      const current = d.slides.find((s) => s.id === slide.id)!;
+      current.objects = order.flatMap((key) =>
+        current.objects.filter((o) => unitKey(o) === key),
+      );
     });
+  };
+  const insertLibraryEquation = async (entry: EquationLibraryEntry) => {
+    const currentDeckId = deck.id,
+      currentSlideId = slide.id;
+    try {
+      const equation = createLibraryEquationObject(entry, deck);
+      if (equation.renderer !== "local-latex") {
+        const rendered = await renderEquation(
+          equation.latex,
+          equation.style.fontSetId ?? deck.theme.equation.fontSetId,
+          equation.style.fontSize ?? deck.theme.equation.fontSize,
+          equation.style.color ?? deck.theme.equation.color,
+          equation.displayMode,
+        );
+        equation.transform.width = rendered.width;
+        equation.transform.height = rendered.height;
+      }
+      if (
+        deckRef.current.id !== currentDeckId ||
+        presenterState.current.slideId !== currentSlideId ||
+        !deckRef.current.slides.some((s) => s.id === currentSlideId)
+      )
+        return false;
+      change((d) =>
+        d.slides.find((s) => s.id === currentSlideId)!.objects.push(equation),
+      );
+      setSelected([equation.id]);
+      setShowEquationLibrary(false);
+      if (equation.renderer === "local-latex")
+        notify("Library equation inserted. Compile, then Apply equation.");
+      return true;
+    } catch (e) {
+      notify((e as Error).message);
+      return false;
+    }
   };
   const layer = (front: boolean) => {
     if (!object) return;
@@ -837,6 +1186,7 @@ export default function App() {
   };
   const save = async (saveAs = false) => {
     if (busy) return;
+    finishTextEditing();
     setBusy("Packaging deck");
     try {
       const archive = await buildDeckArchive(deckRef.current),
@@ -878,6 +1228,8 @@ export default function App() {
       );
       commit(next);
       switchSlide(next.slides[0].id);
+      workspaceActive.current = true;
+      setShowThemeChooser(false);
       setDocumentFilename(result.name);
       notify("프레젠테이션을 불러왔습니다.");
     } catch (e) {
@@ -890,12 +1242,21 @@ export default function App() {
   };
   const newPresentation = () => {
     if (busy) return;
-    const next = createDemoDeck();
-    next.slides = [createBlankSlide()];
-    next.assets = [];
-    next.title = "Untitled presentation";
+    finishTextEditing();
+    cancelGesture();
+    setDrawingTool(null);
+    setThemeChooserFromEditor(workspaceActive.current);
+    setShowThemeChooser(true);
+  };
+  const createPresentation = (themeId: DeckThemeId | "demo") => {
+    const next =
+      themeId === "demo" ? createDemoDeck() : createThemeDeck(themeId);
     commit(next);
     switchSlide(next.slides[0].id);
+    workspaceActive.current = true;
+    setCanResumeWorkspace(true);
+    setShowThemeChooser(false);
+    setThemeChooserFromEditor(false);
     setDocumentFilename("");
     void desktop?.clearDocument();
   };
@@ -905,6 +1266,9 @@ export default function App() {
       const next = await readDeckArchive(file);
       commit(next);
       switchSlide(next.slides[0].id);
+      workspaceActive.current = true;
+      setShowThemeChooser(false);
+      setCanResumeWorkspace(true);
       notify("프레젠테이션을 불러왔습니다.");
     } catch (e) {
       notify((e as Error).message);
@@ -912,39 +1276,102 @@ export default function App() {
       setBusy("");
     }
   };
-  const addFigure = async (file: File) => {
-    setBusy("Importing figure");
-    try {
-      const a = await importFigure(file);
-      const scale = Math.min(
-          1,
-          800 / (a.width || 800),
-          600 / (a.height || 450),
-        ),
-        w = (a.width || 800) * scale,
-        h = (a.height || 450) * scale,
-        o: SlideObject = {
-          ...base("figure"),
-          type: "figure",
-          assetId: a.id,
-          alt: a.name,
-          transform: {
-            x: 180,
-            y: 220,
-            width: w,
-            height: Math.min(h, 600),
-            rotation: 0,
-          },
-        };
+  const applyFigureAsset = (asset: Asset, target: FigureImportTarget) => {
+    const current = deckRef.current;
+    const targetSlide = current.slides.find((s) => s.id === target.slideId);
+    if (current.id !== target.deckId || !targetSlide)
+      throw new Error("The destination slide is no longer available.");
+    if (target.objectId) {
+      const existing = targetSlide.objects.find(
+        (o) => o.id === target.objectId,
+      );
+      if (
+        existing?.type !== "figure" ||
+        isObjectLocked(existing, targetSlide.objects)
+      )
+        throw new Error("The selected figure changed. Select it again.");
       change((d) => {
-        d.assets.push(a);
-        d.slides.find((s) => s.id === slide.id)!.objects.push(o);
+        d.assets.push(asset);
+        const figure = d.slides
+          .find((s) => s.id === target.slideId)!
+          .objects.find((o) => o.id === target.objectId)! as FigureObject;
+        figure.assetId = asset.id;
+        pruneUnusedAssets(d);
       });
-      setSelected([o.id]);
+      notify("Figure replaced. Layout and crop preserved.");
+      return;
+    }
+    const scale = Math.min(1, 800 / asset.width, 600 / asset.height);
+    const figure: FigureObject = {
+      ...base("figure"),
+      type: "figure",
+      assetId: asset.id,
+      alt: asset.name,
+      transform: {
+        x: 180,
+        y: 220,
+        width: asset.width * scale,
+        height: asset.height * scale,
+        rotation: 0,
+      },
+    };
+    if (target.placeholderId) {
+      const frame = targetSlide.objects.find(
+        (object) => object.id === target.placeholderId,
+      );
+      if (frame?.type !== "shape")
+        throw new Error(
+          "The selected media placeholder changed. Select it again.",
+        );
+      figure.crop = mediaPlaceholderCrop(frame, asset);
+    }
+    change((d) => {
+      d.assets.push(asset);
+      const destination = d.slides.find((s) => s.id === target.slideId)!;
+      if (target.placeholderId)
+        fillMediaPlaceholder(destination, target.placeholderId, figure);
+      else destination.objects.push(figure);
+    });
+    switchSlide(target.slideId);
+    setSelected([figure.id]);
+  };
+  const importFigureFile = async (file: File, target: FigureImportTarget) => {
+    if (busy) return;
+    finishTextEditing();
+    cancelGesture();
+    setDrawingTool(null);
+    if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
+      setPdfFigure({ ...target, file });
+      return;
+    }
+    setBusy(target.objectId ? "Replacing figure" : "Importing figure");
+    try {
+      applyFigureAsset(await importFigure(file), target);
     } catch (e) {
       notify((e as Error).message);
     } finally {
       setBusy("");
+    }
+  };
+  const addFigure = (file: File) =>
+    importFigureFile(file, {
+      deckId: deck.id,
+      slideId: slide.id,
+      placeholderId: selectedMediaPlaceholder(slide, selected, "photo")?.id,
+    });
+  const replaceFigure = (file: File) => {
+    const target = replaceFigureTarget.current;
+    replaceFigureTarget.current = null;
+    if (target) return importFigureFile(file, target);
+  };
+  const insertPdfFigure = (asset: Asset) => {
+    if (!pdfFigure) return;
+    try {
+      applyFigureAsset(asset, pdfFigure);
+    } catch (e) {
+      notify((e as Error).message);
+    } finally {
+      setPdfFigure(null);
     }
   };
   const addVideo = async (file: File) => {
@@ -952,9 +1379,18 @@ export default function App() {
     setBusy("Importing video");
     // Keep the destination stable while the file is being read.
     const targetSlideId = slide.id;
+    const targetDeckId = deck.id;
+    const placeholderId = selectedMediaPlaceholder(
+      slide,
+      selected,
+      "video",
+    )?.id;
     try {
       const asset = await importVideo(file);
-      if (!deckRef.current.slides.some((s) => s.id === targetSlideId))
+      if (
+        deckRef.current.id !== targetDeckId ||
+        !deckRef.current.slides.some((s) => s.id === targetSlideId)
+      )
         throw new Error("The destination slide is no longer available.");
       const nativeWidth = asset.width || 800;
       const nativeHeight = asset.height || 450;
@@ -975,7 +1411,10 @@ export default function App() {
       };
       change((d) => {
         d.assets.push(asset);
-        d.slides.find((s) => s.id === targetSlideId)!.objects.push(video);
+        const destination = d.slides.find((s) => s.id === targetSlideId)!;
+        if (placeholderId)
+          fillMediaPlaceholder(destination, placeholderId, video);
+        else destination.objects.push(video);
       });
       switchSlide(targetSlideId);
       setSelected([video.id]);
@@ -990,6 +1429,7 @@ export default function App() {
   };
   const runExport = async (kind: "pdf" | "svg") => {
     if (busy) return;
+    finishTextEditing();
     setExportMenu(false);
     setBusy(kind === "pdf" ? "Preparing vector PDF" : "Preparing SVG");
     try {
@@ -997,7 +1437,10 @@ export default function App() {
         blob =
           kind === "pdf"
             ? await exportDeckPdf(snapshot)
-            : await exportSlideSvg(snapshot, slide);
+            : await exportSlideSvg(
+                snapshot,
+                snapshot.slides.find((s) => s.id === slide.id)!,
+              );
       const suggestedName = `${snapshot.title}${kind === "svg" ? "-" + (slideIndex + 1) : ""}.${kind}`;
       if (desktop) {
         const result = await desktop.saveExport({
@@ -1017,6 +1460,7 @@ export default function App() {
     }
   };
   const startPresent = () => {
+    finishTextEditing();
     cancelGesture();
     setDrawingTool(null);
     setPresentationStep(0);
@@ -1024,6 +1468,15 @@ export default function App() {
     document.documentElement.requestFullscreen?.().catch(() => {});
   };
   const stopPresent = () => {
+    if (presenter.current) {
+      presenter.current.channel.postMessage({
+        type: "ended",
+      } satisfies PresenterMessage);
+      presenter.current.popup.close();
+      presenter.current.channel.close();
+      presenter.current = null;
+    }
+    setPresenterUrl(null);
     setPresenting(false);
     setPresentationStep(0);
     if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
@@ -1043,6 +1496,123 @@ export default function App() {
       setPresentationStep(maxBuildStep(previousSlide));
     }
   };
+  const openPresenter = () => {
+    if (presenter.current && !presenter.current.popup.closed) {
+      presenter.current.popup.focus();
+      return true;
+    }
+    if (typeof BroadcastChannel === "undefined") {
+      notify("Presenter display is unavailable in this browser.");
+      return false;
+    }
+    const token = crypto.randomUUID();
+    const channel = new BroadcastChannel(presenterChannelName(token));
+    const url = new URL(window.location.href);
+    url.hash = `presenter=${token}`;
+    const popup = window.open(
+      url.href,
+      `SciSlide-presenter-${token}`,
+      "popup,width=1100,height=800",
+    );
+    if (!popup) {
+      channel.close();
+      notify("Allow pop-up windows to open the presenter display.");
+      return false;
+    }
+    const connection = {
+      channel,
+      popup,
+      startedAt: Date.now(),
+      lastDeck: null as Deck | null,
+    };
+    presenter.current = connection;
+    setPresenterUrl(url.href);
+    channel.onmessage = (event: MessageEvent<PresenterMessage>) => {
+      if (!event.data || presenter.current !== connection) return;
+      if (event.data.type === "ready") {
+        const state = {
+          ...presenterState.current,
+          startedAt: connection.startedAt,
+        };
+        if (event.data.needsDeck || connection.lastDeck !== deckRef.current) {
+          channel.postMessage({
+            type: "deck",
+            deck: deckRef.current,
+            state,
+          } satisfies PresenterMessage);
+          connection.lastDeck = deckRef.current;
+        } else
+          channel.postMessage({
+            type: "state",
+            state,
+          } satisfies PresenterMessage);
+      } else if (
+        event.data.type === "action" &&
+        isPresenterAction(event.data.action)
+      )
+        presenterControls.current(event.data.action);
+    };
+    return true;
+  };
+  const startWithPresenter = () => {
+    if (openPresenter()) startPresent();
+  };
+  presenterControls.current = (action) => {
+    if (action === "next") nextPresentation();
+    else if (action === "previous") previousPresentation();
+    else if (action === "first") switchSlide(deck.slides[0].id);
+    else if (action === "last") {
+      const last = deck.slides[deck.slides.length - 1];
+      switchSlide(last.id);
+      setPresentationStep(maxBuildStep(last));
+    } else if (action === "exit") stopPresent();
+  };
+  useEffect(() => {
+    const connection = presenter.current;
+    if (!connection) return;
+    if (!presenting) {
+      connection.channel.postMessage({
+        type: "ended",
+      } satisfies PresenterMessage);
+      connection.popup.close();
+      connection.channel.close();
+      presenter.current = null;
+      setPresenterUrl(null);
+      return;
+    }
+    const state = {
+      slideId: slide.id,
+      step: presentationStep,
+      startedAt: connection.startedAt,
+    };
+    if (connection.lastDeck !== deck) {
+      connection.channel.postMessage({
+        type: "deck",
+        deck,
+        state,
+      } satisfies PresenterMessage);
+      connection.lastDeck = deck;
+    } else
+      connection.channel.postMessage({
+        type: "state",
+        state,
+      } satisfies PresenterMessage);
+  }, [deck, slide.id, presentationStep, presenting]);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const connection = presenter.current;
+      if (connection?.popup.closed) {
+        connection.channel.close();
+        presenter.current = null;
+        setPresenterUrl(null);
+      }
+    }, 1000);
+    return () => {
+      clearInterval(timer);
+      presenter.current?.popup.close();
+      presenter.current?.channel.close();
+    };
+  }, []);
   useEffect(() => {
     const onFullscreenChange = () => {
       if (!document.fullscreenElement) setPresenting(false);
@@ -1051,36 +1621,126 @@ export default function App() {
     return () =>
       document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
+  const selectAllObjects = () =>
+    setSelected(
+      expandSelection(
+        slide.objects,
+        slide.objects
+          .filter((o) => o.visible && !isObjectLocked(o, slide.objects))
+          .map((o) => o.id),
+      ),
+    );
+  const executeShortcut = (action: ShortcutAction) => {
+    if (busy && action !== "help") return;
+    switch (action) {
+      case "new":
+        newPresentation();
+        break;
+      case "open":
+        finishTextEditing();
+        void openDesktopDocument();
+        break;
+      case "save":
+        void save();
+        break;
+      case "saveAs":
+        void save(true);
+        break;
+      case "exportPdf":
+        void runExport("pdf");
+        break;
+      case "exportSvg":
+        void runExport("svg");
+        break;
+      case "undo":
+        history("undo");
+        break;
+      case "redo":
+        history("redo");
+        break;
+      case "selectAll":
+        selectAllObjects();
+        break;
+      case "copy":
+        copyObjects();
+        break;
+      case "cut":
+        copyObjects(true);
+        break;
+      case "paste":
+        pasteObjects();
+        break;
+      case "duplicate":
+        selected.length ? duplicateObjects() : duplicateSlide();
+        break;
+      case "group":
+        groupSelection();
+        break;
+      case "ungroup":
+        ungroupSelection();
+        break;
+      case "help":
+        finishTextEditing();
+        setShowHelp(true);
+        break;
+      case "finishTextEditing":
+        finishTextEditing();
+        break;
+      case "present":
+        if (textEditingRef.current) finishTextEditing();
+        else startPresent();
+        break;
+    }
+  };
+  const hasEditorDialog =
+    showHelp ||
+    showAiDraft ||
+    !!pdfFigure ||
+    showSlideTemplates ||
+    showMathLibrary ||
+    showEquationLibrary;
   useEffect(() =>
     desktop?.onCommand((command) => {
-      if (showAiDraft) return;
-      if (showSlideTemplates) setShowSlideTemplates(false);
-      const editing =
-        document.activeElement instanceof HTMLElement &&
-        (document.activeElement.matches("input,textarea") ||
-          document.activeElement.isContentEditable);
-      if (command === "new") newPresentation();
-      else if (command === "open") void openDesktopDocument();
-      else if (command === "save" || command === "saveAs")
-        void save(command === "saveAs");
-      else if (command === "undo" || command === "redo") {
-        if (editing) document.execCommand(command);
-        else history(command);
-      } else if (command === "present") startPresent();
-      else if (command === "exportPdf") void runExport("pdf");
+      if (hasEditorDialog || presenting) return;
+      const action = command === "showShortcuts" ? "help" : command;
+      if (showThemeChooser && !["new", "open", "help"].includes(action)) return;
+      const editing = isTextInput(document.activeElement);
+      if (
+        editing &&
+        ["undo", "redo", "cut", "copy", "paste", "selectAll"].includes(action)
+      ) {
+        document.execCommand(action);
+        return;
+      }
+      if (editing && action === "present" && !textEditingRef.current) return;
+      if (editing && ["duplicate", "group", "ungroup"].includes(action)) return;
+      executeShortcut(action);
     }),
   );
   useEffect(() => {
     const flush = () => {
-      try {
-        saveRecovery(deckRef.current);
-      } catch {
-        /* Existing recovery status reports storage failures. */
+      if (recoveryWritable.current && workspaceActive.current) {
+        finishTextEditing();
+        void saveWorkspaceRecovery(
+          deckRef.current,
+          recoveredDrafts.current,
+        ).catch(() => undefined);
       }
     };
-    window.addEventListener("beforeunload", flush);
-    return () => window.removeEventListener("beforeunload", flush);
-  }, []);
+    const hidden = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    const unload = () => {
+      flush();
+      presenter.current?.popup.close();
+    };
+    document.addEventListener("visibilitychange", hidden);
+    window.addEventListener("beforeunload", unload);
+    return () => {
+      document.removeEventListener("visibilitychange", hidden);
+      window.removeEventListener("beforeunload", unload);
+    };
+  }, [finishTextEditing]);
   const position = (
     e: { clientX: number; clientY: number },
     svg: SVGSVGElement,
@@ -1175,7 +1835,9 @@ export default function App() {
       svg,
       pointerId: e.pointerId,
     };
-    svg.setPointerCapture(e.pointerId);
+    // Capturing a simple click on the SVG redirects its double-click away
+    // from the object. Capture object drags only once the pointer moves.
+    if (mode !== "drag") svg.setPointerCapture(e.pointerId);
   };
   useEffect(() => {
     const move = (e: globalThis.PointerEvent) => {
@@ -1188,6 +1850,13 @@ export default function App() {
       const p = position(e, g.svg);
       let dx = p.x - g.start.x,
         dy = p.y - g.start.y;
+      if (g.mode === "drag" && !g.svg.hasPointerCapture(g.pointerId)) {
+        const pixels =
+          (Math.hypot(dx, dy) * g.svg.getBoundingClientRect().width) /
+          deck.slideSize.width;
+        if (pixels < 3) return;
+        if (e.type === "pointermove") g.svg.setPointerCapture(g.pointerId);
+      }
       const next: Record<string, SlideObject> = {};
       if (g.mode === "draw") {
         let end = {
@@ -1441,14 +2110,21 @@ export default function App() {
   ]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (showMathLibrary || showSlideTemplates || showAiDraft) {
-        if ((e.ctrlKey || e.metaKey) && e.key === "s") e.preventDefault();
+      if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
+      const action = matchShortcut(e, keyboardPlatform);
+      if (hasEditorDialog) {
+        if (action) e.preventDefault();
         return;
       }
-      const input =
-        e.target instanceof HTMLElement &&
-        (e.target.matches("input,textarea,select") ||
-          e.target.isContentEditable);
+      if (showThemeChooser) {
+        if (action) {
+          e.preventDefault();
+          if (!e.repeat && ["new", "open", "help"].includes(action))
+            executeShortcut(action);
+        }
+        return;
+      }
+      const input = isTextInput(e.target);
       if (presenting) {
         if (e.key === "Escape") {
           stopPresent();
@@ -1480,25 +2156,41 @@ export default function App() {
         }
         return;
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+      if (action) {
+        if (
+          input &&
+          ![
+            "new",
+            "open",
+            "save",
+            "saveAs",
+            "exportPdf",
+            "exportSvg",
+            "help",
+          ].includes(action)
+        )
+          return;
         e.preventDefault();
-        void save();
+        if (!e.repeat) executeShortcut(action);
         return;
       }
-      if (input) return;
-      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+      if (input || busy || e.ctrlKey || e.metaKey || e.altKey) return;
+      // Buttons and non-text inputs retain their own Enter/arrow behavior.
+      if (
+        e.key !== "Escape" &&
+        e.target instanceof Element &&
+        e.target.closest(
+          'button,a[href],input[type="range"],input[type="color"],input[type="file"]',
+        )
+      )
+        return;
+      if (
+        e.key === "Enter" &&
+        selected.length === 1 &&
+        object?.type === "text"
+      ) {
         e.preventDefault();
-        history(e.shiftKey ? "redo" : "undo");
-      } else if ((e.ctrlKey || e.metaKey) && e.key === "y") {
-        e.preventDefault();
-        history("redo");
-      } else if ((e.ctrlKey || e.metaKey) && e.key === "d") {
-        e.preventDefault();
-        duplicateObjects();
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "g") {
-        e.preventDefault();
-        if (e.shiftKey) ungroupSelection();
-        else groupSelection();
+        beginTextEditing(object);
       } else if (["Delete", "Backspace"].includes(e.key)) {
         e.preventDefault();
         deleteObjects();
@@ -1542,6 +2234,63 @@ export default function App() {
     return () => window.removeEventListener("keydown", key);
   });
 
+  if (!recoveryLoaded && typeof indexedDB !== "undefined")
+    return (
+      <div className="recovery-loading" role="status">
+        Restoring your workspace…
+      </div>
+    );
+
+  if (showThemeChooser)
+    return (
+      <>
+        <ThemeChooser
+          onChoose={createPresentation}
+          onHelp={() => setShowHelp(true)}
+          onOpen={() => void openDesktopDocument()}
+          onResume={
+            canResumeWorkspace
+              ? () => {
+                  workspaceActive.current = true;
+                  setShowThemeChooser(false);
+                }
+              : undefined
+          }
+          onDemo={() => createPresentation("demo")}
+          onCancel={
+            themeChooserFromEditor
+              ? () => setShowThemeChooser(false)
+              : undefined
+          }
+          busy={!!busy || !recoveryLoaded}
+        />
+        {showHelp && (
+          <KeyboardShortcutsDialog
+            platform={keyboardPlatform}
+            onClose={() => setShowHelp(false)}
+          />
+        )}
+        <input
+          hidden
+          ref={openInput}
+          type="file"
+          accept=".scislide"
+          onChange={(e) => {
+            if (e.target.files?.[0]) void open(e.target.files[0]);
+            e.target.value = "";
+          }}
+        />
+        {(toast || busy) && (
+          <div
+            className={`toast theme-chooser-status ${busy ? "busy" : ""}`}
+            role="status"
+          >
+            {busy || toast}
+          </div>
+        )}
+      </>
+    );
+
   if (presenting)
     return (
       <div className="presentation-view">
@@ -1553,6 +2302,11 @@ export default function App() {
           presentationStep={presentationStep}
           playback
         />
+        {toast && (
+          <div className="presentation-toast" role="status">
+            {toast}
+          </div>
+        )}
         <div className="presentation-controls">
           <IconButton
             title="Previous step or slide"
@@ -1579,6 +2333,21 @@ export default function App() {
           >
             <ChevronRight size={20} />
           </IconButton>
+          {presenterUrl ? (
+            <a
+              className="presenter-link"
+              href={presenterUrl}
+              target="_blank"
+              onClick={(e) => {
+                e.preventDefault();
+                openPresenter();
+              }}
+            >
+              Presenter display
+            </a>
+          ) : (
+            <button onClick={openPresenter}>Presenter display</button>
+          )}
           <button onClick={stopPresent}>
             <X size={16} /> Exit
           </button>
@@ -1587,7 +2356,7 @@ export default function App() {
     );
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" aria-busy={!!busy}>
       <header className="app-header">
         <div className="brand">
           <span className="brand-mark">
@@ -1622,13 +2391,21 @@ export default function App() {
             <Sparkles size={16} /> AI draft
           </button>
           <IconButton
-            title="Keyboard shortcuts"
+            title={shortcutTitle("Keyboard shortcuts", "help")}
+            ariaLabel="Keyboard shortcuts"
             onClick={() => setShowHelp(true)}
           >
             <CircleHelp size={19} />
           </IconButton>
-          <button className="button light" onClick={startPresent}>
+          <button
+            className="button light"
+            title={shortcutTitle("Present", "present")}
+            onClick={startPresent}
+          >
             <Presentation size={16} /> Present
+          </button>
+          <button className="button light" onClick={startWithPresenter}>
+            Presenter display
           </button>
           <div className="dropdown-wrap">
             <button
@@ -1640,13 +2417,19 @@ export default function App() {
             </button>
             {exportMenu && (
               <div className="dropdown">
-                <button onClick={() => void runExport("pdf")}>
+                <button
+                  title={shortcutTitle("Export PDF", "exportPdf")}
+                  onClick={() => void runExport("pdf")}
+                >
                   <Download size={15} />
                   <span>
                     PDF presentation<small>All slides · vector equations</small>
                   </span>
                 </button>
-                <button onClick={() => void runExport("svg")}>
+                <button
+                  title={shortcutTitle("Export SVG", "exportSvg")}
+                  onClick={() => void runExport("svg")}
+                >
                   <ImagePlus size={15} />
                   <span>
                     Current slide as SVG<small>Editable vector format</small>
@@ -1661,36 +2444,65 @@ export default function App() {
       <div className="toolbar">
         <div className="toolbar-group">
           <IconButton
-            title="Open .scislide"
+            title={shortcutTitle("Open .scislide", "open")}
+            ariaLabel="Open .scislide"
             onClick={() => void openDesktopDocument()}
           >
             <FolderOpen size={18} />
           </IconButton>
           <IconButton
-            title="Save .scislide · Ctrl+S"
+            title={shortcutTitle("Save .scislide", "save")}
             onClick={() => void save()}
           >
             <Save size={18} />
           </IconButton>
-          <IconButton title="New blank presentation" onClick={newPresentation}>
+          <IconButton
+            title={shortcutTitle("New presentation", "new")}
+            ariaLabel="New presentation"
+            onClick={newPresentation}
+          >
             <FilePlus2 size={18} />
           </IconButton>
         </div>
         <span className="toolbar-divider" />
         <div className="toolbar-group">
           <IconButton
-            title="Undo · Ctrl+Z"
+            title={shortcutTitle("Undo", "undo")}
             onClick={() => history("undo")}
             disabled={!undo.current.length}
           >
             <Undo2 size={18} />
           </IconButton>
           <IconButton
-            title="Redo · Ctrl+Shift+Z"
+            title={shortcutTitle("Redo", "redo")}
             onClick={() => history("redo")}
             disabled={!redo.current.length}
           >
             <Redo2 size={18} />
+          </IconButton>
+        </div>
+        <span className="toolbar-divider" />
+        <div className="toolbar-group">
+          <IconButton
+            title={shortcutTitle("Copy objects", "copy")}
+            disabled={!selected.length}
+            onClick={() => copyObjects()}
+          >
+            <Copy size={17} />
+          </IconButton>
+          <IconButton
+            title={shortcutTitle("Cut objects", "cut")}
+            disabled={!editableSelection(slide.objects, selected).length}
+            onClick={() => copyObjects(true)}
+          >
+            <Scissors size={17} />
+          </IconButton>
+          <IconButton
+            title={shortcutTitle("Paste objects", "paste")}
+            disabled={!hasClipboard}
+            onClick={pasteObjects}
+          >
+            <ClipboardPaste size={17} />
           </IconButton>
         </div>
         <span className="toolbar-divider" />
@@ -1703,10 +2515,17 @@ export default function App() {
         >
           <Sigma size={20} /> Equation
         </button>
+        <button className="tool" onClick={() => setShowEquationLibrary(true)}>
+          <BookOpen size={17} /> My equations
+        </button>
         <button
           className="tool"
+          disabled={!!busy}
+          title="Insert a PNG, JPEG, SVG, or PDF page · up to 20 MB"
           onClick={() => {
-            chooseDrawingTool(null);
+            finishTextEditing();
+            cancelGesture();
+            setDrawingTool(null);
             imageInput.current?.click();
           }}
         >
@@ -1716,7 +2535,9 @@ export default function App() {
           className="tool"
           disabled={!!busy}
           onClick={() => {
-            chooseDrawingTool(null);
+            finishTextEditing();
+            cancelGesture();
+            setDrawingTool(null);
             videoInput.current?.click();
           }}
           title={`Insert an MP4 or WebM video · up to ${MAX_VIDEO_BYTES / 1024 / 1024} MB`}
@@ -1767,14 +2588,14 @@ export default function App() {
           <ArrowUpRight size={17} />
         </IconButton>
         <IconButton
-          title="Group objects · Ctrl+G"
+          title={shortcutTitle("Group objects", "group")}
           disabled={editableSelection(slide.objects, selected).length < 2}
           onClick={groupSelection}
         >
           <Group size={17} />
         </IconButton>
         <IconButton
-          title="Ungroup objects · Ctrl+Shift+G"
+          title={shortcutTitle("Ungroup objects", "ungroup")}
           disabled={
             !slide.objects.some(
               (o) =>
@@ -1792,28 +2613,69 @@ export default function App() {
           <IconButton
             title="Align left"
             onClick={() => align("left")}
-            disabled={!selected.length}
+            disabled={!editableSelection(slide.objects, selected).length}
           >
             <AlignLeft size={18} />
           </IconButton>
           <IconButton
             title="Align center"
             onClick={() => align("center")}
-            disabled={!selected.length}
+            disabled={!editableSelection(slide.objects, selected).length}
           >
             <AlignCenter size={18} />
           </IconButton>
           <IconButton
             title="Align right"
             onClick={() => align("right")}
-            disabled={!selected.length}
+            disabled={!editableSelection(slide.objects, selected).length}
           >
             <AlignRight size={18} />
           </IconButton>
         </div>
+        <div className="toolbar-group alignment-extra">
+          <IconButton
+            title="Align top"
+            disabled={!editableSelection(slide.objects, selected).length}
+            onClick={() => align("top")}
+          >
+            <AlignLeft size={18} style={{ transform: "rotate(90deg)" }} />
+          </IconButton>
+          <IconButton
+            title="Align middle"
+            disabled={!editableSelection(slide.objects, selected).length}
+            onClick={() => align("middle")}
+          >
+            <AlignCenter size={18} style={{ transform: "rotate(90deg)" }} />
+          </IconButton>
+          <IconButton
+            title="Align bottom"
+            disabled={!editableSelection(slide.objects, selected).length}
+            onClick={() => align("bottom")}
+          >
+            <AlignRight size={18} style={{ transform: "rotate(90deg)" }} />
+          </IconButton>
+          <IconButton
+            title="Distribute horizontally"
+            disabled={
+              selectionLayoutUnits(slide.objects, selected, metrics).length < 3
+            }
+            onClick={() => distribute("x")}
+          >
+            <span>↔</span>
+          </IconButton>
+          <IconButton
+            title="Distribute vertically"
+            disabled={
+              selectionLayoutUnits(slide.objects, selected, metrics).length < 3
+            }
+            onClick={() => distribute("y")}
+          >
+            <span>↕</span>
+          </IconButton>
+        </div>
         <div className="toolbar-end">
           <IconButton
-            title="Smart alignment guides · Alt to bypass"
+            title={`Smart alignment guides · ${keyboardPlatform === "mac" ? "⌥" : "Alt"} to bypass`}
             active={smartGuides}
             onClick={() => setSmartGuides(!smartGuides)}
           >
@@ -1910,7 +2772,9 @@ export default function App() {
               <MousePointer2 size={13} />{" "}
               {drawingTool
                 ? `Drag to draw ${drawingTool === "rect" ? "rectangle" : drawingTool} · Shift to constrain · Escape to cancel`
-                : "Select · Shift for multiple · drag to align"}
+                : textEditing
+                  ? `Editing text · ${shortcutLabel("finishTextEditing", keyboardPlatform)} to finish · Esc to cancel`
+                  : "Double-click text to edit · drag to align"}
             </span>
           </div>
           <div
@@ -1940,12 +2804,29 @@ export default function App() {
                   startGesture(e, o, "endpoint", endpoint)
                 }
                 onEdit={(o) => {
+                  if (o.type === "text") {
+                    beginTextEditing(o);
+                    return;
+                  }
                   setSelected([o.id]);
                   setTimeout(() => {
                     if (o.type === "equation") sourceRef.current?.focus();
                     else document.getElementById("text-content")?.focus();
                   }, 0);
                 }}
+                textEditing={
+                  textEditing &&
+                  textEditing.deckId === deck.id &&
+                  textEditing.slideId === slide.id
+                    ? {
+                        objectId: textEditing.objectId,
+                        value: textEditing.value,
+                        platform: keyboardPlatform,
+                        onChange: changeInlineText,
+                        onFinish: finishTextEditing,
+                      }
+                    : undefined
+                }
                 onBackground={() => setSelected([])}
               />
             </div>
@@ -1998,6 +2879,35 @@ export default function App() {
             </span>
             <MoreHorizontal size={18} />
           </div>
+          <ObjectLayers
+            objects={slide.objects}
+            selected={selected}
+            onSelect={(ids) => {
+              cancelGesture();
+              setDrawingTool(null);
+              setSelected(ids);
+            }}
+            onRename={(id, name) =>
+              updateObject(
+                id,
+                (o) => {
+                  o.name = name;
+                },
+                "name",
+              )
+            }
+            onVisibility={(id, visible) =>
+              updateObject(id, (o) => {
+                o.visible = visible;
+              })
+            }
+            onLock={(id, locked) =>
+              updateObject(id, (o) => {
+                o.locked = locked;
+              })
+            }
+            onMove={moveLayer}
+          />
           {object ? (
             <>
               <div className="object-heading">
@@ -2240,7 +3150,10 @@ export default function App() {
                             aria-label="Math font"
                             value={draft.font}
                             onChange={(e) =>
-                              setDraft({ ...draft, font: e.target.value })
+                              setDraft({
+                                ...draft,
+                                font: e.target.value as EquationDraft["font"],
+                              })
                             }
                           >
                             {FONT_OPTIONS.map((f) => (
@@ -2317,6 +3230,7 @@ export default function App() {
                   <textarea
                     id="text-content"
                     aria-label="Text content"
+                    aria-describedby="inline-math-hint"
                     className="text-input"
                     value={object.text}
                     onChange={(e) =>
@@ -2329,6 +3243,11 @@ export default function App() {
                       )
                     }
                   />
+                  <p id="inline-math-hint" className="field-hint">
+                    Inline math: <code>{"$\\chi$"}</code> or{" "}
+                    <code>{"\\(\\chi\\)"}</code>.{" Use "}
+                    <code>{"\\$"}</code> for a dollar sign.
+                  </p>
                   <div className="field-row">
                     <Field label="Size">
                       <input
@@ -2565,6 +3484,48 @@ export default function App() {
               {object.type === "figure" && (
                 <div className="inspector-section">
                   <div className="section-label">FIGURE</div>
+                  <button
+                    className="button light figure-replace"
+                    disabled={!!busy || isObjectLocked(object, slide.objects)}
+                    onClick={() => {
+                      replaceFigureTarget.current = {
+                        deckId: deck.id,
+                        slideId: slide.id,
+                        objectId: object.id,
+                      };
+                      replaceFigureInput.current?.click();
+                    }}
+                  >
+                    <ImagePlus size={15} /> Replace figure
+                  </button>
+                  <FigureTools
+                    object={object}
+                    asset={deck.assets.find((a) => a.id === object.assetId)}
+                    disabled={
+                      isObjectLocked(object, slide.objects) || !!object.groupId
+                    }
+                    onCropChange={(crop) =>
+                      updateObject(object.id, (o) => {
+                        if (o.type === "figure") {
+                          if (crop) o.crop = crop;
+                          else delete o.crop;
+                        }
+                      })
+                    }
+                    onCreateInset={(crop) => {
+                      const inset = createFigureInset(
+                        { ...object, crop },
+                        deck.assets.find((a) => a.id === object.assetId)!,
+                        deck.slideSize,
+                      );
+                      change((d) =>
+                        d.slides
+                          .find((s) => s.id === slide.id)!
+                          .objects.push(inset),
+                      );
+                      setSelected([inset.id]);
+                    }}
+                  />
                   <Field label="Description">
                     <textarea
                       value={object.alt}
@@ -2843,6 +3804,48 @@ export default function App() {
               </div>
               <div className="inspector-section">
                 <div className="section-label">ARRANGE</div>
+                <div className="selection-arrange-grid">
+                  {(
+                    [
+                      "left",
+                      "center",
+                      "right",
+                      "top",
+                      "middle",
+                      "bottom",
+                    ] as SelectionAlignment[]
+                  ).map((where) => (
+                    <button
+                      key={where}
+                      disabled={
+                        !editableSelection(slide.objects, selected).length
+                      }
+                      onClick={() => align(where)}
+                    >
+                      {where[0].toUpperCase() + where.slice(1)}
+                    </button>
+                  ))}
+                </div>
+                <div className="arrange-buttons">
+                  <button
+                    disabled={
+                      selectionLayoutUnits(slide.objects, selected, metrics)
+                        .length < 3
+                    }
+                    onClick={() => distribute("x")}
+                  >
+                    Equal horizontal gaps
+                  </button>
+                  <button
+                    disabled={
+                      selectionLayoutUnits(slide.objects, selected, metrics)
+                        .length < 3
+                    }
+                    onClick={() => distribute("y")}
+                  >
+                    Equal vertical gaps
+                  </button>
+                </div>
                 <div className="arrange-buttons">
                   <button
                     onClick={groupSelection}
@@ -3121,7 +4124,8 @@ export default function App() {
         hidden
         ref={imageInput}
         type="file"
-        accept="image/svg+xml,image/png,image/jpeg"
+        aria-label="Insert figure file"
+        accept={FIGURE_FILE_TYPES}
         onChange={(e) => {
           if (e.target.files?.[0]) void addFigure(e.target.files[0]);
           e.target.value = "";
@@ -3129,8 +4133,20 @@ export default function App() {
       />
       <input
         hidden
+        ref={replaceFigureInput}
+        type="file"
+        aria-label="Replace figure file"
+        accept={FIGURE_FILE_TYPES}
+        onChange={(e) => {
+          if (e.target.files?.[0]) void replaceFigure(e.target.files[0]);
+          e.target.value = "";
+        }}
+      />
+      <input
+        hidden
         ref={videoInput}
         type="file"
+        aria-label="Insert video file"
         accept="video/mp4,video/webm,.mp4,.webm"
         onChange={(e) => {
           if (e.target.files?.[0]) void addVideo(e.target.files[0]);
@@ -3144,56 +4160,39 @@ export default function App() {
         </div>
       )}
       {showHelp && (
-        <div className="modal-backdrop" onClick={() => setShowHelp(false)}>
-          <div className="help-modal" onClick={(e) => e.stopPropagation()}>
-            <div>
-              <h2>Make room for your ideas.</h2>
-              <IconButton
-                title="Close shortcuts"
-                onClick={() => setShowHelp(false)}
-              >
-                <X size={18} />
-              </IconButton>
-            </div>
-            <p>
-              수식을 더블클릭하고, 오른쪽에서 원문과 폰트를 수정한 뒤 Apply를
-              누르세요.
-            </p>
-            <dl>
-              <dt>Save deck</dt>
-              <dd>Ctrl / ⌘ + S</dd>
-              <dt>Undo / Redo</dt>
-              <dd>Ctrl / ⌘ + Z / Shift + Z</dd>
-              <dt>Duplicate object</dt>
-              <dd>Ctrl / ⌘ + D</dd>
-              <dt>Multiple selection</dt>
-              <dd>Shift + Click</dd>
-              <dt>Group / Ungroup</dt>
-              <dd>Ctrl / ⌘ + G / Shift + G</dd>
-              <dt>Constrain drawing / endpoints</dt>
-              <dd>Shift · squares, circles and 45° lines</dd>
-              <dt>Bypass alignment guides</dt>
-              <dd>Hold Alt while dragging</dd>
-              <dt>Cancel drawing</dt>
-              <dd>Escape</dd>
-              <dt>Move selection</dt>
-              <dd>Arrow keys · Shift for 10 px</dd>
-              <dt>Delete selection</dt>
-              <dd>Delete / Backspace</dd>
-              <dt>Exit slideshow</dt>
-              <dd>Escape</dd>
-              <dt>Next / previous reveal</dt>
-              <dd>Right / Left · Space / PageDown</dd>
-              <dt>First / last slide</dt>
-              <dd>Home / End</dd>
-            </dl>
-            <p className="field-hint">
-              Page numbers, embedded videos, and click-to-reveal appear/fade
-              steps are available. PDF figure import, advanced animation, and
-              collaborative editing are planned later.
-            </p>
-          </div>
-        </div>
+        <KeyboardShortcutsDialog
+          platform={keyboardPlatform}
+          onClose={() => setShowHelp(false)}
+        />
+      )}
+      {showEquationLibrary && (
+        <EquationLibraryDialog
+          onClose={() => setShowEquationLibrary(false)}
+          onInsert={insertLibraryEquation}
+          initialEquation={
+            activeEquation
+              ? {
+                  latex: draft.latex,
+                  style: {
+                    fontSetId: draft.font,
+                    fontSize: draft.size,
+                    color: draft.color,
+                  },
+                  displayMode: activeEquation.displayMode,
+                  description: activeEquation.description,
+                  renderer: draft.renderer,
+                  ...(draft.renderer === "local-latex"
+                    ? {
+                        localTex: {
+                          engine: draft.engine,
+                          preamble: draft.preamble,
+                        },
+                      }
+                    : {}),
+                }
+              : undefined
+          }
+        />
       )}
       {showMathLibrary && (
         <MathSupportDialog
@@ -3208,6 +4207,25 @@ export default function App() {
           onChoose={addTemplateSlide}
           onClose={closeSlideTemplates}
         />
+      )}
+      {pdfFigure && (
+        <Suspense
+          fallback={
+            <div className="modal-backdrop">
+              <div className="toast" role="status">
+                Loading PDF importer…
+              </div>
+            </div>
+          }
+        >
+          <PdfFigureDialog
+            file={pdfFigure.file}
+            onInsert={insertPdfFigure}
+            onCancel={closePdfFigure}
+            title={pdfFigure.objectId ? "Replace with a PDF page." : undefined}
+            actionLabel={pdfFigure.objectId ? "Replace image" : undefined}
+          />
+        </Suspense>
       )}
       {showAiDraft && (
         <AIDraftDialog

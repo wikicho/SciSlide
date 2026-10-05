@@ -1,0 +1,3 @@
+pdfjs-dist 6.4.299
+License: Apache-2.0; bundled font and decoder notices are included alongside this file.
+Source: https://github.com/mozilla/pdf.js

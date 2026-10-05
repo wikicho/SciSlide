@@ -77,6 +77,15 @@ export interface FigureObject extends BaseSlideObject {
   type: "figure";
   assetId: string;
   alt: string;
+  /** Reversible source crop. Coordinates are fractions of the original asset. */
+  crop?: FigureCrop;
+}
+
+export interface FigureCrop {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface VideoObject extends BaseSlideObject {
@@ -127,7 +136,7 @@ export interface Asset {
 }
 
 export interface Deck {
-  formatVersion: "0.4.0";
+  formatVersion: "0.5.0";
   id: string;
   title: string;
   slideSize: { width: number; height: number; unit: "px96" };
@@ -279,6 +288,27 @@ function boolean(value: unknown, at: string): asserts value is boolean {
     throw new Error(`${at} must be true or false.`);
 }
 
+/** Reject empty, nonfinite or out-of-source regions before rendering/import. */
+export function validateFigureCrop(value: unknown): FigureCrop {
+  const crop = record(value, "Figure crop");
+  number(crop.x, "Figure crop left", 0, 1);
+  number(crop.y, "Figure crop top", 0, 1);
+  number(crop.width, "Figure crop width", 0.000001, 1);
+  number(crop.height, "Figure crop height", 0.000001, 1);
+  // Allow only floating point addition roundoff at the right/bottom boundary.
+  if (
+    crop.x + crop.width > 1 + Number.EPSILON * 4 ||
+    crop.y + crop.height > 1 + Number.EPSILON * 4
+  )
+    throw new Error("Figure crop must remain inside the original image.");
+  return {
+    x: crop.x,
+    y: crop.y,
+    width: crop.width,
+    height: crop.height,
+  };
+}
+
 function color(value: unknown, at: string): asserts value is string {
   string(value, at, 64);
   // An explicit subset is portable across browser SVG and PDF export, with no URL-based paints.
@@ -315,10 +345,12 @@ function uniqueId(value: unknown, at: string, identifiers: Set<string>): void {
 export function validateDeck(value: unknown): Deck {
   const deck = record(value, "Document");
   if (
-    !["0.1.0", "0.2.0", "0.3.0", "0.4.0"].includes(deck.formatVersion as string)
+    !["0.1.0", "0.2.0", "0.3.0", "0.4.0", "0.5.0"].includes(
+      deck.formatVersion as string,
+    )
   )
     throw new Error(
-      `Unsupported SciSlide format: ${String(deck.formatVersion)}. This build reads 0.1.0, 0.2.0, 0.3.0 and 0.4.0.`,
+      `Unsupported SciSlide format: ${String(deck.formatVersion)}. This build reads 0.1.0 through 0.5.0.`,
     );
   const identifiers = new Set<string>();
   const groupOwners = new Map<string, string>();
@@ -539,6 +571,7 @@ export function validateDeck(value: unknown): Deck {
           )
             throw new Error("A figure must reference an image asset.");
           string(object.alt, "Figure description", 10_000);
+          if (object.crop !== undefined) validateFigureCrop(object.crop);
           break;
         case "video":
           id(object.assetId, "Video asset reference");
@@ -599,7 +632,7 @@ export function validateDeck(value: unknown): Deck {
     if (identifiers.has(groupId))
       throw new Error(`Group ID duplicates the identifier “${groupId}”.`);
   const snapshot = JSON.parse(
-    JSON.stringify({ ...deck, formatVersion: "0.4.0" }),
+    JSON.stringify({ ...deck, formatVersion: "0.5.0" }),
   ) as Deck;
   for (const slide of snapshot.slides) {
     const groups = new Map<string, number>();
@@ -1057,7 +1090,7 @@ export function createDemoDeck(): Deck {
     ],
   };
   return {
-    formatVersion: "0.4.0",
+    formatVersion: "0.5.0",
     pageNumbers: { ...DEFAULT_PAGE_NUMBERS },
     id: newId(),
     title: "Signals from the early Universe",

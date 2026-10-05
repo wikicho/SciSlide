@@ -40,7 +40,16 @@ export type DesktopCommand =
   | "undo"
   | "redo"
   | "present"
-  | "exportPdf";
+  | "exportPdf"
+  | "exportSvg"
+  | "cut"
+  | "copy"
+  | "paste"
+  | "selectAll"
+  | "duplicate"
+  | "group"
+  | "ungroup"
+  | "showShortcuts";
 
 export type AiProvider = "codex" | "claude" | "gemini";
 
@@ -84,7 +93,7 @@ export interface DesktopApi {
   saveExport(request: {
     bytes: Uint8Array;
     suggestedName: string;
-    kind: "pdf" | "svg";
+    kind: "pdf" | "svg" | "json";
   }): Promise<{ path: string; name: string } | null>;
   clearDocument(): Promise<void>;
   detectTex(): Promise<TexCapabilities>;

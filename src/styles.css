@@ -2031,3 +2031,326 @@ button .lucide {
     padding-bottom: 10px;
   }
 }
+
+/* Editing tools */
+.object-layers {
+  border-bottom: 1px solid var(--line);
+  padding: 14px 12px;
+}
+.object-layers-heading {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 9px;
+  color: #718092;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+.object-layer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.object-layer-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+}
+.object-layer-row.selected {
+  background: #edf8f4;
+  border-color: #bce1d5;
+}
+.object-layer-row.hidden .object-layer-select {
+  opacity: 0.6;
+}
+.object-layer-select {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 80px;
+  text-align: left;
+  padding: 4px 2px;
+}
+.object-layer-select span {
+  min-width: 0;
+}
+.object-layer-select strong {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 115px;
+}
+.object-layer-select small {
+  display: block;
+  font-size: 9px;
+  color: #8491a0;
+}
+.object-layer-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 23px;
+  height: 26px;
+  border-radius: 4px;
+}
+.object-layer-actions {
+  display: flex;
+}
+.object-layer-name {
+  width: 100%;
+  font-size: 12px;
+}
+.object-layers-hint,
+.object-layers-empty {
+  font-size: 10px;
+  color: #8895a5;
+  line-height: 1.5;
+}
+.figure-replace {
+  width: 100%;
+  margin-bottom: 14px;
+}
+.figure-tools {
+  padding: 10px 0;
+  border-block: 1px solid #edf0f4;
+  margin-bottom: 14px;
+}
+.figure-tools .field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.figure-crop-preview {
+  width: 100%;
+  max-height: 150px;
+  margin: 10px 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+.figure-tools .button-row {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0;
+}
+.figure-tools > .button {
+  width: 100%;
+}
+.figure-tools .error {
+  color: #b45353;
+}
+.personal-equation-library {
+  width: min(940px, 94vw);
+}
+.equation-library-toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.equation-library-search {
+  flex: 1;
+  min-width: 0;
+}
+.equation-library-empty {
+  color: #8895a5;
+  padding: 20px;
+  font-size: 13px;
+}
+.equation-library-editor .field {
+  margin-bottom: 10px;
+}
+.equation-library-editor textarea {
+  min-height: 76px;
+}
+.equation-library-style {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.equation-library-actions {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.recovery-loading {
+  display: grid;
+  place-items: center;
+  height: 100vh;
+  color: #617185;
+}
+
+/* Presenter window deliberately contains no playable media. */
+.presenter-shell {
+  min-height: 100vh;
+  background: #f2f5f8;
+  padding: 24px;
+  color: #26394c;
+  overflow: auto;
+}
+.presenter-shell header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+.presenter-shell h1 {
+  font-size: 20px;
+  margin: 0;
+}
+.presenter-shell h1 small {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #718092;
+}
+.presenter-shell h2 {
+  font-size: 12px;
+  margin: 0 0 12px;
+  color: #718092;
+}
+.presenter-shell button {
+  background: #fff;
+  padding: 9px 14px;
+  border-radius: 6px;
+  border: 1px solid #dce2e8;
+}
+.presenter-previews {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 20px;
+}
+.presenter-previews section,
+.presenter-details section {
+  background: #fff;
+  border: 1px solid #dce2e8;
+  padding: 16px;
+  border-radius: 8px;
+}
+.presenter-previews .slide-scene {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
+.presenter-details {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 20px;
+  margin-top: 20px;
+}
+.presenter-notes p {
+  white-space: pre-wrap;
+  line-height: 1.6;
+  font-size: 16px;
+}
+.presenter-timer output {
+  display: block;
+  font-size: 38px;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 12px;
+}
+.presenter-timer label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.presenter-timer input {
+  width: 70px;
+}
+.presenter-timer .timer-over {
+  color: #b44747;
+}
+.presenter-navigation {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-top: 20px;
+}
+.presenter-message {
+  display: grid;
+  align-content: center;
+  justify-content: center;
+  text-align: center;
+}
+.presentation-toast {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fff;
+  color: #26394c;
+  padding: 12px 18px;
+  border-radius: 6px;
+  z-index: 3;
+}
+@media (max-width: 700px) {
+  .presenter-shell {
+    padding: 12px;
+  }
+  .presenter-previews,
+  .presenter-details {
+    grid-template-columns: 1fr;
+  }
+  .equation-library-style {
+    grid-template-columns: 1fr;
+  }
+  .equation-library-toolbar {
+    flex-wrap: wrap;
+  }
+}
+.selection-arrange-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+  margin-bottom: 8px;
+}
+.selection-arrange-grid button {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 6px;
+  font-size: 11px;
+}
+.presenter-link {
+  color: inherit;
+  border: 1px solid #ffffff35;
+  border-radius: 5px;
+  padding: 6px 10px;
+  text-decoration: none;
+}
+.equation-library-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 0 10px;
+}
+.equation-library-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  height: 34px;
+}
+.presenter-timer button {
+  font-size: 12px;
+}
+.presenter-timer input {
+  border: 1px solid #dce2e8;
+  border-radius: 4px;
+  padding: 5px;
+  font: inherit;
+}

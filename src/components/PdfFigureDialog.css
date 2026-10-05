@@ -1,0 +1,180 @@
+.pdf-figure-dialog {
+  width: min(860px, calc(100vw - 40px));
+  max-height: calc(100dvh - 40px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 20px 70px #16344730;
+}
+.pdf-figure-dialog > header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px 28px 20px;
+}
+.pdf-figure-dialog h2 {
+  margin: 7px 0 8px;
+  font-size: 24px;
+  letter-spacing: -0.7px;
+  color: #193344;
+  font-weight: 600;
+}
+.pdf-figure-dialog header p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #687f8e;
+}
+.pdf-figure-toolbar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 13px 28px;
+  background: #f7faf9;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.pdf-figure-filename {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  min-width: 0;
+  font-size: 12px;
+  color: #486173;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pdf-figure-filename svg {
+  flex-shrink: 0;
+}
+.pdf-figure-pagination,
+.pdf-figure-pagination label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #486173;
+}
+.pdf-figure-pagination {
+  flex-shrink: 0;
+}
+.pdf-figure-pagination input {
+  width: 60px;
+  padding: 7px 6px;
+  border: 1px solid #cddbdc;
+  border-radius: 6px;
+  background: #fff;
+  text-align: center;
+  color: #193344;
+}
+.pdf-figure-pagination input:focus-visible {
+  outline: 2px solid #329588;
+  outline-offset: 2px;
+}
+.pdf-figure-preview {
+  display: flex;
+  flex: 1;
+  min-height: 160px;
+  height: min(48vh, 430px);
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 24px;
+  background: #eef3f4;
+}
+.pdf-figure-preview > img {
+  display: block;
+  max-width: 100%;
+  max-height: min(43vh, 382px);
+  object-fit: contain;
+  box-shadow: 0 4px 20px #17314520;
+  background: #fff;
+}
+.pdf-figure-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 500px;
+  padding: 30px;
+  color: #607786;
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.pdf-figure-spinner {
+  animation: spin 0.8s linear infinite;
+}
+.pdf-figure-error {
+  color: #9f433f;
+}
+.pdf-figure-dialog > footer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 28px;
+  border-top: 1px solid var(--line);
+}
+.pdf-figure-dialog footer p {
+  margin: 0;
+  max-width: 330px;
+  color: #687f8e;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.pdf-figure-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+@media (max-width: 600px) {
+  .pdf-figure-dialog {
+    width: calc(100vw - 20px);
+    max-height: calc(100dvh - 20px);
+  }
+  .pdf-figure-dialog > header {
+    padding: 18px;
+  }
+  .pdf-figure-dialog h2 {
+    font-size: 21px;
+  }
+  .pdf-figure-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 12px 18px;
+    gap: 10px;
+  }
+  .pdf-figure-pagination {
+    justify-content: center;
+  }
+  .pdf-figure-preview {
+    padding: 14px;
+  }
+  .pdf-figure-dialog > footer {
+    align-items: flex-end;
+    padding: 14px 18px;
+  }
+  .pdf-figure-dialog footer p {
+    max-width: 170px;
+    font-size: 10px;
+  }
+  .pdf-figure-actions {
+    gap: 6px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pdf-figure-spinner {
+    animation: none;
+  }
+}
