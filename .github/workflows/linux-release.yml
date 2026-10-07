@@ -82,8 +82,8 @@ jobs:
 
       - name: Verify checksum, metadata and extracted payload
         run: |
-          package="release/SciSlide-${SCISLIDE_VERSION}-linux-x64.deb"
-          (cd release && sha256sum -c "$(basename "$package").sha256")
+          package="release/linux-deb/SciSlide-${SCISLIDE_VERSION}-linux-x64.deb"
+          (cd release/linux-deb && sha256sum -c "$(basename "$package").sha256")
           test "$(dpkg-deb --field "$package" Package)" = scislide
           test "$(dpkg-deb --field "$package" Architecture)" = amd64
           test "$(dpkg-deb --field "$package" Version)" = "${SCISLIDE_VERSION/-/~}"
@@ -110,9 +110,9 @@ jobs:
         with:
           name: SciSlide-${{ env.SCISLIDE_VERSION }}-linux-x64-deb
           path: |
-            release/SciSlide-*-linux-x64.deb
-            release/SciSlide-*-linux-x64.deb.sha256
-            release/LINUX-INSTALL.md
+            release/linux-deb/SciSlide-*-linux-x64.deb
+            release/linux-deb/SciSlide-*-linux-x64.deb.sha256
+            release/linux-deb/LINUX-INSTALL.md
           if-no-files-found: error
           compression-level: 0
           retention-days: 30

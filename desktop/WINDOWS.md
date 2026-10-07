@@ -1,18 +1,22 @@
-# SciSlide 0.6.0 — Windows x64
+# SciSlide 0.6.1 — Windows x64
 
 This development build contains the **x64 (Intel/AMD 64-bit)** SciSlide app for Windows 10 or later. Windows 11 x64 is the intended desktop target. Node.js, a development server and TeX are not required for MathJax editing. Physical Windows 10/11 desktop validation is still a release requirement.
 
 ## Install or run the portable app
 
-Run `SciSlide-0.6.0-windows-x64-setup-unsigned.exe` to install for your current user. The default destination is `%LOCALAPPDATA%\Programs\SciSlide`, with a Start menu shortcut. Administrator privileges are not requested. Quit SciSlide before installing an update. Remove it through Windows' installed-app settings. Uninstallation does not remove presentations you saved elsewhere or the app's user-data folder.
+Local 0.6.1 Windows packages are stored in `release/windows-x64/`. A Linux or macOS build produces the portable ZIP only; the setup executable requires a native Windows build with Inno Setup. The commands below describe each distribution when it is available.
 
-Alternatively, extract **all** of `SciSlide-0.6.0-windows-x64-portable.zip`, then open `SciSlide-win32-x64\scislide.exe`. Keep the runtime files, DLLs and `resources` directory together. The portable edition runs without installation, but still uses Electron's ordinary per-user app-data directory; recovery data is not stored beside the executable.
+Run `SciSlide-0.6.1-windows-x64-setup-unsigned.exe` to install for your current user. The default destination is `%LOCALAPPDATA%\Programs\SciSlide`, with a Start menu shortcut. Administrator privileges are not requested. Quit SciSlide before installing an update. Remove it through Windows' installed-app settings. Uninstallation does not remove presentations you saved elsewhere or the app's user-data folder.
+
+Alternatively, extract **all** of `SciSlide-0.6.1-windows-x64-portable.zip`, then open `SciSlide-win32-x64\scislide.exe`. Keep the runtime files, DLLs and `resources` directory together. The portable edition runs without installation, but still uses Electron's ordinary per-user app-data directory; recovery data is not stored beside the executable.
 
 Both distributions are **unsigned development builds**. Windows security policies may block installation or launch. Code signing and publisher reputation are later release work; these builds do not change system security settings. The application binary is x64, and the installer uses an x64 bootstrap executable. A separate native ARM64 or 32-bit Windows edition is not provided.
 
 ## Use the editor
 
 Start by choosing **Scientific**, **Minimal White**, **Minimal Black**, **Navy** or **Keynote White**, then **Create presentation**. Keynote White has fifteen coordinated white/black layouts; the other themes retain the fourteen Scientific/Keynote-inspired layouts. **New slide** or **+** opens the theme's picker, including **Blank slide**. Layouts insert after the current slide and can be undone. **Open / Save / Save As** use native file dialogs; **Export** saves the whole presentation as PDF or the current slide as SVG.
+
+Drag a slide thumbnail above or below another thumbnail to reorder the presentation. A teal line marks the insertion position, and dragging near the list edge scrolls longer presentations. The current slide and selected objects stay selected. Undo/Redo restores the order, and Escape cancels a drag. Page numbering and saved slide order follow the new position.
 
 Double-click text or press **Enter** on a selected text box to edit directly on the slide. **Enter** adds a line, **Ctrl+Enter** or clicking outside applies one undoable edit, and **Escape** cancels. Korean IME input and plain-text paste are supported. Write `$\chi$` or `\(\frac{1}{2}\)` inside text to render inline MathJax formulas. They match the surrounding font's lowercase height, retain their mathematical baseline and remain vectors in PDF/SVG; editing and native saves preserve the original syntax.
 
@@ -37,8 +41,8 @@ Bundled editable examples are in the app's `examples` folder. Copy one to your d
 Each distribution has a matching `.sha256` file. In PowerShell, compare its recorded hash with the result of:
 
 ```powershell
-Get-FileHash .\SciSlide-0.6.0-windows-x64-setup-unsigned.exe -Algorithm SHA256
-Get-Content .\SciSlide-0.6.0-windows-x64-setup-unsigned.exe.sha256
+Get-FileHash .\SciSlide-0.6.1-windows-x64-setup-unsigned.exe -Algorithm SHA256
+Get-Content .\SciSlide-0.6.1-windows-x64-setup-unsigned.exe.sha256
 ```
 
 Use the portable ZIP's filename to verify that distribution. A matching checksum detects file changes; it does not certify a publisher or replace code signing.
@@ -49,16 +53,16 @@ With Node.js 22.12 or later, pnpm and **Inno Setup 6.7 or later** installed on W
 
 ```powershell
 pnpm install --frozen-lockfile
-pnpm desktop:package:win
+pnpm desktop:package:win --out=release/windows-x64
 ```
 
 The target is always x64, independent of the build machine's architecture. Use `--arch=x64` explicitly if desired. Other architectures are rejected by this Windows distribution command. If Inno Setup is outside its standard installation path, pass `--iscc` with the compiler's path. To build only the portable distribution, including from Linux or macOS:
 
 ```sh
-pnpm desktop:package:win --portable-only
+pnpm desktop:package:win --portable-only --out=release/windows-x64
 ```
 
-Output defaults to `release/`. Use `--out` for another output folder and `--overwrite` to replace existing generated outputs. The **Windows x64 development distributions** GitHub Actions workflow builds on a Windows x64 runner, checks hashes and PE architecture, and tests installation and uninstallation in a temporary directory. Its downloadable artifacts are retained for 30 days. A build and install smoke check does not validate the complete editing, saving, media and export journey on physical Windows desktops.
+The commands above keep local Windows packages in `release/windows-x64/`; the script itself defaults to `release/`. Use `--out` for another output folder and `--overwrite` to replace existing generated outputs. The **Windows x64 development distributions** GitHub Actions workflow builds on a Windows x64 runner, checks hashes and PE architecture, and tests installation and uninstallation in a temporary directory. Its downloadable artifacts are retained for 30 days. A build and install smoke check does not validate the complete editing, saving, media and export journey on physical Windows desktops.
 
 Electron/Chromium notices are beside the executable in `LICENSE` and `LICENSES.chromium.html`; app dependency notices are in `resources/app.asar` under `third-party-licenses/`. A license for the new SciSlide source has not been selected yet. Automatic updates and signed distribution remain future work.
 

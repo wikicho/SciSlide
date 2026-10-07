@@ -131,6 +131,7 @@ import {
 } from "./lib/drawing";
 import { snapMove, snapResize, type SmartGuide } from "./lib/smart-guides";
 import { SlideScene } from "./components/SlideScene";
+import { SlideList } from "./components/SlideList";
 import { MathSupportDialog } from "./components/MathSupportDialog";
 import { SlideTemplateDialog } from "./components/SlideTemplateDialog";
 import { ThemeChooser } from "./components/ThemeChooser";
@@ -937,6 +938,27 @@ export default function App() {
         d.slides[slideIndex],
       ];
     });
+  };
+  const reorderSlide = (
+    sourceId: string,
+    targetId: string,
+    edge: "before" | "after",
+  ) => {
+    const current = deckRef.current;
+    const source = current.slides.findIndex((s) => s.id === sourceId);
+    const target = current.slides.findIndex((s) => s.id === targetId);
+    if (source < 0 || target < 0) return;
+    const boundary = target + (edge === "after" ? 1 : 0);
+    const destination = boundary > source ? boundary - 1 : boundary;
+    if (source === destination) return;
+    finishTextEditing();
+    cancelGesture();
+    setDrawingTool(null);
+    change((next) => {
+      const [moved] = next.slides.splice(source, 1);
+      next.slides.splice(destination, 0, moved);
+    });
+    notify(`Slide moved to position ${destination + 1}.`);
   };
   const base = (type: SlideObject["type"]) => ({
     id: newId(),
@@ -2701,25 +2723,13 @@ export default function App() {
               <Plus size={18} />
             </IconButton>
           </div>
-          <div className="slide-list">
-            {deck.slides.map((s, i) => (
-              <button
-                className={`slide-card ${s.id === slide.id ? "selected" : ""}`}
-                key={s.id}
-                onClick={() => switchSlide(s.id)}
-              >
-                <span className="slide-number">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <span className="thumbnail">
-                  <SlideScene deck={deck} slide={s} slideIndex={i} />
-                </span>
-                <span className="thumbnail-title">
-                  {s.title || "Untitled slide"}
-                </span>
-              </button>
-            ))}
-          </div>
+          <SlideList
+            deck={deck}
+            activeSlideId={slide.id}
+            disabled={!!busy || hasEditorDialog}
+            onSelect={switchSlide}
+            onReorder={reorderSlide}
+          />
           <button className="add-slide" onClick={addSlide}>
             <Plus size={17} /> New slide
           </button>

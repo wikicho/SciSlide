@@ -1,4 +1,4 @@
-# SciSlide 0.6.0 — macOS development installer
+# SciSlide 0.6.1 — macOS development installer
 
 Choose the installer that matches your Mac: **arm64** for Apple Silicon (M1 or later), or **x64** for Intel. The installer copies SciSlide to `/Applications/SciSlide.app`. Node.js, a development server and TeX are not required for MathJax editing.
 
@@ -9,6 +9,8 @@ Quit an existing SciSlide window before installing an update. Both architectures
 ## Use the editor
 
 Start by choosing **Scientific**, **Minimal White**, **Minimal Black**, **Navy** or **Keynote White**, then **Create presentation**. Keynote White has fifteen coordinated white/black layouts; the other themes retain the fourteen Scientific/Keynote-inspired layouts. **New slide** or **+** opens the theme's picker, including **Blank slide**. Layouts insert after the current slide and can be undone. **Open / Save / Save As** use native file dialogs; **Export** saves the whole presentation as PDF or the current slide as SVG.
+
+Drag a slide thumbnail above or below another thumbnail to reorder slides. A teal insertion line shows the destination, and the list scrolls when dragging near its edges. The current slide and object selection stay active; **⌘+Z / ⌘+Shift+Z** undo/redo the move. **Escape** cancels a drag.
 
 Double-click text or press **Enter** on a selected text box to edit directly on the slide. **Enter** adds a line, **⌘+Enter** or clicking outside applies one undoable edit, and **Escape** cancels. Korean IME input and plain-text paste are supported. Write `$\chi$` or `\(\frac{1}{2}\)` inside text to render inline MathJax formulas. They match the surrounding font's lowercase height, retain their mathematical baseline and remain vectors in PDF/SVG; editing and native saves preserve the original syntax.
 
@@ -33,12 +35,23 @@ The editor is a prototype. Modern Korean body text is supported through bundled 
 Each installer has a matching `.sha256` file. To verify a download, put the installer and checksum file in the same folder and run:
 
 ```sh
-shasum -a 256 -c SciSlide-0.6.0-macos-arm64-unsigned.pkg.sha256
+shasum -a 256 -c SciSlide-0.6.1-macos-arm64-unsigned.pkg.sha256
 ```
 
 Use the x64 filename for an Intel installer. This checks that the file matches its accompanying checksum; it does not certify the publisher or replace Apple's code signing and notarization.
 
 Electron/Chromium license notices are included in the application bundle. App dependency notices are inside `Contents/Resources/app.asar` under `third-party-licenses/`. A project license for the new SciSlide source has not been selected yet.
+
+## Build installers from source
+
+From the project root, build the editor and both macOS installers:
+
+```sh
+pnpm build
+node scripts/package-macos.mjs --arch=all --out=release/macos-pkg
+```
+
+The installers, matching checksums and this guide are written to `release/macos-pkg/`. The default pure-JavaScript installer implementation also works on Linux; use `--implementation=native` on macOS to package with Apple's command-line tools. Neither method signs or notarizes the application.
 
 ## AI content drafts
 

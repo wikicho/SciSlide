@@ -339,6 +339,7 @@ button .lucide {
 .slide-list {
   overflow-y: auto;
   flex: 1;
+  padding-block: 5px;
 }
 .slide-card {
   display: block;
@@ -354,6 +355,32 @@ button .lucide {
 }
 .slide-card.selected {
   background: #e9f4ef;
+}
+.slide-card[data-reorderable="true"] {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.slide-card.dragging {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+.slide-card.drop-before::before,
+.slide-card.drop-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--teal);
+  border-radius: 2px;
+  pointer-events: none;
+}
+.slide-card.drop-before::before {
+  top: -5px;
+}
+.slide-card.drop-after::after {
+  bottom: -5px;
 }
 .slide-number {
   position: absolute;
