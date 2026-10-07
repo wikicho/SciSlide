@@ -1,14 +1,14 @@
-# SciSlide 0.6.1 — Windows x64
+# SciSlide 0.6.2 — Windows x64
 
 This development build contains the **x64 (Intel/AMD 64-bit)** SciSlide app for Windows 10 or later. Windows 11 x64 is the intended desktop target. Node.js, a development server and TeX are not required for MathJax editing. Physical Windows 10/11 desktop validation is still a release requirement.
 
 ## Install or run the portable app
 
-Local 0.6.1 Windows packages are stored in `release/windows-x64/`. A Linux or macOS build produces the portable ZIP only; the setup executable requires a native Windows build with Inno Setup. The commands below describe each distribution when it is available.
+Local 0.6.2 Windows packages are stored in `release/windows-x64/`. A Linux or macOS build produces the portable ZIP only; the setup executable requires a native Windows build with Inno Setup. The commands below describe each distribution when it is available.
 
-Run `SciSlide-0.6.1-windows-x64-setup-unsigned.exe` to install for your current user. The default destination is `%LOCALAPPDATA%\Programs\SciSlide`, with a Start menu shortcut. Administrator privileges are not requested. Quit SciSlide before installing an update. Remove it through Windows' installed-app settings. Uninstallation does not remove presentations you saved elsewhere or the app's user-data folder.
+Run `SciSlide-0.6.2-windows-x64-setup-unsigned.exe` to install for your current user. The default destination is `%LOCALAPPDATA%\Programs\SciSlide`, with a Start menu shortcut. Administrator privileges are not requested. Quit SciSlide before installing an update. Remove it through Windows' installed-app settings. Uninstallation does not remove presentations you saved elsewhere or the app's user-data folder.
 
-Alternatively, extract **all** of `SciSlide-0.6.1-windows-x64-portable.zip`, then open `SciSlide-win32-x64\scislide.exe`. Keep the runtime files, DLLs and `resources` directory together. The portable edition runs without installation, but still uses Electron's ordinary per-user app-data directory; recovery data is not stored beside the executable.
+Alternatively, extract **all** of `SciSlide-0.6.2-windows-x64-portable.zip`, then open `SciSlide-win32-x64\scislide.exe`. Keep the runtime files, DLLs and `resources` directory together. The portable edition runs without installation, but still uses Electron's ordinary per-user app-data directory; recovery data is not stored beside the executable.
 
 Both distributions are **unsigned development builds**. Windows security policies may block installation or launch. Code signing and publisher reputation are later release work; these builds do not change system security settings. The application binary is x64, and the installer uses an x64 bootstrap executable. A separate native ARM64 or 32-bit Windows edition is not provided.
 
@@ -26,7 +26,29 @@ Choose **Draw rectangle**, **Draw ellipse**, **Draw line** or **Draw arrow**, th
 
 Shift+click selects objects for **Group objects / Ungroup objects**; **Ctrl+G** groups and **Ctrl+Shift+G** ungroups. Flat groups move together and duplicate independently. Ungroup before resizing, rotating or editing an individual member's endpoints. Use six-way alignment and equal-gap distribution to arrange a selection. Automatic guides appear while dragging/resizing; **Alt** bypasses them. **Snap to 20 px grid** takes precedence over object guides. The **OBJECTS & LAYERS** list selects hidden or covered objects and controls visibility, locks and order. Object copy/cut/paste works across slides or decks in one session. Nested groups, whole-group scaling/rotation, attached connectors and freehand paths remain planned.
 
-Keyboard shortcuts use **Ctrl** and **Alt**. **Ctrl+O / Ctrl+S / Ctrl+Shift+S** open/save/save as; **Ctrl+Z / Ctrl+Y** undo/redo, with **Ctrl+Shift+Z** also accepted for Redo. **Ctrl+Enter** presents from the canvas. **Ctrl+Alt+P / Ctrl+Alt+S** export PDF/current-slide SVG. **Ctrl+Shift+/** opens shortcut help. During text editing, Ctrl+Enter applies the edit without starting a slideshow; text-field clipboard and IME behavior are preserved.
+Keyboard shortcuts follow [PowerPoint for Windows](https://support.microsoft.com/en-us/accessibility/powerpoint/use-keyboard-shortcuts-to-create-powerpoint-presentations) for supported actions. **Ctrl+O / Ctrl+S / Ctrl+Shift+S** open/save/save as; **Ctrl+Z / Ctrl+Y** undo/redo, with **Ctrl+Shift+Z** also accepted for Redo.
+
+| Action                                                | Shortcut                        |
+| ----------------------------------------------------- | ------------------------------- |
+| Choose a layout for a new slide                       | Ctrl+M                          |
+| Copy the current slide                                | Ctrl+Shift+D                    |
+| Copy selected objects, or the slide with no selection | Ctrl+D                          |
+| Insert equation                                       | Alt+=                           |
+| Start at first / current slide                        | F5 / Shift+F5                   |
+| Open presenter display                                | Alt+F5                          |
+| Advance / retreat one object layer                    | Ctrl+Shift+] / Ctrl+Shift+[     |
+| Enlarge / shrink the canvas view                      | Ctrl++ / Ctrl+-                 |
+| Fit the slide in the window                           | Ctrl+Alt+O                      |
+| Toggle bold on selected text objects                  | Ctrl+B                          |
+| Increase / decrease selected text size                | Ctrl+Shift+> / Ctrl+Shift+<     |
+| Align selected text left / center / right             | Ctrl+L / Ctrl+E / Ctrl+R        |
+| Move focused thumbnail up / down                      | Ctrl+Up / Ctrl+Down             |
+| Move focused thumbnail first / last                   | Ctrl+Shift+Up / Ctrl+Shift+Down |
+| Shortcut help                                         | F1                              |
+
+**Page Up / Page Down** navigates the deck; **Home / End** selects its first / last slide. Slide-move commands require a focused thumbnail, preserving canvas object movement and text navigation. **Up / Down** selects thumbnails and **Delete / Backspace** deletes the focused slide. **Ctrl+Enter** still presents from the current slide outside text editing; inside the inline editor it applies the edit. **Ctrl+Shift+/** remains a help alias. Text formatting changes whole selected text objects; clipboard, cursor, IME and undo behavior in text fields remain native.
+
+SciSlide's **Ctrl+Alt+P / Ctrl+Alt+S** export PDF/current-slide SVG. During a slideshow, **Enter / N** advance a build or slide, **Backspace / P** go back, and **Esc** exits; arrow, Space and Page Up/Down navigation remain available. Media controls keep their own keyboard behavior.
 
 **My equations** stores named/tagged formulas locally and transfers them through JSON import/export. **Presenter display** opens a separate window with current/next previews, notes, navigation and a timer; move it to your presenter screen. Recovery uses IndexedDB, bounded to 100 MiB, and retains up to 200 unfinished equation drafts, with a localStorage fallback. Libraries and unapplied drafts are local workspace data; continue saving portable files explicitly.
 
@@ -41,8 +63,8 @@ Bundled editable examples are in the app's `examples` folder. Copy one to your d
 Each distribution has a matching `.sha256` file. In PowerShell, compare its recorded hash with the result of:
 
 ```powershell
-Get-FileHash .\SciSlide-0.6.1-windows-x64-setup-unsigned.exe -Algorithm SHA256
-Get-Content .\SciSlide-0.6.1-windows-x64-setup-unsigned.exe.sha256
+Get-FileHash .\SciSlide-0.6.2-windows-x64-setup-unsigned.exe -Algorithm SHA256
+Get-Content .\SciSlide-0.6.2-windows-x64-setup-unsigned.exe.sha256
 ```
 
 Use the portable ZIP's filename to verify that distribution. A matching checksum detects file changes; it does not certify a publisher or replace code signing.

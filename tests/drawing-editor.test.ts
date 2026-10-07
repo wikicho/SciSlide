@@ -256,7 +256,7 @@ describe("drawing editor gestures and history", () => {
     await click("Undo · Ctrl+Z");
     expect(await persist()).toEqual([rect]);
     expect(button("Undo · Ctrl+Z").disabled).toBe(true);
-    await click("Redo · Ctrl+Shift+Z");
+    await click("Redo · Ctrl+Y");
     expect(await persist()).toHaveLength(2);
   });
 
@@ -344,7 +344,7 @@ describe("drawing editor gestures and history", () => {
       shiftKey: true,
     });
     expect(canvas().querySelectorAll(".selection")).toHaveLength(2);
-    await click("Group objects · Ctrl+G");
+    await click("Group objects · Ctrl+Shift+G");
     const grouped = await persist();
     const groupId = grouped[0].groupId;
     expect(groupId).toBeTruthy();
@@ -498,8 +498,8 @@ describe("drawing editor gestures and history", () => {
     await key("d", { ctrlKey: true });
     await key("Delete");
     expect(await persist()).toEqual([first, second]);
-    expect(button("Group objects · Ctrl+G").disabled).toBe(true);
-    expect(button("Ungroup objects · Ctrl+Shift+G").disabled).toBe(true);
+    expect(button("Group objects · Ctrl+Shift+G").disabled).toBe(true);
+    expect(button("Ungroup objects · Ctrl+Alt+Shift+G").disabled).toBe(true);
   });
 
   it("uses visible group bounds for guides while translating hidden members with the group", async () => {

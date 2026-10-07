@@ -15,13 +15,50 @@ export type ShortcutAction =
   | "group"
   | "ungroup"
   | "present"
+  | "presentFromStart"
+  | "presenterView"
+  | "duplicateSlide"
+  | "moveSlideUp"
+  | "moveSlideDown"
+  | "moveSlideFirst"
+  | "moveSlideLast"
   | "exportPdf"
   | "exportSvg"
   | "help"
-  | "finishTextEditing";
+  | "finishTextEditing"
+  | "addSlide"
+  | "insertEquation"
+  | "insertFigure"
+  | "deselectAll"
+  | "lock"
+  | "unlock"
+  | "bringToFront"
+  | "sendToBack"
+  | "bringForward"
+  | "sendBackward"
+  | "zoomIn"
+  | "zoomOut"
+  | "fitSlide"
+  | "nextSlide"
+  | "previousSlide"
+  | "firstSlide"
+  | "lastSlide"
+  | "bold"
+  | "increaseFontSize"
+  | "decreaseFontSize"
+  | "alignTextLeft"
+  | "alignTextCenter"
+  | "alignTextRight";
 
 export type ShortcutCategory =
-  "File" | "Editing" | "Objects" | "Presentation" | "Help" | "Text";
+  | "File"
+  | "Editing"
+  | "Objects"
+  | "Presentation"
+  | "Help"
+  | "Text"
+  | "Slides"
+  | "Canvas";
 
 export interface NavigatorPlatformMetadata {
   platform?: string;
@@ -35,6 +72,7 @@ export interface ShortcutBinding {
   shift?: boolean;
   alt?: boolean;
   code?: string;
+  codeOnly?: boolean;
 }
 
 export interface PlatformShortcut {
@@ -60,6 +98,16 @@ interface ShortcutDefinition {
   label: string;
   category: ShortcutCategory;
   binding: ShortcutBinding;
+  platforms?: readonly KeyboardPlatform[];
+}
+
+function macShortcut(
+  action: ShortcutAction,
+  label: string,
+  category: ShortcutCategory,
+  binding: ShortcutBinding,
+): ShortcutDefinition {
+  return { action, label, category, binding, platforms: ["mac"] };
 }
 
 const DEFINITIONS: readonly ShortcutDefinition[] = [
@@ -143,10 +191,45 @@ const DEFINITIONS: readonly ShortcutDefinition[] = [
   },
   {
     action: "present",
-    label: "Start presentation",
+    label: "Present from current slide",
     category: "Presentation",
     binding: { key: "Enter", primary: true },
   },
+  {
+    action: "presentFromStart",
+    label: "Present from first slide",
+    category: "Presentation",
+    binding: { key: "F5", primary: false },
+    platforms: ["windows", "linux"],
+  },
+  {
+    action: "presenterView",
+    label: "Open presenter display",
+    category: "Presentation",
+    binding: { key: "F5", primary: false, alt: true },
+    platforms: ["windows"],
+  },
+  {
+    action: "duplicateSlide",
+    label: "Duplicate current slide",
+    category: "Slides",
+    binding: { key: "d", primary: true, shift: true },
+    platforms: ["windows"],
+  },
+  ...(
+    [
+      ["moveSlideUp", "Move slide up", false, "ArrowUp"],
+      ["moveSlideDown", "Move slide down", false, "ArrowDown"],
+      ["moveSlideFirst", "Move slide to start", true, "ArrowUp"],
+      ["moveSlideLast", "Move slide to end", true, "ArrowDown"],
+    ] as const
+  ).map(([action, label, shift, key]): ShortcutDefinition => ({
+    action,
+    label,
+    category: "Slides",
+    binding: { key, primary: true, shift },
+    platforms: ["windows", "linux"],
+  })),
   {
     action: "exportPdf",
     label: "Export PDF",
@@ -171,7 +254,223 @@ const DEFINITIONS: readonly ShortcutDefinition[] = [
     category: "Text",
     binding: { key: "Enter", primary: true },
   },
+  macShortcut("addSlide", "Add slide from a layout", "Slides", {
+    key: "n",
+    primary: true,
+    shift: true,
+  }),
+  macShortcut("insertEquation", "Insert equation", "Objects", {
+    key: "e",
+    primary: true,
+    alt: true,
+  }),
+  macShortcut("insertFigure", "Insert image, SVG or PDF", "Objects", {
+    key: "v",
+    primary: true,
+    shift: true,
+  }),
+  macShortcut("deselectAll", "Deselect all objects", "Objects", {
+    key: "a",
+    primary: true,
+    shift: true,
+  }),
+  macShortcut("lock", "Lock selected objects", "Objects", {
+    key: "l",
+    primary: true,
+  }),
+  macShortcut("unlock", "Unlock selected objects", "Objects", {
+    key: "l",
+    primary: true,
+    alt: true,
+  }),
+  macShortcut("bringToFront", "Bring to front", "Objects", {
+    key: "f",
+    primary: true,
+    shift: true,
+  }),
+  macShortcut("sendToBack", "Send to back", "Objects", {
+    key: "b",
+    primary: true,
+    shift: true,
+  }),
+  macShortcut("bringForward", "Bring forward one layer", "Objects", {
+    key: "f",
+    primary: true,
+    alt: true,
+    shift: true,
+  }),
+  macShortcut("sendBackward", "Send backward one layer", "Objects", {
+    key: "b",
+    primary: true,
+    alt: true,
+    shift: true,
+  }),
+  macShortcut("zoomIn", "Zoom in", "Canvas", {
+    key: ">",
+    code: "Period",
+    primary: true,
+    shift: true,
+  }),
+  macShortcut("zoomOut", "Zoom out", "Canvas", {
+    key: "<",
+    code: "Comma",
+    primary: true,
+    shift: true,
+  }),
+  macShortcut("fitSlide", "Fit slide to window", "Canvas", {
+    key: "0",
+    code: "Digit0",
+    primary: true,
+    alt: true,
+  }),
+  macShortcut("nextSlide", "Next slide", "Slides", {
+    key: "PageDown",
+    primary: false,
+  }),
+  macShortcut("previousSlide", "Previous slide", "Slides", {
+    key: "PageUp",
+    primary: false,
+  }),
+  macShortcut("firstSlide", "First slide", "Slides", {
+    key: "Home",
+    primary: false,
+  }),
+  macShortcut("lastSlide", "Last slide", "Slides", {
+    key: "End",
+    primary: false,
+  }),
+  macShortcut("bold", "Toggle bold on selected text objects", "Text", {
+    key: "b",
+    primary: true,
+  }),
+  macShortcut("increaseFontSize", "Increase selected text size", "Text", {
+    key: "+",
+    code: "Equal",
+    primary: true,
+  }),
+  macShortcut("decreaseFontSize", "Decrease selected text size", "Text", {
+    key: "-",
+    code: "Minus",
+    primary: true,
+  }),
+  macShortcut("alignTextLeft", "Align selected text left", "Text", {
+    key: "{",
+    code: "BracketLeft",
+    primary: true,
+    shift: true,
+  }),
+  macShortcut("alignTextCenter", "Center selected text", "Text", {
+    key: "|",
+    code: "Backslash",
+    primary: true,
+    shift: true,
+  }),
+  macShortcut("alignTextRight", "Align selected text right", "Text", {
+    key: "}",
+    code: "BracketRight",
+    primary: true,
+    shift: true,
+  }),
 ];
+
+// Keynote conventions where SciSlide has the corresponding feature. PDF
+// export moves away from Option+Command+P, which is Keynote's Play shortcut.
+const MAC_BINDINGS: Partial<Record<ShortcutAction, ShortcutBinding>> = {
+  saveAs: { key: "s", primary: true, alt: true, shift: true },
+  group: { key: "g", primary: true, alt: true },
+  ungroup: { key: "g", primary: true, alt: true, shift: true },
+  present: { key: "p", primary: true, alt: true },
+  exportPdf: { key: "p", primary: true, alt: true, shift: true },
+};
+
+// PowerPoint on Windows and Impress on Linux. Keep unavailable Keynote
+// commands out of the other profiles rather than inheriting their keys.
+const WINDOWS_BINDINGS: Partial<Record<ShortcutAction, ShortcutBinding>> = {
+  redo: { key: "y", primary: true },
+  addSlide: { key: "m", primary: true },
+  present: { key: "F5", primary: false, shift: true },
+  help: { key: "F1", primary: false },
+  insertEquation: { key: "=", code: "Equal", primary: false, alt: true },
+  bringForward: {
+    key: "]",
+    code: "BracketRight",
+    primary: true,
+    shift: true,
+  },
+  sendBackward: {
+    key: "[",
+    code: "BracketLeft",
+    primary: true,
+    shift: true,
+  },
+  zoomIn: { key: "+", code: "Equal", primary: true },
+  zoomOut: { key: "-", code: "Minus", primary: true },
+  fitSlide: { key: "o", primary: true, alt: true },
+  nextSlide: { key: "PageDown", primary: false },
+  previousSlide: { key: "PageUp", primary: false },
+  firstSlide: { key: "Home", primary: false },
+  lastSlide: { key: "End", primary: false },
+  bold: { key: "b", primary: true },
+  increaseFontSize: {
+    key: ">",
+    code: "Period",
+    primary: true,
+    shift: true,
+  },
+  decreaseFontSize: {
+    key: "<",
+    code: "Comma",
+    primary: true,
+    shift: true,
+  },
+  alignTextLeft: { key: "l", primary: true },
+  alignTextCenter: { key: "e", primary: true },
+  alignTextRight: { key: "r", primary: true },
+};
+
+const LINUX_BINDINGS: Partial<Record<ShortcutAction, ShortcutBinding>> = {
+  ...WINDOWS_BINDINGS,
+  duplicate: { key: "F3", primary: false, shift: true },
+  group: { key: "g", primary: true, shift: true },
+  ungroup: { key: "g", primary: true, alt: true, shift: true },
+  insertEquation: { key: "e", primary: false, alt: true, shift: true },
+  bringForward: { key: "+", code: "Equal", primary: true },
+  bringToFront: { key: "+", code: "Equal", primary: true, shift: true },
+  sendBackward: { key: "-", code: "Minus", primary: true },
+  sendToBack: { key: "-", code: "Minus", primary: true, shift: true },
+  zoomIn: { key: "+", primary: false },
+  zoomOut: { key: "-", code: "Minus", primary: false },
+  fitSlide: {
+    key: "*",
+    code: "NumpadMultiply",
+    codeOnly: true,
+    primary: false,
+  },
+  increaseFontSize: { key: "]", code: "BracketRight", primary: true },
+  decreaseFontSize: { key: "[", code: "BracketLeft", primary: true },
+  moveSlideUp: { key: "PageUp", primary: false, alt: true, shift: true },
+  moveSlideDown: { key: "PageDown", primary: false, alt: true, shift: true },
+  moveSlideFirst: { key: "Home", primary: false, alt: true, shift: true },
+  moveSlideLast: { key: "End", primary: false, alt: true, shift: true },
+};
+
+const PLATFORM_BINDINGS = {
+  mac: MAC_BINDINGS,
+  windows: WINDOWS_BINDINGS,
+  linux: LINUX_BINDINGS,
+};
+
+export function isShortcutAvailable(
+  action: ShortcutAction,
+  platform: KeyboardPlatform,
+): boolean {
+  const definition = DEFINITIONS.find((entry) => entry.action === action)!;
+  return (
+    !!PLATFORM_BINDINGS[platform][action] ||
+    !definition.platforms ||
+    definition.platforms.includes(platform)
+  );
+}
 
 export const SHORTCUT_ACTIONS: readonly ShortcutAction[] = DEFINITIONS.map(
   ({ action }) => action,
@@ -211,7 +510,11 @@ export function formatShortcut(
   if (binding.alt) parts.push(platform === "mac" ? "⌥" : "Alt");
   if (binding.shift) parts.push(platform === "mac" ? "⇧" : "Shift");
   parts.push(
-    binding.key.length === 1 ? binding.key.toUpperCase() : binding.key,
+    binding.code === "NumpadMultiply"
+      ? "Num *"
+      : binding.key.length === 1
+        ? binding.key.toUpperCase()
+        : binding.key,
   );
   return parts.join("+");
 }
@@ -232,14 +535,35 @@ export function getShortcut(
   platform: KeyboardPlatform,
 ): PlatformShortcut {
   const definition = DEFINITIONS.find((entry) => entry.action === action)!;
-  const binding =
-    action === "redo" && platform === "windows"
-      ? { key: "y", primary: true }
-      : { ...definition.binding };
-  const aliases =
-    action === "redo" && platform === "windows"
-      ? [{ ...definition.binding }]
-      : [];
+  const binding = {
+    ...(PLATFORM_BINDINGS[platform][action] ?? definition.binding),
+  };
+  const aliases: ShortcutBinding[] = [];
+  if (
+    (platform === "mac" &&
+      ["saveAs", "group", "ungroup", "present"].includes(action)) ||
+    (platform !== "mac" && ["redo", "present", "help"].includes(action)) ||
+    (platform === "linux" && ["duplicate", "group"].includes(action))
+  )
+    aliases.push({ ...definition.binding });
+  if (
+    (platform === "mac" && action === "increaseFontSize") ||
+    (platform === "windows" && action === "zoomIn") ||
+    (platform === "linux" && action === "zoomIn")
+  )
+    aliases.push({ ...binding, shift: true });
+  if (platform === "linux") {
+    if (action === "insertEquation")
+      aliases.push({ key: "=", code: "Equal", primary: true, alt: true });
+    const legacyReorder: Partial<Record<ShortcutAction, string>> = {
+      moveSlideUp: "ArrowUp",
+      moveSlideDown: "ArrowDown",
+      moveSlideFirst: "Home",
+      moveSlideLast: "End",
+    };
+    const legacyKey = legacyReorder[action];
+    if (legacyKey) aliases.push({ key: legacyKey, primary: true, shift: true });
+  }
   return {
     ...definition,
     binding,
@@ -259,7 +583,9 @@ export function shortcutLabel(
 export function getPlatformShortcuts(
   platform: KeyboardPlatform,
 ): PlatformShortcut[] {
-  return SHORTCUT_ACTIONS.map((action) => getShortcut(action, platform));
+  return SHORTCUT_ACTIONS.filter((action) =>
+    isShortcutAvailable(action, platform),
+  ).map((action) => getShortcut(action, platform));
 }
 
 function matchesBinding(
@@ -282,6 +608,14 @@ function matchesBinding(
     // Shift+/ reports '?' in browsers; retain the physical slash key as well.
     return event.code === "Slash" || event.key === "/" || event.key === "?";
   }
+  if (binding.codeOnly) return event.code === binding.code;
+  // '+' commonly needs Shift on a US keyboard, while some layouts provide it
+  // directly. Match the physical punctuation key for shifted/Option symbols.
+  if (
+    binding.code &&
+    (event.code === binding.code || event.key === binding.key)
+  )
+    return true;
   if (event.key.toLowerCase() === binding.key.toLowerCase()) return true;
   // Option can turn S into ß on macOS, even with Command held. Physical keys
   // recover these symbols without remapping ordinary Latin letter layouts.
@@ -302,6 +636,7 @@ export function matchesShortcut(
   platform: KeyboardPlatform,
 ): boolean {
   if (
+    !isShortcutAvailable(action, platform) ||
     event.isComposing ||
     event.keyCode === 229 ||
     event.getModifierState?.("AltGraph")

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Keyboard, X } from "lucide-react";
 import {
+  isShortcutAvailable,
   shortcutLabel,
   type KeyboardPlatform,
   type ShortcutAction,
@@ -13,9 +14,10 @@ const platforms: { id: KeyboardPlatform; label: string }[] = [
   { id: "windows", label: "Windows" },
 ];
 
-type ShortcutRow =
+type ShortcutRow = (
   | { label: string; action: ShortcutAction }
-  | { label: string; keys: string | ((platform: KeyboardPlatform) => string) };
+  | { label: string; keys: string | ((platform: KeyboardPlatform) => string) }
+) & { platforms?: KeyboardPlatform[] };
 
 const groups: { title: string; rows: ShortcutRow[] }[] = [
   {
@@ -35,12 +37,47 @@ const groups: { title: string; rows: ShortcutRow[] }[] = [
       { label: "Undo", action: "undo" },
       { label: "Redo", action: "redo" },
       { label: "Select all objects", action: "selectAll" },
+      { label: "Deselect all objects", action: "deselectAll" },
       { label: "Copy objects", action: "copy" },
       { label: "Cut objects", action: "cut" },
       { label: "Paste objects", action: "paste" },
       { label: "Duplicate selection or slide", action: "duplicate" },
+      { label: "Duplicate current slide", action: "duplicateSlide" },
       { label: "Group objects", action: "group" },
       { label: "Ungroup objects", action: "ungroup" },
+    ],
+  },
+  {
+    title: "Insert",
+    rows: [
+      { label: "Add slide from a layout", action: "addSlide" },
+      { label: "Insert equation", action: "insertEquation" },
+      { label: "Insert image, SVG or PDF", action: "insertFigure" },
+    ],
+  },
+  {
+    title: "Slides",
+    rows: [
+      { label: "Next slide", action: "nextSlide" },
+      { label: "Previous slide", action: "previousSlide" },
+      { label: "First slide", action: "firstSlide" },
+      { label: "Last slide", action: "lastSlide" },
+      {
+        label: "Select slides in the slide navigator",
+        keys: "↑ / ↓",
+      },
+      {
+        label: "Delete slide in the slide navigator",
+        keys: (platform) =>
+          platform === "mac" ? "⌫ / Fn + ⌫" : "Delete / Backspace",
+      },
+      { label: "Move focused slide up", action: "moveSlideUp" },
+      { label: "Move focused slide down", action: "moveSlideDown" },
+      {
+        label: "Move focused slide to the beginning",
+        action: "moveSlideFirst",
+      },
+      { label: "Move focused slide to the end", action: "moveSlideLast" },
     ],
   },
   {
@@ -50,6 +87,12 @@ const groups: { title: string; rows: ShortcutRow[] }[] = [
       { label: "Insert a new line", keys: "Enter" },
       { label: "Apply text changes", action: "finishTextEditing" },
       { label: "Cancel text changes", keys: "Esc" },
+      { label: "Toggle bold on selected text objects", action: "bold" },
+      { label: "Increase selected text size", action: "increaseFontSize" },
+      { label: "Decrease selected text size", action: "decreaseFontSize" },
+      { label: "Align selected text left", action: "alignTextLeft" },
+      { label: "Center selected text", action: "alignTextCenter" },
+      { label: "Align selected text right", action: "alignTextRight" },
     ],
   },
   {
@@ -57,6 +100,11 @@ const groups: { title: string; rows: ShortcutRow[] }[] = [
     rows: [
       { label: "Move objects by 1 px", keys: "Arrow keys" },
       { label: "Move objects by 10 px", keys: "Shift + Arrow keys" },
+      {
+        label: "Add or remove objects from selection",
+        keys: (platform) =>
+          platform === "mac" ? "⌘ + click / Shift + click" : "Shift + click",
+      },
       {
         label: "Bypass alignment guides while dragging",
         keys: (platform) => (platform === "mac" ? "Option" : "Alt"),
@@ -70,12 +118,62 @@ const groups: { title: string; rows: ShortcutRow[] }[] = [
     ],
   },
   {
+    title: "Object order and locks",
+    rows: [
+      { label: "Lock selected objects", action: "lock" },
+      { label: "Unlock selected objects", action: "unlock" },
+      { label: "Bring to front", action: "bringToFront" },
+      { label: "Send to back", action: "sendToBack" },
+      { label: "Bring forward one layer", action: "bringForward" },
+      { label: "Send backward one layer", action: "sendBackward" },
+    ],
+  },
+  {
+    title: "View",
+    rows: [
+      { label: "Zoom in", action: "zoomIn" },
+      { label: "Zoom out", action: "zoomOut" },
+      { label: "Fit slide to window", action: "fitSlide" },
+    ],
+  },
+  {
     title: "Presentation",
     rows: [
-      { label: "Start presentation", action: "present" },
-      { label: "End presentation", keys: "Esc" },
-      { label: "Next slide or build", keys: "→ / ↓ / Space / Page Down" },
-      { label: "Previous slide or build", keys: "← / ↑ / Page Up" },
+      { label: "Start presentation", action: "present", platforms: ["mac"] },
+      { label: "Start from first slide", action: "presentFromStart" },
+      {
+        label: "Start from current slide",
+        action: "present",
+        platforms: ["linux", "windows"],
+      },
+      { label: "Open presenter display", action: "presenterView" },
+      {
+        label: "End presentation",
+        keys: (platform) =>
+          platform === "mac"
+            ? "Esc / Q"
+            : platform === "linux"
+              ? "Esc / -"
+              : "Esc",
+      },
+      {
+        label: "Next slide or build",
+        keys: (platform) =>
+          platform === "windows"
+            ? "→ / ↓ / Space / Page Down / Enter / N"
+            : platform === "linux"
+              ? "→ / ↓ / Space / Page Down / Enter"
+              : "→ / ↓ / Space / Page Down",
+      },
+      {
+        label: "Previous slide or build",
+        keys: (platform) =>
+          platform === "windows"
+            ? "← / ↑ / Page Up / Backspace / P"
+            : platform === "linux"
+              ? "← / ↑ / Page Up / Backspace"
+              : "← / ↑ / Page Up",
+      },
       { label: "First / last slide", keys: "Home / End" },
     ],
   },
@@ -100,6 +198,17 @@ export function KeyboardShortcutsDialog({
   const [previewPlatform, setPreviewPlatform] = useState(platform);
   const currentIndex = platforms.findIndex(({ id }) => id === previewPlatform);
   const selectedPlatform = platforms[currentIndex];
+  const visibleGroups = groups
+    .map((group) => ({
+      ...group,
+      rows: group.rows.filter(
+        (row) =>
+          (!row.platforms || row.platforms.includes(previewPlatform)) &&
+          (!("action" in row) ||
+            isShortcutAvailable(row.action, previewPlatform)),
+      ),
+    }))
+    .filter((group) => group.rows.length > 0);
 
   useEffect(() => setPreviewPlatform(platform), [platform]);
 
@@ -226,7 +335,7 @@ export function KeyboardShortcutsDialog({
           aria-labelledby={`${id}-${selectedPlatform.id}-tab`}
           tabIndex={0}
         >
-          {groups.map((group) => (
+          {visibleGroups.map((group) => (
             <section key={group.title} className="keyboard-shortcuts-group">
               <h3>{group.title}</h3>
               <dl>
@@ -252,6 +361,32 @@ export function KeyboardShortcutsDialog({
             the text. Browsers may reserve New and Open; use their toolbar
             buttons or the desktop app.
           </p>
+          {previewPlatform === "mac" && (
+            <p className="keyboard-shortcuts-note">
+              On compact Mac keyboards, Fn + ↓ / ↑ gives Page Down / Page Up; Fn
+              + ← / → gives Home / End. Slide-navigator arrow and delete keys
+              work when a thumbnail has focus. Bold, size and alignment apply to
+              whole selected text objects on the canvas. ⌘+Enter applies an
+              inline text edit; on the canvas it also remains a presentation
+              shortcut.
+            </p>
+          )}
+          {previewPlatform !== "mac" && (
+            <p className="keyboard-shortcuts-note">
+              {previewPlatform === "windows"
+                ? "Windows follows PowerPoint conventions for supported actions."
+                : "Ubuntu / Linux follows LibreOffice Impress conventions for supported actions."}{" "}
+              Slide-navigator arrow, delete and move keys work when a thumbnail
+              has focus. Bold, size and alignment apply to whole selected text
+              objects on the canvas. Ctrl+Enter applies an inline text edit; on
+              the canvas it remains a shortcut to present from the current
+              slide.
+              {previewPlatform === "linux" &&
+                " Use numeric-keypad + for Ctrl++ and Ctrl+Shift++; the main-keyboard equivalents are Ctrl+= and Ctrl+Shift+=. Shift+F3 immediately duplicates the selection or slide. Alt+Shift+E inserts an equation. Export commands are SciSlide additions."}
+              {previewPlatform === "windows" &&
+                " Export commands are SciSlide additions."}
+            </p>
+          )}
         </div>
         <footer className="keyboard-shortcuts-footer">
           <p>

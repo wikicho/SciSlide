@@ -486,7 +486,7 @@ describe("inline mathematics inside editable slide text", () => {
     expect(
       (await persist()).slides[0].objects.find(({ id }) => id === object.id),
     ).toMatchObject({ text: "Write your idea here" });
-    await click("Redo · Ctrl+Shift+Z");
+    await click("Redo · Ctrl+Y");
     await settle(
       () =>
         !!host.querySelector(".slide-paper [data-inline-math-fragment] path"),

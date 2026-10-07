@@ -1,4 +1,4 @@
-# SciSlide 0.6.1 — macOS development installer
+# SciSlide 0.6.2 — macOS development installer
 
 Choose the installer that matches your Mac: **arm64** for Apple Silicon (M1 or later), or **x64** for Intel. The installer copies SciSlide to `/Applications/SciSlide.app`. Node.js, a development server and TeX are not required for MathJax editing.
 
@@ -18,9 +18,28 @@ Choose **Figure** to import PNG, JPEG, sanitized SVG or a selected PDF page. PDF
 
 Choose **Draw rectangle**, **Draw ellipse**, **Draw line** or **Draw arrow**, then drag on the canvas. Shift constrains squares/circles or line direction; Escape cancels drawing. Selected lines/arrows have editable endpoint handles. The Inspector provides solid/dashed/dotted strokes, stroke width/color, no-fill outlines and arrowheads at the start, end or both ends. Shapes export as vectors in PDF/SVG.
 
-Shift+click selects objects for **Group objects / Ungroup objects**; **⌘+G** groups and **⌘+Shift+G** ungroups. Flat groups move together and duplicate independently. Ungroup before resizing, rotating or editing an individual member's endpoints. Use six-way alignment and equal-gap distribution to arrange a selection. Automatic guides appear while dragging/resizing; **Option** bypasses them. **Snap to 20 px grid** takes precedence over object guides. The **OBJECTS & LAYERS** list selects hidden or covered objects and controls visibility, locks and order. Object copy/cut/paste works across slides or decks in one session. Nested groups, whole-group scaling/rotation, attached connectors and freehand paths remain planned.
+Shift+click or Command+click selects objects for **Group objects / Ungroup objects**; **⌘+Option+G** groups and **⌘+Option+Shift+G** ungroups. Flat groups move together and duplicate independently. Ungroup before resizing, rotating or editing an individual member's endpoints. Use six-way alignment and equal-gap distribution to arrange a selection. Automatic guides appear while dragging/resizing; **Option** bypasses them. **Snap to 20 px grid** takes precedence over object guides. The **OBJECTS & LAYERS** list selects hidden or covered objects and controls visibility, locks and order. Object copy/cut/paste works across slides or decks in one session. Nested groups, whole-group scaling/rotation, attached connectors and freehand paths remain planned.
 
-Keyboard shortcuts use **Command** and **Option**. **⌘+O / ⌘+S / ⌘+Shift+S** open/save/save as; **⌘+Z / ⌘+Shift+Z** undo/redo; **⌘+Enter** presents from the canvas. **⌘+Option+P / ⌘+Option+S** export PDF/current-slide SVG. **⌘+Shift+/** opens shortcut help. During text editing, ⌘+Enter applies the edit without starting a slideshow; text-field clipboard and IME behavior are preserved.
+Keyboard shortcuts use **Command** and **Option**, following [Apple's Keynote shortcuts](https://support.apple.com/ko-kr/guide/keynote/tanfde4a3e6d/mac) for supported actions. **⌘+O / ⌘+S / ⌘+Option+Shift+S** open/save/save as; **⌘+Z / ⌘+Shift+Z** undo/redo. **⌘+Option+P** presents from the canvas. **⌘+Option+Shift+P / ⌘+Option+S** export PDF/current-slide SVG. **⌘+Shift+/** opens shortcut help.
+
+| Action                                    | Shortcut                            |
+| ----------------------------------------- | ----------------------------------- |
+| Open the new-slide layout chooser         | ⌘+Shift+N                           |
+| Insert equation                           | ⌘+Option+E                          |
+| Insert image, SVG or PDF                  | ⌘+Shift+V                           |
+| Deselect all objects                      | ⌘+Shift+A                           |
+| Lock / Unlock selected objects            | ⌘+L / ⌘+Option+L                    |
+| Bring to front / Send to back             | ⌘+Shift+F / ⌘+Shift+B               |
+| Bring forward / Send backward one layer   | ⌘+Option+Shift+F / ⌘+Option+Shift+B |
+| Zoom in / out                             | ⌘+Shift+> / ⌘+Shift+<               |
+| Fit slide to window                       | ⌘+Option+0                          |
+| Toggle bold on selected text objects      | ⌘+B                                 |
+| Increase / Decrease selected text size    | ⌘ and + / ⌘ and -                   |
+| Align selected text left / center / right | ⌘+{ / ⌘+\| / ⌘+}                    |
+
+**Page Down / Page Up** selects the next/previous slide while editing; **Home / End** selects the first/last. On compact Mac keyboards use **Fn+↓ / Fn+↑** and **Fn+← / Fn+→**, respectively. **Up / Down** selects slides and **Delete / Backspace** removes the focused slide when a thumbnail has focus in the slide navigator; on the canvas, arrows move selected objects. Zoom changes in 10% steps between 50% and 150%, and Fit restores the existing 100% view fitted to the available canvas.
+
+Bold, size and text-alignment commands apply to whole selected text objects on the canvas. During inline text editing, **⌘+Enter** applies the edit; text-field clipboard, navigation and IME behavior remain native. Existing **⌘+Shift+S**, **⌘+G / ⌘+Shift+G** and canvas **⌘+Enter** remain accepted for Save As, Group/Ungroup and Present. During a slideshow, **Esc** exits. **Q** also exits when focus is outside text fields and media controls. In the browser, use a toolbar control when the browser reserves a combination.
 
 **My equations** stores named/tagged formulas locally and transfers them through JSON import/export. **Presenter display** opens a separate window with current/next previews, notes, navigation and a timer; move it to your presenter screen. Recovery uses IndexedDB, bounded to 100 MiB, and retains up to 200 unfinished equation drafts, with a localStorage fallback. Libraries and unapplied drafts are local workspace data; continue saving portable files explicitly.
 
@@ -35,7 +54,7 @@ The editor is a prototype. Modern Korean body text is supported through bundled 
 Each installer has a matching `.sha256` file. To verify a download, put the installer and checksum file in the same folder and run:
 
 ```sh
-shasum -a 256 -c SciSlide-0.6.1-macos-arm64-unsigned.pkg.sha256
+shasum -a 256 -c SciSlide-0.6.2-macos-arm64-unsigned.pkg.sha256
 ```
 
 Use the x64 filename for an Intel installer. This checks that the file matches its accompanying checksum; it does not certify the publisher or replace Apple's code signing and notarization.

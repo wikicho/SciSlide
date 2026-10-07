@@ -286,7 +286,7 @@ describe("theme selection at presentation startup", () => {
     );
     await click("Undo · Ctrl+Z");
     expect(await persist()).toEqual(initial);
-    await click("Redo · Ctrl+Shift+Z");
+    await click("Redo · Ctrl+Y");
     expect(await persist()).toEqual(inserted);
 
     await act(async () => root.unmount());
@@ -360,7 +360,7 @@ describe("theme selection at presentation startup", () => {
     expect(current.slides[0]).toEqual(before.slides[0]);
     await click("Undo · Ctrl+Z");
     expect(await persist()).toEqual(before);
-    await click("Redo · Ctrl+Shift+Z");
+    await click("Redo · Ctrl+Y");
     expect(await persist()).toEqual(current);
   });
 
@@ -409,7 +409,7 @@ describe("theme selection at presentation startup", () => {
     );
     await click("Undo · Ctrl+Z");
     expect(await persist()).toEqual(before);
-    await click("Redo · Ctrl+Shift+Z");
+    await click("Redo · Ctrl+Y");
     expect(await persist()).toEqual(current);
   });
 

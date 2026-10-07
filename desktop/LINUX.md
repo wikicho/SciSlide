@@ -1,18 +1,18 @@
-# SciSlide 0.6.1 — Linux x64
+# SciSlide 0.6.2 — Linux x64
 
 The Debian package contains SciSlide and its Electron runtime for **x64 (Intel/AMD 64-bit)** Linux. Debian calls this architecture **amd64**. Ubuntu 24.04 x64 is the packaging target; other Debian/Ubuntu releases need separate desktop validation. MathJax editing uses bundled fonts and equation resources without Node.js, TeX or a development server.
 
-Version **0.6.1** adds drag-and-drop slide reordering. Source builds and the published Debian package use the same editor version.
+Version **0.6.2** adds LibreOffice Impress-style keyboard shortcuts, alongside the existing drag-and-drop slide ordering. Source builds and the published Debian package use the same editor version.
 
 ## Install, launch and remove
 
-Download the `.deb` and its matching `.sha256` from the [v0.6.1 development prerelease](https://github.com/wikicho/SciSlide/releases/tag/v0.6.1), or download a Linux workflow artifact and extract it first. Keep Linux Debian distribution files in `release/linux-deb/` when working in the source checkout. A local source build uses that directory by default.
+Download the `.deb` and its matching `.sha256` from the [v0.6.2 development prerelease](https://github.com/wikicho/SciSlide/releases/tag/v0.6.2), or download a Linux workflow artifact and extract it first. Keep Linux Debian distribution files in `release/linux-deb/` when working in the source checkout. A local source build uses that directory by default.
 
 From the folder containing both files:
 
 ```sh
-sha256sum -c SciSlide-0.6.1-linux-x64.deb.sha256
-sudo apt install ./SciSlide-0.6.1-linux-x64.deb
+sha256sum -c SciSlide-0.6.2-linux-x64.deb.sha256
+sudo apt install ./SciSlide-0.6.2-linux-x64.deb
 scislide
 ```
 
@@ -47,8 +47,8 @@ The command builds the editor and creates:
 
 ```text
 release/linux-deb/SciSlide-linux-x64/
-release/linux-deb/SciSlide-0.6.1-linux-x64.deb
-release/linux-deb/SciSlide-0.6.1-linux-x64.deb.sha256
+release/linux-deb/SciSlide-0.6.2-linux-x64.deb
+release/linux-deb/SciSlide-0.6.2-linux-x64.deb.sha256
 release/linux-deb/LINUX-INSTALL.md
 ```
 
@@ -58,8 +58,8 @@ Verify and install a current local build with:
 
 ```sh
 cd release/linux-deb
-sha256sum -c SciSlide-0.6.1-linux-x64.deb.sha256
-sudo apt install ./SciSlide-0.6.1-linux-x64.deb
+sha256sum -c SciSlide-0.6.2-linux-x64.deb.sha256
+sudo apt install ./SciSlide-0.6.2-linux-x64.deb
 scislide
 ```
 
@@ -75,7 +75,31 @@ Drag slide thumbnails above or below other thumbnails to reorder them. A teal in
 
 **Figure** imports PNG, JPEG, sanitized SVG or a selected PDF page. PDF pages become embedded high-resolution PNGs. **CROP & INSET** supports reversible crops and independent enlarged insets; **Replace figure** preserves the frame/crop. Selected Keynote White photo/video placeholders can be filled through **Figure / Video**. Use the object/layer list, object clipboard, six-way alignment and equal-gap distribution to arrange slides.
 
-Linux shortcuts use **Ctrl/Alt**: **Ctrl+O / Ctrl+S / Ctrl+Shift+S** open/save/save as, **Ctrl+Z / Ctrl+Shift+Z** undo/redo and **Ctrl+Alt+P / Ctrl+Alt+S** export PDF/SVG. **Ctrl+Shift+/** opens platform shortcut help. **My equations** provides a local named/tagged library with JSON transfer. **Presenter display** provides a separate notes/preview/timer window; move it to your screen manually.
+Ubuntu/Linux shortcuts follow [LibreOffice Impress](https://help.libreoffice.org/latest/en-US/text/simpress/04/01020000.html) for supported actions. **Ctrl+O / Ctrl+S / Ctrl+Shift+S** open/save/save as; **Ctrl+Z / Ctrl+Y** undo/redo, with **Ctrl+Shift+Z** retained as a Redo alias.
+
+| Action                                          | Shortcut                                |
+| ----------------------------------------------- | --------------------------------------- |
+| Choose a layout for a new slide                 | Ctrl+M                                  |
+| Immediately copy the selection or current slide | Shift+F3                                |
+| Insert equation                                 | Alt+Shift+E                             |
+| Start at first / current slide                  | F5 / Shift+F5                           |
+| Group / ungroup                                 | Ctrl+Shift+G / Ctrl+Alt+Shift+G         |
+| Advance / retreat one object layer              | Ctrl++ / Ctrl+-                         |
+| Move object to front / back                     | Ctrl+Shift++ / Ctrl+Shift+-             |
+| Enlarge / shrink the canvas view                | + / -                                   |
+| Fit the slide in the window                     | Numeric keypad *                        |
+| Toggle bold on selected text objects            | Ctrl+B                                  |
+| Increase / decrease selected text size          | Ctrl+] / Ctrl+[                         |
+| Align selected text left / center / right       | Ctrl+L / Ctrl+E / Ctrl+R                |
+| Move focused thumbnail up / down                | Alt+Shift+Page Up / Alt+Shift+Page Down |
+| Move focused thumbnail first / last             | Alt+Shift+Home / Alt+Shift+End          |
+| Shortcut help                                   | F1                                      |
+
+**Page Up / Page Down** navigates slides; **Home / End** selects the first / last slide. Thumbnail move commands require thumbnail focus; the [Impress guide's](https://books.libreoffice.org/en/IG242/IG2413-KeyboardShortcuts.html) **Ctrl+Shift+Up / Down / Home / End** aliases also work there. **Up / Down** selects thumbnails and **Delete / Backspace** deletes the focused slide. Canvas arrows continue moving objects. Bare **+ / -** zoom outside text fields. Use numeric-keypad **+** to distinguish **Ctrl++** (one layer forward) from **Ctrl+Shift++** (front); on a main keyboard, use **Ctrl+= / Ctrl+Shift+=** for the same actions.
+
+**Alt+Shift+E** inserts an equation, following LibreOffice's [Formula Object shortcut](https://help.libreoffice.org/latest/en-US/text/shared/01/04160300.html); **Ctrl+Alt+=** remains an alias from the Impress guide. **Shift+F3** performs an immediate duplicate rather than opening Impress's options dialog. **Ctrl+D**, **Ctrl+G**, **Ctrl+Shift+/** and **Ctrl+Enter** remain aliases for duplicate, group, help and presenting from the current slide. **Ctrl+Shift+G** now groups, matching Impress. Text formatting applies to whole selected text objects; inline text editing retains clipboard, cursor, IME and undo behavior, and **Ctrl+Enter** applies the edit.
+
+SciSlide's **Ctrl+Alt+P / Ctrl+Alt+S** export PDF/current-slide SVG. In a slideshow, **Enter** advances a build or slide, **Backspace** goes back, and **Esc / -** exits; arrow, Space and Page Up/Down navigation remain available. Media controls keep their own keys. **My equations** provides a local named/tagged library with JSON transfer. **Presenter display** provides a separate notes/preview/timer window; move it to your screen manually.
 
 Workspace recovery uses bounded IndexedDB and retains unfinished equation drafts, with a localStorage fallback. Libraries and unapplied drafts remain local workspace data; save portable files explicitly. New saves use native format **0.5.0** and read/migrate formats **0.1.0–0.4.0**. Older apps that read only 0.4.0 or earlier cannot open new files; **Save As** preserves an older original.
 

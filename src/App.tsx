@@ -897,6 +897,14 @@ export default function App() {
     setSelected([]);
     setPreview({});
   };
+  const focusSlideCard = (id: string) =>
+    Array.from(
+      document.querySelectorAll<HTMLButtonElement>(
+        ".slide-list [data-slide-id]",
+      ),
+    )
+      .find((button) => button.dataset.slideId === id)
+      ?.focus();
   const addSlide = () => {
     setShowHelp(false);
     setExportMenu(false);
@@ -918,16 +926,19 @@ export default function App() {
     change((d) => d.slides.splice(slideIndex + 1, 0, s));
     switchSlide(s.id);
   };
-  const removeSlide = () => {
-    if (deck.slides.length === 1) {
+  const removeSlide = (id = slide.id) => {
+    const current = deckRef.current;
+    const index = current.slides.findIndex((s) => s.id === id);
+    if (index < 0) return;
+    if (current.slides.length === 1) {
       notify("슬라이드는 하나 이상 필요합니다.");
       return;
     }
     change((d) => {
-      d.slides = d.slides.filter((s) => s.id !== slide.id);
+      d.slides = d.slides.filter((s) => s.id !== id);
       pruneUnusedAssets(d);
     });
-    switchSlide(deck.slides[slideIndex ? slideIndex - 1 : 1].id);
+    switchSlide(current.slides[index ? index - 1 : 1].id);
   };
   const moveSlide = (delta: number) => {
     const target = slideIndex + delta;
@@ -1140,19 +1151,29 @@ export default function App() {
         "Select at least three objects or groups with room for equal gaps.",
       );
   };
-  const moveLayer = (id: string, direction: "up" | "down") => {
-    if (!editableSelection(slide.objects, [id]).length) return;
+  const moveLayers = (ids: string[], direction: "up" | "down") => {
+    const editable = new Set(editableSelection(slide.objects, ids));
+    if (!editable.size) return;
     const unitKey = (o: SlideObject) =>
       o.groupId ? `group:${o.groupId}` : `object:${o.id}`;
-    const object = slide.objects.find((o) => o.id === id);
-    if (!object) return;
     const order = [
       ...new Set([...slide.objects].reverse().map(unitKey)),
     ].reverse();
-    const index = order.indexOf(unitKey(object));
-    const target = index + (direction === "up" ? 1 : -1);
-    if (target < 0 || target >= order.length) return;
-    [order[index], order[target]] = [order[target], order[index]];
+    const moving = new Set(
+      slide.objects.filter((o) => editable.has(o.id)).map(unitKey),
+    );
+    const original = [...order];
+    // Move selected groups together, retaining their relative stacking order.
+    if (direction === "up") {
+      for (let index = order.length - 2; index >= 0; index--)
+        if (moving.has(order[index]) && !moving.has(order[index + 1]))
+          [order[index], order[index + 1]] = [order[index + 1], order[index]];
+    } else {
+      for (let index = 1; index < order.length; index++)
+        if (moving.has(order[index]) && !moving.has(order[index - 1]))
+          [order[index], order[index - 1]] = [order[index - 1], order[index]];
+    }
+    if (order.every((key, index) => key === original[index])) return;
     change((d) => {
       const current = d.slides.find((s) => s.id === slide.id)!;
       current.objects = order.flatMap((key) =>
@@ -1160,6 +1181,8 @@ export default function App() {
       );
     });
   };
+  const moveLayer = (id: string, direction: "up" | "down") =>
+    moveLayers([id], direction);
   const insertLibraryEquation = async (entry: EquationLibraryEntry) => {
     const currentDeckId = deck.id,
       currentSlideId = slide.id;
@@ -1197,14 +1220,57 @@ export default function App() {
   };
   const layer = (front: boolean) => {
     if (!object) return;
+    const ids = new Set(editableSelection(slide.objects, selected));
+    const moving = slide.objects.filter((o) => ids.has(o.id));
+    const rest = slide.objects.filter((o) => !ids.has(o.id));
+    const ordered = front ? [...rest, ...moving] : [...moving, ...rest];
+    if (ordered.every((o, index) => o.id === slide.objects[index].id)) return;
     change((d) => {
-      const s = d.slides.find((s) => s.id === slide.id)!;
-      const ids = editableSelection(s.objects, selected);
-      const moving = s.objects.filter((o) => ids.includes(o.id));
-      s.objects = s.objects.filter((o) => !ids.includes(o.id));
-      if (front) s.objects.push(...moving);
-      else s.objects.unshift(...moving);
+      const current = d.slides.find((s) => s.id === slide.id)!;
+      const byId = new Map(current.objects.map((o) => [o.id, o]));
+      current.objects = ordered.map((o) => byId.get(o.id)!);
     });
+  };
+  const lockSelection = (locked: boolean) => {
+    // Unlock must include locked group members; editableSelection excludes them.
+    const ids = new Set(expandSelection(slide.objects, selected));
+    if (!slide.objects.some((o) => ids.has(o.id) && o.locked !== locked))
+      return;
+    change((d) =>
+      d.slides
+        .find((s) => s.id === slide.id)!
+        .objects.forEach((o) => {
+          if (ids.has(o.id)) o.locked = locked;
+        }),
+    );
+  };
+  const formatSelectedText = (action: ShortcutAction) => {
+    const ids = new Set(editableSelection(slide.objects, selected));
+    const texts = slide.objects.filter(
+      (o): o is TextObject => o.type === "text" && ids.has(o.id),
+    );
+    if (!texts.length) return;
+    const weight = texts.every((o) => o.fontWeight >= 700) ? 400 : 700;
+    const next = cloneDeck(deckRef.current);
+    let changed = false;
+    for (const o of next.slides.find((s) => s.id === slide.id)!.objects) {
+      if (o.type !== "text" || !ids.has(o.id)) continue;
+      const { fontWeight, fontSize, align } = o;
+      if (action === "bold") o.fontWeight = weight;
+      else if (action === "increaseFontSize" || action === "decreaseFontSize")
+        o.fontSize = Math.max(
+          8,
+          Math.min(180, o.fontSize + (action === "increaseFontSize" ? 1 : -1)),
+        );
+      else if (action === "alignTextLeft") o.align = "left";
+      else if (action === "alignTextCenter") o.align = "center";
+      else if (action === "alignTextRight") o.align = "right";
+      changed ||=
+        fontWeight !== o.fontWeight ||
+        fontSize !== o.fontSize ||
+        align !== o.align;
+    }
+    if (changed) commit(next);
   };
   const save = async (saveAs = false) => {
     if (busy) return;
@@ -1693,7 +1759,12 @@ export default function App() {
         pasteObjects();
         break;
       case "duplicate":
-        selected.length ? duplicateObjects() : duplicateSlide();
+        selected.length && !document.activeElement?.closest(".slide-list")
+          ? duplicateObjects()
+          : duplicateSlide();
+        break;
+      case "duplicateSlide":
+        duplicateSlide();
         break;
       case "group":
         groupSelection();
@@ -1701,16 +1772,124 @@ export default function App() {
       case "ungroup":
         ungroupSelection();
         break;
+      case "addSlide":
+        addSlide();
+        break;
+      case "insertEquation":
+        void insert("equation");
+        break;
+      case "insertFigure":
+        imageInput.current?.click();
+        break;
+      case "deselectAll":
+        cancelGesture();
+        setSelected([]);
+        break;
+      case "lock":
+      case "unlock":
+        lockSelection(action === "lock");
+        break;
+      case "bringToFront":
+      case "sendToBack":
+        layer(action === "bringToFront");
+        break;
+      case "bringForward":
+      case "sendBackward":
+        moveLayers(selected, action === "bringForward" ? "up" : "down");
+        break;
+      case "zoomIn":
+      case "zoomOut":
+        setZoom((value) =>
+          Math.max(50, Math.min(150, value + (action === "zoomIn" ? 10 : -10))),
+        );
+        break;
+      case "fitSlide":
+        setZoom(100);
+        break;
+      case "nextSlide":
+      case "previousSlide":
+      case "firstSlide":
+      case "lastSlide": {
+        const focusedCard = document.activeElement?.closest<HTMLButtonElement>(
+          ".slide-list [data-slide-id]",
+        );
+        const focusedIndex = deck.slides.findIndex(
+          (s) => s.id === focusedCard?.dataset.slideId,
+        );
+        const currentIndex = focusedIndex >= 0 ? focusedIndex : slideIndex;
+        const index =
+          action === "firstSlide"
+            ? 0
+            : action === "lastSlide"
+              ? deck.slides.length - 1
+              : currentIndex + (action === "nextSlide" ? 1 : -1);
+        if (index >= 0 && index < deck.slides.length) {
+          if (index !== slideIndex) switchSlide(deck.slides[index].id);
+          if (focusedCard) focusSlideCard(deck.slides[index].id);
+        }
+        break;
+      }
+      case "moveSlideUp":
+      case "moveSlideDown":
+      case "moveSlideFirst":
+      case "moveSlideLast": {
+        // These keys belong to paragraph navigation outside the filmstrip.
+        const card = document.activeElement?.closest<HTMLButtonElement>(
+          ".slide-list [data-slide-id]",
+        );
+        if (!card) break;
+        const current = deckRef.current;
+        const index = current.slides.findIndex(
+          (s) => s.id === card.dataset.slideId,
+        );
+        const destination =
+          action === "moveSlideFirst"
+            ? 0
+            : action === "moveSlideLast"
+              ? current.slides.length - 1
+              : index + (action === "moveSlideUp" ? -1 : 1);
+        if (
+          index < 0 ||
+          destination < 0 ||
+          destination >= current.slides.length ||
+          index === destination
+        )
+          break;
+        reorderSlide(
+          current.slides[index].id,
+          current.slides[destination].id,
+          destination < index ? "before" : "after",
+        );
+        switchSlide(current.slides[index].id);
+        focusSlideCard(current.slides[index].id);
+        break;
+      }
+      case "bold":
+      case "increaseFontSize":
+      case "decreaseFontSize":
+      case "alignTextLeft":
+      case "alignTextCenter":
+      case "alignTextRight":
+        formatSelectedText(action);
+        break;
       case "help":
         finishTextEditing();
         setShowHelp(true);
         break;
       case "finishTextEditing":
-        finishTextEditing();
+        if (textEditingRef.current) finishTextEditing();
+        else startPresent();
         break;
       case "present":
         if (textEditingRef.current) finishTextEditing();
         else startPresent();
+        break;
+      case "presentFromStart":
+        switchSlide(deckRef.current.slides[0].id);
+        startPresent();
+        break;
+      case "presenterView":
+        startWithPresenter();
         break;
     }
   };
@@ -1734,8 +1913,25 @@ export default function App() {
         document.execCommand(action);
         return;
       }
-      if (editing && action === "present" && !textEditingRef.current) return;
-      if (editing && ["duplicate", "group", "ungroup"].includes(action)) return;
+      if (
+        editing &&
+        ![
+          "new",
+          "open",
+          "save",
+          "saveAs",
+          "exportPdf",
+          "exportSvg",
+          "help",
+        ].includes(action)
+      ) {
+        if (
+          textEditingRef.current &&
+          ["present", "finishTextEditing"].includes(action)
+        )
+          finishTextEditing();
+        return;
+      }
       executeShortcut(action);
     }),
   );
@@ -1821,7 +2017,11 @@ export default function App() {
     let ids = selected.includes(o.id)
       ? expandSelection(slide.objects, selected)
       : clicked;
-    if (mode === "drag" && e.shiftKey) {
+    if (
+      mode === "drag" &&
+      (e.shiftKey ||
+        (keyboardPlatform === "mac" && e.metaKey && !e.ctrlKey && !e.altKey))
+    ) {
       ids = selected.includes(o.id)
         ? selected.filter((id) => !clicked.includes(id))
         : expandSelection(slide.objects, [...selected, ...clicked]);
@@ -2132,14 +2332,44 @@ export default function App() {
   ]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
+      if (
+        e.defaultPrevented ||
+        e.isComposing ||
+        e.keyCode === 229 ||
+        e.getModifierState("AltGraph")
+      )
+        return;
       const action = matchShortcut(e, keyboardPlatform);
+      const slideNavigation =
+        action &&
+        ["nextSlide", "previousSlide", "firstSlide", "lastSlide"].includes(
+          action,
+        );
+      const slideReorder =
+        action &&
+        [
+          "moveSlideUp",
+          "moveSlideDown",
+          "moveSlideFirst",
+          "moveSlideLast",
+        ].includes(action);
+      if (
+        slideReorder &&
+        !(e.target instanceof Element && e.target.closest(".slide-list"))
+      )
+        return;
+      const bareCanvasKey =
+        slideNavigation ||
+        (keyboardPlatform === "linux" &&
+          action &&
+          ["zoomIn", "zoomOut", "fitSlide"].includes(action));
       if (hasEditorDialog) {
-        if (action) e.preventDefault();
+        if (action && !bareCanvasKey) e.preventDefault();
         return;
       }
       if (showThemeChooser) {
         if (action) {
+          if (bareCanvasKey) return;
           e.preventDefault();
           if (!e.repeat && ["new", "open", "help"].includes(action))
             executeShortcut(action);
@@ -2161,10 +2391,29 @@ export default function App() {
           (target?.closest("button") && [" ", "Enter"].includes(e.key))
         )
           return;
-        if (["ArrowRight", "ArrowDown", " ", "PageDown"].includes(e.key)) {
+        if (e.ctrlKey || e.metaKey || e.altKey || input) return;
+        if (keyboardPlatform === "mac" && e.key.toLowerCase() === "q") {
+          e.preventDefault();
+          stopPresent();
+          return;
+        }
+        if (keyboardPlatform === "linux" && e.key === "-") {
+          e.preventDefault();
+          stopPresent();
+          return;
+        }
+        const nextKey =
+          ["ArrowRight", "ArrowDown", " ", "PageDown"].includes(e.key) ||
+          (keyboardPlatform !== "mac" && e.key === "Enter") ||
+          (keyboardPlatform === "windows" && e.key.toLowerCase() === "n");
+        const previousKey =
+          ["ArrowLeft", "ArrowUp", "PageUp"].includes(e.key) ||
+          (keyboardPlatform !== "mac" && e.key === "Backspace") ||
+          (keyboardPlatform === "windows" && e.key.toLowerCase() === "p");
+        if (nextKey) {
           e.preventDefault();
           nextPresentation();
-        } else if (["ArrowLeft", "ArrowUp", "PageUp"].includes(e.key)) {
+        } else if (previousKey) {
           e.preventDefault();
           previousPresentation();
         } else if (e.key === "Home") {
@@ -2190,6 +2439,20 @@ export default function App() {
             "exportSvg",
             "help",
           ].includes(action)
+        ) {
+          // F5 must not reload the browser while a text field owns focus.
+          if (e.key === "F5") e.preventDefault();
+          return;
+        }
+        // Page/Home/End keys belong to focused controls unless the slide
+        // navigator is active. Text inputs were handled above.
+        if (
+          bareCanvasKey &&
+          e.target instanceof Element &&
+          e.target.closest(
+            "button,a[href],input,select,[role='slider'],video,audio,.video-player",
+          ) &&
+          !e.target.closest(".slide-list")
         )
           return;
         e.preventDefault();
@@ -2197,6 +2460,40 @@ export default function App() {
         return;
       }
       if (input || busy || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (
+        !e.shiftKey &&
+        e.target instanceof Element &&
+        e.target.closest(".slide-list")
+      ) {
+        const card = e.target.closest<HTMLButtonElement>("[data-slide-id]");
+        const focusedIndex = deck.slides.findIndex(
+          (s) => s.id === card?.dataset.slideId,
+        );
+        if (
+          ["ArrowDown", "ArrowUp"].includes(e.key) ||
+          (keyboardPlatform !== "mac" &&
+            ["ArrowLeft", "ArrowRight"].includes(e.key))
+        ) {
+          e.preventDefault();
+          const index =
+            (focusedIndex >= 0 ? focusedIndex : slideIndex) +
+            (["ArrowDown", "ArrowRight"].includes(e.key) ? 1 : -1);
+          if (index >= 0 && index < deck.slides.length) {
+            switchSlide(deck.slides[index].id);
+            focusSlideCard(deck.slides[index].id);
+          }
+          return;
+        }
+        if (["Delete", "Backspace"].includes(e.key)) {
+          e.preventDefault();
+          removeSlide(card?.dataset.slideId ?? slide.id);
+          if (deck.slides.length > 1) {
+            const index = focusedIndex >= 0 ? focusedIndex : slideIndex;
+            focusSlideCard(deck.slides[index ? index - 1 : 1].id);
+          }
+          return;
+        }
+      }
       // Buttons and non-text inputs retain their own Enter/arrow behavior.
       if (
         e.key !== "Escape" &&
@@ -2751,7 +3048,7 @@ export default function App() {
             >
               <ArrowDown size={16} />
             </IconButton>
-            <IconButton title="Delete slide" onClick={removeSlide}>
+            <IconButton title="Delete slide" onClick={() => removeSlide()}>
               <Trash2 size={15} />
             </IconButton>
           </div>
@@ -2890,6 +3187,7 @@ export default function App() {
             <MoreHorizontal size={18} />
           </div>
           <ObjectLayers
+            platform={keyboardPlatform}
             objects={slide.objects}
             selected={selected}
             onSelect={(ids) => {

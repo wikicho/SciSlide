@@ -176,9 +176,9 @@ describe("OS-specific keyboard commands in the editor", () => {
     return event;
   }
 
-  function enableDesktop() {
+  function enableDesktop(platform = "darwin") {
     const bridge = {
-      platform: "darwin",
+      platform,
       detectTex: vi.fn().mockResolvedValue({
         available: false,
         engines: [],
@@ -220,7 +220,7 @@ describe("OS-specific keyboard commands in the editor", () => {
 
   it.each([
     ["Win32", "y", false, "Ctrl+Y"],
-    ["Linux x86_64", "Z", true, "Ctrl+Shift+Z"],
+    ["Linux x86_64", "y", false, "Ctrl+Y"],
   ] as const)(
     "uses the %s redo convention through real history",
     async (platform, redoKey, shiftKey, label) => {
@@ -234,15 +234,12 @@ describe("OS-specific keyboard commands in the editor", () => {
       expect(changed.slides[0].objects).toHaveLength(2);
       await key("z", { ctrlKey: true });
       expect(await persist()).toEqual(deck);
-      if (platform.startsWith("Linux")) {
-        expect((await key("y", { ctrlKey: true })).defaultPrevented).toBe(
-          false,
-        );
-        expect(await persist()).toEqual(deck);
-      }
       expect(
         (await key(redoKey, { ctrlKey: true, shiftKey })).defaultPrevented,
       ).toBe(true);
+      expect(await persist()).toEqual(changed);
+      await key("z", { ctrlKey: true });
+      await key("Z", { ctrlKey: true, shiftKey: true });
       expect(await persist()).toEqual(changed);
     },
   );
@@ -284,8 +281,14 @@ describe("OS-specific keyboard commands in the editor", () => {
     async (platform, modifier) => {
       await render(platform);
       expect(
-        (await key("p", { [modifier]: true, altKey: true, code: "KeyP" }))
-          .defaultPrevented,
+        (
+          await key("p", {
+            [modifier]: true,
+            altKey: true,
+            shiftKey: platform === "MacIntel",
+            code: "KeyP",
+          })
+        ).defaultPrevented,
       ).toBe(true);
       expect(exportDeckPdf).toHaveBeenCalledExactlyOnceWith(deck);
       expect(exportSlideSvg).not.toHaveBeenCalled();
@@ -495,5 +498,644 @@ describe("OS-specific keyboard commands in the editor", () => {
     });
     expect(downloadBlob).not.toHaveBeenCalled();
     expect(await persist()).toEqual(deck);
+  });
+
+  it("uses Keynote Play without exporting PDF, keeps the legacy alias and exits with Q", async () => {
+    await render("MacIntel");
+    await key("π", { metaKey: true, altKey: true, code: "KeyP" });
+    expect(host.querySelector(".presentation-view")).toBeTruthy();
+    expect(exportDeckPdf).not.toHaveBeenCalled();
+    await key("q");
+    expect(host.querySelector(".presentation-view")).toBeNull();
+    await key("Enter", { metaKey: true });
+    expect(host.querySelector(".presentation-view")).toBeTruthy();
+    await key("Escape");
+    await key("P", { metaKey: true, altKey: true, shiftKey: true });
+    expect(exportDeckPdf).toHaveBeenCalledExactlyOnceWith(deck);
+  });
+
+  it("opens the slide layout and figure pickers and inserts an equation with Mac shortcuts", async () => {
+    const equations = await import("../src/lib/equations");
+    vi.spyOn(equations, "renderEquation").mockResolvedValue({
+      svg: "<svg></svg>",
+      width: 160,
+      height: 80,
+    });
+    await render("MacIntel");
+    await key("N", { metaKey: true, shiftKey: true });
+    expect(host.querySelector('[role="dialog"]')?.textContent).toContain(
+      "Choose a slide layout",
+    );
+    await key("l", { metaKey: true });
+    expect(await persist()).toEqual(deck);
+    await click("Close slide templates");
+    const figure = [
+      ...host.querySelectorAll<HTMLInputElement>('input[type="file"]'),
+    ].find((input) => input.accept.includes(".svg"))!;
+    expect(figure).toBeTruthy();
+    const choose = vi.spyOn(figure, "click");
+    await key("V", { metaKey: true, shiftKey: true });
+    expect(choose).toHaveBeenCalledOnce();
+    await key("´", { metaKey: true, altKey: true, code: "KeyE" });
+    expect((await persist()).slides[0].objects.at(-1)).toMatchObject({
+      type: "equation",
+      latex: "E = mc^2",
+      transform: { width: 160, height: 80 },
+    });
+    await key("z", { metaKey: true });
+    expect(await persist()).toEqual(deck);
+  });
+
+  it("moves grouped layers by one step or to the ends without splitting their order", async () => {
+    const objects = deck.slides[0].objects;
+    objects[0].groupId = "research-group";
+    for (const name of ["Group mate", "Middle", "Front"])
+      objects.push({
+        ...shapeFromDrag("rect", { x: 100, y: 150 }, { x: 300, y: 250 }),
+        name,
+        ...(name === "Group mate" ? { groupId: "research-group" } : {}),
+      });
+    await render("MacIntel");
+    await click("Select Research panel");
+    const names = async () =>
+      (await persist()).slides[0].objects.map((o) => o.name);
+    await key("F", { metaKey: true, altKey: true, shiftKey: true });
+    expect(await names()).toEqual([
+      "Middle",
+      "Research panel",
+      "Group mate",
+      "Front",
+    ]);
+    await key("F", { metaKey: true, shiftKey: true });
+    expect(await names()).toEqual([
+      "Middle",
+      "Front",
+      "Research panel",
+      "Group mate",
+    ]);
+    await key("B", { metaKey: true, altKey: true, shiftKey: true });
+    expect(await names()).toEqual([
+      "Middle",
+      "Research panel",
+      "Group mate",
+      "Front",
+    ]);
+    await key("B", { metaKey: true, shiftKey: true });
+    expect(await names()).toEqual([
+      "Research panel",
+      "Group mate",
+      "Middle",
+      "Front",
+    ]);
+    await key("z", { metaKey: true });
+    expect(await names()).toEqual([
+      "Middle",
+      "Research panel",
+      "Group mate",
+      "Front",
+    ]);
+  });
+
+  it("locks and unlocks groups with one undo step and ignores repeated no-op locks", async () => {
+    deck.slides[0].objects[0].groupId = "g";
+    deck.slides[0].objects.push({
+      ...shapeFromDrag("ellipse", { x: 300, y: 150 }, { x: 400, y: 250 }),
+      name: "Group mate",
+      groupId: "g",
+    });
+    await render("MacIntel");
+    await click("Select Research panel");
+    await key("l", { metaKey: true });
+    await key("l", { metaKey: true });
+    expect((await persist()).slides[0].objects.every((o) => o.locked)).toBe(
+      true,
+    );
+    await key("d", { metaKey: true });
+    expect((await persist()).slides[0].objects).toHaveLength(2);
+    await key("z", { metaKey: true });
+    expect(await persist()).toEqual(deck);
+    await key("Z", { metaKey: true, shiftKey: true });
+    await click("Select Research panel");
+    await key("¬", { metaKey: true, altKey: true, code: "KeyL" });
+    expect((await persist()).slides[0].objects.every((o) => !o.locked)).toBe(
+      true,
+    );
+    await key("z", { metaKey: true });
+    expect((await persist()).slides[0].objects.every((o) => o.locked)).toBe(
+      true,
+    );
+  });
+
+  it("formats whole selected text objects and preserves native editing and locked objects", async () => {
+    const text = structuredClone(
+      createDemoDeck().slides[0].objects.find((o) => o.type === "text")!,
+    );
+    if (text.type !== "text") throw new Error("Expected text fixture");
+    Object.assign(text, {
+      name: "Body",
+      text: "Text with $\\chi$",
+      fontSize: 40,
+      fontWeight: 400,
+      align: "left",
+    });
+    deck.slides[0].objects.push(text);
+    await render("MacIntel");
+    await click("Select Body");
+    await key("b", { metaKey: true });
+    await key("+", { metaKey: true, shiftKey: true, code: "Equal" });
+    await key("|", { metaKey: true, shiftKey: true, code: "Backslash" });
+    expect((await persist()).slides[0].objects[1]).toMatchObject({
+      fontWeight: 700,
+      fontSize: 41,
+      align: "center",
+      text: text.text,
+    });
+    expect((await persist()).slides[0].objects[0]).toEqual(
+      deck.slides[0].objects[0],
+    );
+    await key("}", { metaKey: true, shiftKey: true, code: "BracketRight" });
+    await key("-", { metaKey: true, code: "Minus" });
+    await key("{", { metaKey: true, shiftKey: true, code: "BracketLeft" });
+    await key("b", { metaKey: true });
+    expect((await persist()).slides[0].objects[1]).toMatchObject({
+      fontWeight: 400,
+      fontSize: 40,
+      align: "left",
+    });
+    const content = host.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Text content"]',
+    )!;
+    await act(async () => content.focus());
+    for (const value of ["b", "+", "-", "{"])
+      expect(
+        (await key(value, { metaKey: true, shiftKey: value === "{" }, content))
+          .defaultPrevented,
+      ).toBe(false);
+    await act(async () => content.blur());
+    await key("l", { metaKey: true });
+    await key("b", { metaKey: true });
+    expect((await persist()).slides[0].objects[1]).toMatchObject({
+      fontWeight: 400,
+      locked: true,
+    });
+  });
+
+  it("zooms and fits without changing document history, preserving range control keys", async () => {
+    await render("MacIntel");
+    const zoom = host.querySelector<HTMLInputElement>(
+      'input[aria-label="Canvas zoom"]',
+    )!;
+    await key(">", { metaKey: true, shiftKey: true, code: "Period" });
+    expect(zoom.value).toBe("110");
+    for (let i = 0; i < 8; i++)
+      await key(">", { metaKey: true, shiftKey: true, code: "Period" });
+    expect(zoom.value).toBe("150");
+    await key("<", { metaKey: true, shiftKey: true, code: "Comma" });
+    expect(zoom.value).toBe("140");
+    await key("º", { metaKey: true, altKey: true, code: "Digit0" });
+    expect(zoom.value).toBe("100");
+    expect((await key("End", {}, zoom)).defaultPrevented).toBe(false);
+    expect(button("Undo").disabled).toBe(true);
+    expect(await persist()).toEqual(deck);
+  });
+
+  it.each(["MacIntel", "Win32", "Linux x86_64"])(
+    "navigates slides and scopes arrow and delete keys to the focused thumbnail on %s",
+    async (platform) => {
+      deck.slides.push(
+        { ...createBlankSlide(), title: "Second" },
+        { ...createBlankSlide(), title: "Third" },
+      );
+      await render(platform);
+      const current = () =>
+        host
+          .querySelector('.slide-card[aria-current="true"]')
+          ?.getAttribute("data-slide-id");
+      await key("PageDown");
+      expect(current()).toBe(deck.slides[1].id);
+      await key("End");
+      expect(current()).toBe(deck.slides[2].id);
+      await key("Home");
+      expect(current()).toBe(deck.slides[0].id);
+      await key("PageUp");
+      expect(current()).toBe(deck.slides[0].id);
+      const notes = host.querySelector<HTMLTextAreaElement>(
+        'textarea[aria-label="Speaker notes"]',
+      )!;
+      expect((await key("End", {}, notes)).defaultPrevented).toBe(false);
+      expect(current()).toBe(deck.slides[0].id);
+      const third = button("Slide 3: Third");
+      await act(async () => third.focus());
+      await key("PageUp", {}, third);
+      expect(current()).toBe(deck.slides[1].id);
+      expect(document.activeElement).toBe(button("Slide 2: Second"));
+      await key("Home", {}, document.activeElement!);
+      expect(current()).toBe(deck.slides[0].id);
+      expect(document.activeElement).toBe(button("Slide 1: First slide"));
+      const second = button("Slide 2: Second");
+      await act(async () => second.focus());
+      await key("ArrowDown", {}, second);
+      expect(current()).toBe(deck.slides[2].id);
+      expect(document.activeElement).toBe(button("Slide 3: Third"));
+      await key("Backspace", {}, document.activeElement!);
+      expect((await persist()).slides.map((s) => s.title)).toEqual([
+        "First slide",
+        "Second",
+      ]);
+      expect(document.activeElement).toBe(button("Slide 2: Second"));
+      await key("z", {
+        metaKey: platform === "MacIntel",
+        ctrlKey: platform !== "MacIntel",
+      });
+      expect(await persist()).toEqual(deck);
+    },
+  );
+
+  it("preserves bare navigation in dialogs and blocks Mac commands during composition", async () => {
+    await render("MacIntel", false);
+    expect((await key("Home")).defaultPrevented).toBe(false);
+    await click("Resume previous work");
+    await click("Select Research panel");
+    expect(
+      (await key("l", { metaKey: true, isComposing: true })).defaultPrevented,
+    ).toBe(false);
+    expect(
+      (await key("l", { metaKey: true, keyCode: 229 })).defaultPrevented,
+    ).toBe(false);
+    await key("N", { metaKey: true, shiftKey: true });
+    const dialog = host.querySelector('[role="dialog"]')!;
+    for (const value of ["Home", "End", "PageUp", "PageDown"])
+      expect((await key(value, {}, dialog)).defaultPrevented).toBe(false);
+    expect(await persist()).toEqual(deck);
+  });
+
+  it.each([
+    [180, "+"],
+    [8, "-"],
+  ] as const)(
+    "keeps text size at %s without an empty undo step",
+    async (fontSize, value) => {
+      const text = structuredClone(
+        createDemoDeck().slides[0].objects.find((o) => o.type === "text")!,
+      );
+      if (text.type !== "text") throw new Error("Expected text fixture");
+      Object.assign(text, { name: "Body", fontSize });
+      deck.slides[0].objects.push(text);
+      await render("MacIntel");
+      await click("Select Body");
+      await key(value, { metaKey: true });
+      expect((await persist()).slides[0].objects[1]).toMatchObject({
+        fontSize,
+      });
+      expect(button("Undo").disabled).toBe(true);
+    },
+  );
+
+  it("deselects on Shift-Command-A without changing document history", async () => {
+    await render("MacIntel");
+    await click("Select Research panel");
+    expect(button("Select Research panel").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    await key("A", { metaKey: true, shiftKey: true });
+    expect(button("Select Research panel").getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    expect(await persist()).toEqual(deck);
+    expect(button("Undo").disabled).toBe(true);
+  });
+
+  it.each(["Win32", "Linux x86_64"])(
+    "starts from the first or current slide on %s without editing the deck",
+    async (platform) => {
+      deck.slides.push(
+        { ...createBlankSlide(), title: "Second" },
+        { ...createBlankSlide(), title: "Third" },
+      );
+      await render(platform);
+      await key("End");
+      await key("F5", { shiftKey: true });
+      const counter = () =>
+        host.querySelector(".presentation-controls > span")?.textContent;
+      expect(counter()).toBe("3 / 3");
+      await key("Escape");
+      await key("F5");
+      expect(counter()).toBe("1 / 3");
+      await key(platform === "Win32" ? "n" : "Enter");
+      expect(counter()).toBe("2 / 3");
+      await key(platform === "Win32" ? "p" : "Backspace");
+      expect(counter()).toBe("1 / 3");
+      await key(platform === "Win32" ? "Escape" : "-");
+      expect(host.querySelector(".presentation-view")).toBeNull();
+      expect(await persist()).toEqual(deck);
+    },
+  );
+
+  it.each([
+    ["Win32", "=", { altKey: true, code: "Equal" }],
+    ["Linux x86_64", "E", { altKey: true, shiftKey: true, code: "KeyE" }],
+  ] as const)(
+    "opens layouts and inserts equations with the %s conventions",
+    async (platform, value, options) => {
+      const equations = await import("../src/lib/equations");
+      vi.spyOn(equations, "renderEquation").mockResolvedValue({
+        svg: "<svg></svg>",
+        width: 160,
+        height: 80,
+      });
+      await render(platform);
+      await key("m", { ctrlKey: true });
+      expect(host.querySelector('[role="dialog"]')?.textContent).toContain(
+        "Choose a slide layout",
+      );
+      await click("Close slide templates");
+      await key(value, options);
+      expect((await persist()).slides[0].objects.at(-1)).toMatchObject({
+        type: "equation",
+        latex: "E = mc^2",
+      });
+      await key("z", { ctrlKey: true });
+      expect(await persist()).toEqual(deck);
+    },
+  );
+
+  it.each(["Win32", "Linux x86_64"])(
+    "groups and ungroups using %s keys with one undo step",
+    async (platform) => {
+      deck.slides[0].objects.push({
+        ...shapeFromDrag("ellipse", { x: 400, y: 150 }, { x: 500, y: 250 }),
+        name: "Peer",
+      });
+      await render(platform);
+      await key("a", { ctrlKey: true });
+      await key("g", { ctrlKey: true, shiftKey: platform !== "Win32" });
+      const grouped = (await persist()).slides[0].objects;
+      expect(grouped[0].groupId).toBeTruthy();
+      expect(grouped[1].groupId).toBe(grouped[0].groupId);
+      await key("g", {
+        ctrlKey: true,
+        shiftKey: true,
+        altKey: platform !== "Win32",
+      });
+      expect((await persist()).slides[0].objects.every((o) => !o.groupId)).toBe(
+        true,
+      );
+      await key("z", { ctrlKey: true });
+      expect((await persist()).slides[0].objects).toEqual(grouped);
+    },
+  );
+
+  it.each(["Win32", "Linux x86_64"])(
+    "formats selected text on %s without locking it or stealing native typing",
+    async (platform) => {
+      const text = structuredClone(
+        createDemoDeck().slides[0].objects.find((o) => o.type === "text")!,
+      );
+      Object.assign(text, {
+        name: "Body",
+        text: "Text with $\\chi$",
+        fontSize: 40,
+        fontWeight: 400,
+        align: "right",
+      });
+      deck.slides[0].objects.push(text);
+      await render(platform);
+      await click("Select Body");
+      await key("b", { ctrlKey: true });
+      await key(platform === "Win32" ? ">" : "]", {
+        ctrlKey: true,
+        shiftKey: platform === "Win32",
+        code: platform === "Win32" ? "Period" : "BracketRight",
+      });
+      await key("l", { ctrlKey: true });
+      expect((await persist()).slides[0].objects[1]).toMatchObject({
+        fontWeight: 700,
+        fontSize: 41,
+        align: "left",
+        locked: false,
+      });
+      await key("e", { ctrlKey: true });
+      expect((await persist()).slides[0].objects[1]).toMatchObject({
+        align: "center",
+      });
+      await key("r", { ctrlKey: true });
+      expect((await persist()).slides[0].objects[1]).toMatchObject({
+        align: "right",
+      });
+      const notes = host.querySelector<HTMLTextAreaElement>(
+        'textarea[aria-label="Speaker notes"]',
+      )!;
+      await act(async () => notes.focus());
+      const before = await persist();
+      expect((await key("l", { ctrlKey: true }, notes)).defaultPrevented).toBe(
+        false,
+      );
+      expect((await key("-", {}, notes)).defaultPrevented).toBe(false);
+      expect((await key("F5", {}, notes)).defaultPrevented).toBe(true);
+      expect(host.querySelector(".presentation-view")).toBeNull();
+      expect(await persist()).toEqual(before);
+    },
+  );
+
+  it("duplicates the whole slide on PowerPoint Ctrl-Shift-D even with an object selected", async () => {
+    await render("Win32");
+    await click("Select Research panel");
+    await key("d", { ctrlKey: true, shiftKey: true });
+    const after = await persist();
+    expect(after.slides).toHaveLength(2);
+    expect(after.slides[0].objects).toEqual(deck.slides[0].objects);
+    expect(after.slides[1].objects).toHaveLength(1);
+    expect(after.slides[1].objects[0].id).not.toBe(
+      deck.slides[0].objects[0].id,
+    );
+    await key("z", { ctrlKey: true });
+    expect(await persist()).toEqual(deck);
+  });
+
+  it.each(["Win32", "Linux x86_64"])(
+    "reorders only focused thumbnails on %s and retains selection, focus and undo",
+    async (platform) => {
+      deck.slides.push(
+        { ...createBlankSlide(), title: "Second" },
+        { ...createBlankSlide(), title: "Third" },
+      );
+      await render(platform);
+      const moveKey = platform === "Win32" ? "ArrowUp" : "PageUp";
+      const options =
+        platform === "Win32"
+          ? { ctrlKey: true }
+          : { altKey: true, shiftKey: true };
+      const notes = host.querySelector<HTMLTextAreaElement>(
+        'textarea[aria-label="Speaker notes"]',
+      )!;
+      expect((await key(moveKey, options, notes)).defaultPrevented).toBe(false);
+      expect((await key(moveKey, options)).defaultPrevented).toBe(false);
+      expect(await persist()).toEqual(deck);
+      const second = button("Slide 2: Second");
+      await act(async () => second.focus());
+      await key(moveKey, options, second);
+      expect((await persist()).slides.map((s) => s.title)).toEqual([
+        "Second",
+        "First slide",
+        "Third",
+      ]);
+      expect(document.activeElement).toBe(button("Slide 1: Second"));
+      const lastKey = platform === "Win32" ? "ArrowDown" : "End";
+      await key(
+        lastKey,
+        platform === "Win32" ? { ctrlKey: true, shiftKey: true } : options,
+        document.activeElement!,
+      );
+      expect((await persist()).slides.map((s) => s.title)).toEqual([
+        "First slide",
+        "Third",
+        "Second",
+      ]);
+      expect(document.activeElement).toBe(button("Slide 3: Second"));
+      await key("z", { ctrlKey: true });
+      expect((await persist()).slides.map((s) => s.title)).toEqual([
+        "Second",
+        "First slide",
+        "Third",
+      ]);
+      await key("z", { ctrlKey: true });
+      expect(await persist()).toEqual(deck);
+    },
+  );
+
+  it("keeps Impress zoom, layering and keypad fit separate and permits plus/minus in dialogs", async () => {
+    for (const name of ["Middle", "Front"])
+      deck.slides[0].objects.push({
+        ...shapeFromDrag("rect", { x: 400, y: 150 }, { x: 500, y: 250 }),
+        name,
+      });
+    await render("Linux x86_64");
+    await click("Select Research panel");
+    const zoom = host.querySelector<HTMLInputElement>(
+      'input[aria-label="Canvas zoom"]',
+    )!;
+    await key("+", { shiftKey: true });
+    expect(zoom.value).toBe("110");
+    await key("=", { ctrlKey: true, code: "Equal" });
+    expect((await persist()).slides[0].objects.map((o) => o.name)).toEqual([
+      "Middle",
+      "Research panel",
+      "Front",
+    ]);
+    expect(zoom.value).toBe("110");
+    await key("+", { ctrlKey: true, shiftKey: true, code: "NumpadAdd" });
+    expect((await persist()).slides[0].objects.map((o) => o.name)).toEqual([
+      "Middle",
+      "Front",
+      "Research panel",
+    ]);
+    await key("*", { code: "NumpadMultiply" });
+    expect(zoom.value).toBe("100");
+    await key("*", { code: "Digit8", shiftKey: true });
+    expect(zoom.value).toBe("100");
+    const video = document.createElement("video");
+    host.append(video);
+    for (const value of ["+", "-", "Home", "End"])
+      expect((await key(value, {}, video)).defaultPrevented).toBe(false);
+    await key("m", { ctrlKey: true });
+    const dialog = host.querySelector('[role="dialog"]')!;
+    expect((await key("+", { shiftKey: true }, dialog)).defaultPrevented).toBe(
+      false,
+    );
+    expect((await key("-", {}, dialog)).defaultPrevented).toBe(false);
+  });
+
+  it.each(["win32", "linux"])(
+    "routes new native %s slide commands with the same input guards",
+    async (platform) => {
+      enableDesktop(platform);
+      deck.slides.push({ ...createBlankSlide(), title: "Second" });
+      await render("MacIntel");
+      await key("End");
+      await command("present");
+      expect(
+        host.querySelector(".presentation-controls > span")?.textContent,
+      ).toBe("2 / 2");
+      await key("Escape");
+      await command("presentFromStart");
+      expect(
+        host.querySelector(".presentation-controls > span")?.textContent,
+      ).toBe("1 / 2");
+      await key("Escape");
+      const notes = host.querySelector<HTMLTextAreaElement>(
+        'textarea[aria-label="Speaker notes"]',
+      )!;
+      await act(async () => notes.focus());
+      await command("presentFromStart");
+      await command("duplicateSlide");
+      expect(host.querySelector(".presentation-view")).toBeNull();
+      expect(await persist()).toEqual(deck);
+    },
+  );
+
+  it("opens the existing presenter display on Windows Alt-F5 and closes it on exit", async () => {
+    const close = vi.fn();
+    const channel = { postMessage: vi.fn(), close: vi.fn(), onmessage: null };
+    vi.stubGlobal(
+      "BroadcastChannel",
+      class {
+        constructor() {
+          return channel;
+        }
+      },
+    );
+    const open = vi.spyOn(window, "open").mockReturnValue({
+      closed: false,
+      close,
+      focus: vi.fn(),
+    } as unknown as Window);
+    await render("Win32");
+    await key("F5", { altKey: true });
+    expect(open).toHaveBeenCalledOnce();
+    expect(open.mock.calls[0][0]).toContain("#presenter=");
+    expect(host.querySelector(".presentation-view")).toBeTruthy();
+    await key("Escape");
+    expect(close).toHaveBeenCalledOnce();
+    expect(channel.close).toHaveBeenCalledOnce();
+    expect(await persist()).toEqual(deck);
+  });
+
+  it("guards new native object commands in text fields and applies legacy native text editing", async () => {
+    enableDesktop();
+    await render("MacIntel");
+    await click("Select Research panel");
+    const notes = host.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Speaker notes"]',
+    )!;
+    await act(async () => notes.focus());
+    for (const action of [
+      "lock",
+      "unlock",
+      "bold",
+      "addSlide",
+      "insertEquation",
+      "insertFigure",
+      "bringToFront",
+      "bringForward",
+      "fitSlide",
+      "deselectAll",
+      "finishTextEditing",
+    ] as const)
+      await command(action);
+    expect(await persist()).toEqual(deck);
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    expect(host.querySelector(".presentation-view")).toBeNull();
+    await act(async () => notes.blur());
+    await command("lock");
+    expect((await persist()).slides[0].objects[0].locked).toBe(true);
+    await command("unlock");
+    await click("Text");
+    await command("finishTextEditing");
+    expect(
+      host.querySelector('textarea[aria-label="Edit text on slide"]'),
+    ).toBeNull();
+    expect(host.querySelector(".presentation-view")).toBeNull();
+    await command("finishTextEditing");
+    expect(host.querySelector(".presentation-view")).toBeTruthy();
   });
 });

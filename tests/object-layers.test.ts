@@ -52,10 +52,14 @@ describe("object and layer panel", () => {
     return found;
   }
 
-  async function click(label: string, shiftKey = false) {
+  async function click(
+    label: string,
+    shiftKey = false,
+    modifiers: MouseEventInit = {},
+  ) {
     await act(async () =>
       button(label).dispatchEvent(
-        new MouseEvent("click", { bubbles: true, shiftKey }),
+        new MouseEvent("click", { bubbles: true, shiftKey, ...modifiers }),
       ),
     );
   }
@@ -93,6 +97,57 @@ describe("object and layer panel", () => {
     await click("Select Caption", true);
     expect(props.onSelect).toHaveBeenLastCalledWith([a.id]);
   });
+
+  it("adds and removes complete groups with Command-click on macOS", async () => {
+    props.platform = "mac";
+    const a = object("Plot");
+    const b = object("Annotation");
+    const c = object("Caption");
+    b.groupId = c.groupId = "pair";
+    c.visible = false;
+    await render([a, b, c], [a.id]);
+    await click("Select Annotation", false, { metaKey: true });
+    expect(props.onSelect).toHaveBeenLastCalledWith([a.id, b.id, c.id]);
+    await render([a, b, c], [a.id, b.id]);
+    expect(button("Select Caption").getAttribute("aria-pressed")).toBe("true");
+    await click("Select Caption", false, { metaKey: true });
+    expect(props.onSelect).toHaveBeenLastCalledWith([a.id]);
+    expect(host.querySelector(".object-layers-hint")?.textContent).toContain(
+      "Shift-click or ⌘-click",
+    );
+  });
+
+  it.each(["linux", "windows"] as const)(
+    "retains ordinary-click group selection for Command-click on %s",
+    async (platform) => {
+      props.platform = platform;
+      const a = object("Plot");
+      const b = object("Annotation");
+      const c = object("Caption");
+      b.groupId = c.groupId = "pair";
+      await render([a, b, c], [a.id]);
+      await click("Select Annotation", false, { metaKey: true });
+      expect(props.onSelect).toHaveBeenLastCalledWith([b.id, c.id]);
+      await render([a, b, c], [a.id, b.id]);
+      await click("Select Caption", false, { metaKey: true });
+      expect(props.onSelect).toHaveBeenLastCalledWith([b.id, c.id]);
+      expect(
+        host.querySelector(".object-layers-hint")?.textContent,
+      ).not.toContain("⌘-click");
+    },
+  );
+
+  it.each([{ ctrlKey: true }, { altKey: true }])(
+    "does not toggle macOS selection with extra modifiers %j",
+    async (modifiers) => {
+      props.platform = "mac";
+      const a = object("Plot");
+      const b = object("Annotation");
+      await render([a, b], [a.id]);
+      await click("Select Annotation", false, { metaKey: true, ...modifiers });
+      expect(props.onSelect).toHaveBeenLastCalledWith([b.id]);
+    },
+  );
 
   it("renames by keyboard and dispatches individual visibility and lock controls", async () => {
     const a = object("Plot");

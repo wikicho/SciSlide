@@ -12,8 +12,10 @@ import {
 } from "lucide-react";
 import { expandSelection, isObjectLocked } from "../lib/drawing";
 import type { SlideObject } from "../lib/model";
+import { getKeyboardPlatform, type KeyboardPlatform } from "../lib/shortcuts";
 
 export interface ObjectLayersProps {
+  platform?: KeyboardPlatform;
   objects: SlideObject[];
   selected: string[];
   onSelect: (ids: string[]) => void;
@@ -25,6 +27,7 @@ export interface ObjectLayersProps {
 
 /** Direct access to obscured and hidden objects, in front-to-back layer order. */
 export function ObjectLayers({
+  platform = getKeyboardPlatform(),
   objects,
   selected,
   onSelect,
@@ -75,7 +78,11 @@ export function ObjectLayers({
                   onClick={(event) => {
                     const clicked = expandSelection(objects, [object.id]);
                     onSelect(
-                      event.shiftKey
+                      event.shiftKey ||
+                        (platform === "mac" &&
+                          event.metaKey &&
+                          !event.ctrlKey &&
+                          !event.altKey)
                         ? selection.has(object.id)
                           ? [...selection].filter((id) => !clicked.includes(id))
                           : expandSelection(objects, [...selection, ...clicked])
@@ -191,8 +198,9 @@ export function ObjectLayers({
         </ul>
       )}
       <p className="object-layers-hint">
-        Frontmost first · Shift-click selects multiple · A locked group moves
-        after all members are unlocked.
+        Frontmost first ·{" "}
+        {platform === "mac" ? "Shift-click or ⌘-click" : "Shift-click"} selects
+        multiple · A locked group moves after all members are unlocked.
       </p>
     </section>
   );

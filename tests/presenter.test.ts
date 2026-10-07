@@ -8,6 +8,18 @@ import type { Deck } from "../src/lib/model";
 import { presenterChannelName, presenterToken } from "../src/lib/presenter";
 import type { PresenterMessage, PresenterState } from "../src/lib/presenter";
 
+const nativeBridge = vi.hoisted(() => ({
+  platform: undefined as string | undefined,
+}));
+vi.mock("../src/lib/desktop", async (original) => ({
+  ...(await original<typeof import("../src/lib/desktop")>()),
+  get desktop() {
+    return nativeBridge.platform
+      ? { platform: nativeBridge.platform }
+      : undefined;
+  },
+}));
+
 // Playback semantics are already covered by the real scene/media tests. Inspect
 // the presenter boundary here so both previews explicitly suppress video audio.
 vi.mock("../src/components/SlideScene", () => ({
@@ -63,6 +75,8 @@ describe("presenter window", () => {
   let root: Root, host: HTMLDivElement;
 
   beforeEach(() => {
+    nativeBridge.platform = undefined;
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("Linux x86_64");
     vi.useFakeTimers({
       toFake: [
         "setInterval",
@@ -115,6 +129,22 @@ describe("presenter window", () => {
   }
   async function send(message: PresenterMessage) {
     await act(async () => audience.postMessage(message));
+  }
+  async function key(
+    value: string,
+    init: KeyboardEventInit = {},
+    target: EventTarget = window,
+  ) {
+    const event = new KeyboardEvent("keydown", {
+      key: value,
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    });
+    await act(async () => {
+      target.dispatchEvent(event);
+    });
+    return event;
   }
   function button(label: string) {
     const result = [...host.querySelectorAll<HTMLButtonElement>("button")].find(
@@ -216,6 +246,92 @@ describe("presenter window", () => {
     expect(button("Next step / slide").disabled).toBe(true);
     await click("End presentation");
     expect(actions().at(-1)).toEqual({ type: "action", action: "exit" });
+  });
+
+  it.each([
+    ["MacIntel", undefined],
+    ["Linux x86_64", "darwin"],
+  ])(
+    "sends Q to end the presentation on macOS using browser %s and host %s",
+    async (browserPlatform, nativePlatform) => {
+      vi.spyOn(navigator, "platform", "get").mockReturnValue(browserPlatform);
+      nativeBridge.platform = nativePlatform;
+      await render();
+      expect((await key("q")).defaultPrevented).toBe(true);
+      expect(actions()).toEqual([{ type: "action", action: "exit" }]);
+    },
+  );
+
+  it.each(["Linux x86_64", "Win32"])(
+    "leaves Q alone on %s while Escape still ends the presentation",
+    async (platform) => {
+      vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
+      await render();
+      expect((await key("q")).defaultPrevented).toBe(false);
+      expect(actions()).toEqual([]);
+      expect((await key("Escape")).defaultPrevented).toBe(true);
+      expect(actions()).toEqual([{ type: "action", action: "exit" }]);
+    },
+  );
+
+  it.each([
+    ["Win32", "n", "next"],
+    ["Win32", "p", "previous"],
+    ["Win32", "Enter", "next"],
+    ["Win32", "Backspace", "previous"],
+    ["Linux x86_64", "Enter", "next"],
+    ["Linux x86_64", "Backspace", "previous"],
+    ["Linux x86_64", "-", "exit"],
+  ] as const)(
+    "routes %s presenter key %s to %s while protecting fields and media",
+    async (platform, value, action) => {
+      vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
+      await render();
+      const input = host.querySelector("input")!;
+      const video = document.createElement("video");
+      host.append(video);
+      expect((await key(value, {}, input)).defaultPrevented).toBe(false);
+      expect((await key(value, {}, video)).defaultPrevented).toBe(false);
+      expect((await key(value, { isComposing: true })).defaultPrevented).toBe(
+        false,
+      );
+      expect(actions()).toEqual([]);
+      expect((await key(value)).defaultPrevented).toBe(true);
+      expect(actions()).toEqual([{ type: "action", action }]);
+    },
+  );
+
+  it("preserves composing text, typing, media controls and OS commands before macOS Q exit", async () => {
+    nativeBridge.platform = "darwin";
+    await render();
+    const input = host.querySelector("input")!;
+    expect((await key("q", {}, input)).defaultPrevented).toBe(false);
+    for (const tag of ["textarea", "select", "video", "audio", "div"]) {
+      const element = document.createElement(tag);
+      if (tag === "div") element.setAttribute("contenteditable", "true");
+      host.append(element);
+      expect((await key("q", {}, element)).defaultPrevented).toBe(false);
+      expect((await key("ArrowRight", {}, element)).defaultPrevented).toBe(
+        false,
+      );
+      element.remove();
+    }
+    for (const init of [
+      { isComposing: true },
+      { keyCode: 229 },
+      { ctrlKey: true },
+      { metaKey: true },
+      { altKey: true },
+    ]) {
+      expect((await key("q", init)).defaultPrevented).toBe(false);
+      expect((await key("ArrowRight", init)).defaultPrevented).toBe(false);
+    }
+    expect((await key(" ", {}, button("Pause timer"))).defaultPrevented).toBe(
+      false,
+    );
+    expect(actions()).toEqual([]);
+    expect((await key("Q", { shiftKey: true })).defaultPrevented).toBe(true);
+    expect(actions()).toEqual([{ type: "action", action: "exit" }]);
   });
 
   it("keeps a paused or reset timer intact across repeated deck heartbeats", async () => {

@@ -21,7 +21,45 @@ const {
   validateCompile,
   resolveAsset,
   suggestedName,
+  COMMANDS,
 } = require("./host-utils.cjs");
+
+const macCommands = [
+  ["Deselect all", "Shift+A", "deselectAll"],
+  ["Apply text / Present", "Enter", "finishTextEditing"],
+  ["Slide", "Shift+N", "addSlide"],
+  ["Equation", "Alt+E", "insertEquation"],
+  ["Figure…", "Shift+V", "insertFigure"],
+  ["Bold", "B", "bold"],
+  ["Increase font size", "Plus", "increaseFontSize"],
+  ["Decrease font size", "-", "decreaseFontSize"],
+  ["Align text left", "Shift+[", "alignTextLeft"],
+  ["Align text center", "Shift+\\", "alignTextCenter"],
+  ["Align text right", "Shift+]", "alignTextRight"],
+  ["Bring to front", "Shift+F", "bringToFront"],
+  ["Bring forward", "Alt+Shift+F", "bringForward"],
+  ["Send backward", "Alt+Shift+B", "sendBackward"],
+  ["Send to back", "Shift+B", "sendToBack"],
+  ["Lock", "L", "lock"],
+  ["Unlock", "Alt+L", "unlock"],
+  ["Zoom in", "Shift+.", "zoomIn"],
+  ["Zoom out", "Shift+,", "zoomOut"],
+  ["Fit slide", "Alt+0", "fitSlide"],
+];
+
+// Electron's keyboard_util.cc marks Plus as a shifted OEM_PLUS character;
+// accelerator_util.cc adds Shift before registering it. Test the actual key
+// identity rather than only comparing the spelling of accelerator strings.
+function acceleratorSignature(accelerator) {
+  const parts = accelerator.toLowerCase().split("+");
+  let key = parts.pop();
+  const modifiers = new Set(parts);
+  if (key === "plus") {
+    key = "=";
+    modifiers.add("shift");
+  }
+  return [...modifiers].sort().concat(key).join("+");
+}
 
 for (const platform of ["darwin", "linux", "win32"]) {
   test(`native ${platform} menus dispatch platform-specific editor commands`, () => {
@@ -30,29 +68,88 @@ for (const platform of ["darwin", "linux", "win32"]) {
       sent.push(command),
     );
     const items = template.flatMap((menu) => menu.submenu ?? []);
+    const mac = platform === "darwin";
     const primary = platform === "darwin" ? "Command" : "Control";
     const expected = [
-      ["New presentation", "N", "new"],
-      ["Open…", "O", "open"],
-      ["Save", "S", "save"],
-      ["Save As…", "Shift+S", "saveAs"],
-      ["Export PDF…", "Alt+P", "exportPdf"],
-      ["Export slide SVG…", "Alt+S", "exportSvg"],
-      ["Undo", "Z", "undo"],
-      ["Redo", platform === "win32" ? "Y" : "Shift+Z", "redo"],
-      ["Cut", "X", "cut"],
-      ["Copy", "C", "copy"],
-      ["Paste", "V", "paste"],
-      ["Select all", "A", "selectAll"],
-      ["Duplicate selection or slide", "D", "duplicate"],
-      ["Group", "G", "group"],
-      ["Ungroup", "Shift+G", "ungroup"],
-      ["Present", "Enter", "present"],
-      ["Keyboard shortcuts", "Shift+/", "showShortcuts"],
+      ...[
+        ["New presentation", "N", "new"],
+        ["Open…", "O", "open"],
+        ["Save", "S", "save"],
+        ["Save As…", mac ? "Alt+Shift+S" : "Shift+S", "saveAs"],
+        ["Export PDF…", mac ? "Alt+Shift+P" : "Alt+P", "exportPdf"],
+        ["Export slide SVG…", "Alt+S", "exportSvg"],
+        ["Undo", "Z", "undo"],
+        ["Redo", mac ? "Shift+Z" : "Y", "redo"],
+        ["Cut", "X", "cut"],
+        ["Copy", "C", "copy"],
+        ["Paste", "V", "paste"],
+        ["Select all", "A", "selectAll"],
+        [
+          "Group",
+          mac ? "Alt+G" : platform === "linux" ? "Shift+G" : "G",
+          "group",
+        ],
+        [
+          "Ungroup",
+          platform === "win32" ? "Shift+G" : "Alt+Shift+G",
+          "ungroup",
+        ],
+      ].map(([label, keys, command]) => [label, `${primary}+${keys}`, command]),
+      ...(mac
+        ? [
+            ["Duplicate selection or slide", "Command+D", "duplicate"],
+            ["Present", "Command+Alt+P", "present"],
+            ["Keyboard shortcuts", "Command+Shift+/", "showShortcuts"],
+            ...macCommands.map(([label, keys, command]) => [
+              label,
+              `Command+${keys}`,
+              command,
+            ]),
+          ]
+        : [
+            ["Slide", "Control+M", "addSlide"],
+            ["Present from start", "F5", "presentFromStart"],
+            ["Present", "Shift+F5", "present"],
+            ["Keyboard shortcuts", "F1", "showShortcuts"],
+            ["Bold", "Control+B", "bold"],
+            ["Align text left", "Control+L", "alignTextLeft"],
+            ["Align text center", "Control+E", "alignTextCenter"],
+            ["Align text right", "Control+R", "alignTextRight"],
+          ]),
+      ...(platform === "win32"
+        ? [
+            ["Duplicate selection or slide", "Control+D", "duplicate"],
+            ["Duplicate slide", "Control+Shift+D", "duplicateSlide"],
+            ["Presenter view", "Alt+F5", "presenterView"],
+            ["Equation", "Alt+=", "insertEquation"],
+            ["Bring forward", "Control+Shift+]", "bringForward"],
+            ["Send backward", "Control+Shift+[", "sendBackward"],
+            ["Increase font size", "Control+Shift+.", "increaseFontSize"],
+            ["Decrease font size", "Control+Shift+,", "decreaseFontSize"],
+            ["Zoom in", "Control+Plus", "zoomIn"],
+            ["Zoom out", "Control+-", "zoomOut"],
+            ["Fit slide", "Control+Alt+O", "fitSlide"],
+          ]
+        : platform === "linux"
+          ? [
+              ["Duplicate selection or slide", "Shift+F3", "duplicate"],
+              ["Equation", "Alt+Shift+E", "insertEquation"],
+              ["Bring forward", "Control+numadd", "bringForward"],
+              ["Bring to front", "Control+Shift+numadd", "bringToFront"],
+              ["Send backward", "Control+-", "sendBackward"],
+              ["Send to back", "Control+Shift+-", "sendToBack"],
+              ["Increase font size", "Control+]", "increaseFontSize"],
+              ["Decrease font size", "Control+[", "decreaseFontSize"],
+              ["Zoom in", undefined, "zoomIn"],
+              ["Zoom out", undefined, "zoomOut"],
+              ["Fit slide", undefined, "fitSlide"],
+            ]
+          : []),
     ];
-    for (const [label, keys, command] of expected) {
+    for (const [label, accelerator, command] of expected) {
       const item = items.find((candidate) => candidate.label === label);
-      assert.equal(item?.accelerator, `${primary}+${keys}`, label);
+      assert.ok(item, label);
+      assert.equal(item.accelerator, accelerator, label);
       item.click();
       assert.equal(sent.at(-1), command);
     }
@@ -142,7 +239,141 @@ test("native Edit commands preserve text editing and use the internal clipboard 
   }
 });
 
-test("native Present finishes inline text without taking fullscreen or bypassing a modal", async () => {
+test("macOS accelerators reserve Keynote presentation without PDF, text or navigation collisions", () => {
+  const items = buildMenuTemplate("darwin", () => {}).flatMap(
+    (menu) => menu.submenu ?? [],
+  );
+  const accelerators = items
+    .filter((item) => item.accelerator)
+    .map((item) => item.accelerator);
+  const normalized = accelerators.map(acceleratorSignature);
+  assert.equal(new Set(normalized).size, normalized.length);
+  assert.equal(
+    items.find((item) => item.label === "Present").accelerator,
+    "Command+Alt+P",
+  );
+  assert.equal(
+    items.find((item) => item.label === "Export PDF…").accelerator,
+    "Command+Alt+Shift+P",
+  );
+  assert.equal(
+    items.find((item) => item.label === "Apply text / Present").accelerator,
+    "Command+Enter",
+  );
+  for (const accelerator of accelerators)
+    assert.match(accelerator, /^Command\+/);
+  assert.equal(accelerators.length, 37);
+});
+
+test("PowerPoint and Impress menus keep canonical bindings distinct and scoped", () => {
+  for (const platform of ["linux", "win32"]) {
+    const items = buildMenuTemplate(platform, () => {}).flatMap(
+      (menu) => menu.submenu ?? [],
+    );
+    const accelerators = items
+      .filter((item) => item.accelerator)
+      .map((item) => item.accelerator);
+    const normalized = accelerators.map(acceleratorSignature);
+    assert.equal(new Set(normalized).size, normalized.length, platform);
+    for (const label of [
+      "Lock",
+      "Unlock",
+      "Deselect all",
+      "Figure…",
+      "Apply text / Present",
+    ])
+      assert.equal(
+        items.some((item) => item.label === label),
+        false,
+        `${platform}: ${label}`,
+      );
+    for (const keys of accelerators)
+      assert.ok(!keys.startsWith("Command+"), keys);
+    for (const key of ["PageUp", "PageDown", "Home", "End", "Up", "Down"])
+      assert.ok(
+        !accelerators.some((keys) => keys.split("+").includes(key)),
+        key,
+      );
+    if (platform === "linux") {
+      // Bare +, -, and keypad * must reach the renderer so fields can type them.
+      for (const label of ["Zoom in", "Zoom out", "Fit slide"])
+        assert.equal(
+          items.find((item) => item.label === label).accelerator,
+          undefined,
+        );
+      assert.equal(
+        items.some((item) => item.label === "Duplicate slide"),
+        false,
+      );
+      assert.equal(
+        items.some((item) => item.label === "Presenter view"),
+        false,
+      );
+    } else {
+      assert.equal(
+        items.some((item) => item.label === "Bring to front"),
+        false,
+      );
+      assert.equal(
+        items.some((item) => item.label === "Send to back"),
+        false,
+      );
+    }
+  }
+});
+
+test("Impress forward and front use distinct native keypad accelerators", () => {
+  // These two spellings collide in Electron even though their strings differ.
+  assert.equal(
+    acceleratorSignature("Control+Plus"),
+    acceleratorSignature("Control+Shift+Plus"),
+  );
+  const items = buildMenuTemplate("linux", () => {}).flatMap(
+    (menu) => menu.submenu ?? [],
+  );
+  const forward = items.find((item) => item.label === "Bring forward");
+  const front = items.find((item) => item.label === "Bring to front");
+  assert.equal(forward.accelerator, "Control+numadd");
+  assert.equal(front.accelerator, "Control+Shift+numadd");
+  assert.notEqual(
+    acceleratorSignature(forward.accelerator),
+    acceleratorSignature(front.accelerator),
+  );
+});
+
+test("native presentation commands share text, modal, busy and fullscreen boundaries", async () => {
+  for (const command of ["present", "presentFromStart", "presenterView"]) {
+    for (const options of [
+      { editing: true },
+      { modal: true },
+      { busy: true },
+      { loading: true },
+      { fullscreen: true },
+    ]) {
+      const { contents, calls } = menuWindow(options);
+      await dispatchMenuCommand(contents, command);
+      assert.deepEqual(calls, [
+        ["script", true],
+        ["send", "scislide:command", command],
+      ]);
+    }
+    const canvas = menuWindow();
+    await dispatchMenuCommand(canvas.contents, command);
+    assert.deepEqual(canvas.calls, [
+      ["script", true],
+      ["fullscreen"],
+      ["send", "scislide:command", command],
+    ]);
+    const rejected = menuWindow({ fail: true });
+    await dispatchMenuCommand(rejected.contents, command);
+    assert.deepEqual(rejected.calls, [
+      ["script", true],
+      ["send", "scislide:command", command],
+    ]);
+  }
+});
+
+test("legacy Command-Enter keeps the same text, modal and fullscreen boundaries as Present", async () => {
   for (const options of [
     { editing: true },
     { modal: true },
@@ -151,24 +382,18 @@ test("native Present finishes inline text without taking fullscreen or bypassing
     { fullscreen: true },
   ]) {
     const { contents, calls } = menuWindow(options);
-    await dispatchMenuCommand(contents, "present");
+    await dispatchMenuCommand(contents, "finishTextEditing");
     assert.deepEqual(calls, [
       ["script", true],
-      ["send", "scislide:command", "present"],
+      ["send", "scislide:command", "finishTextEditing"],
     ]);
   }
   const canvas = menuWindow();
-  await dispatchMenuCommand(canvas.contents, "present");
+  await dispatchMenuCommand(canvas.contents, "finishTextEditing");
   assert.deepEqual(canvas.calls, [
     ["script", true],
     ["fullscreen"],
-    ["send", "scislide:command", "present"],
-  ]);
-  const rejected = menuWindow({ fail: true });
-  await dispatchMenuCommand(rejected.contents, "present");
-  assert.deepEqual(rejected.calls, [
-    ["script", true],
-    ["send", "scislide:command", "present"],
+    ["send", "scislide:command", "finishTextEditing"],
   ]);
 });
 
@@ -277,7 +502,7 @@ test("native accelerators do not consume composing text or AltGraph characters",
   ]);
 });
 
-test("the sandbox preload forwards every native editor command and rejects unknown events", async () => {
+test("the sandbox preload and host allowlists forward all platform menu actions and reject unknown events", async () => {
   let api;
   let listener;
   const received = [];
@@ -301,16 +526,56 @@ test("the sandbox preload forwards every native editor command and rejects unkno
     },
   );
   api.onCommand((command) => received.push(command));
-  const template = buildMenuTemplate("linux", (command) =>
-    listener({}, command),
+  for (const platform of ["darwin", "win32", "linux"]) {
+    const template = buildMenuTemplate(platform, (command) =>
+      listener({}, command),
+    );
+    for (const item of template.flatMap((menu) => menu.submenu ?? []))
+      if (typeof item.click === "function") item.click();
+  }
+  const expectedCommands = new Set(received);
+  assert.equal(expectedCommands.size, 40);
+  assert.deepEqual(expectedCommands, COMMANDS);
+  const types = await fs.readFile(
+    path.join(__dirname, "../src/lib/desktop.ts"),
+    "utf8",
   );
-  for (const item of template.flatMap((menu) => menu.submenu ?? []))
-    if (item.accelerator && item.click) item.click();
-  assert.equal(received.length, 17);
-  listener({}, "executeShell");
-  assert.equal(received.length, 17);
-  assert.ok(received.includes("exportSvg"));
-  assert.ok(received.includes("showShortcuts"));
+  const typeUnion = types.match(/export type DesktopCommand =([\s\S]*?);/)[1];
+  assert.deepEqual(
+    new Set([...typeUnion.matchAll(/"([A-Za-z]+)"/g)].map((match) => match[1])),
+    COMMANDS,
+  );
+  for (const command of expectedCommands) {
+    const { contents, calls } = menuWindow({ modal: true });
+    await dispatchMenuCommand(contents, command);
+    assert.ok(
+      calls.some(
+        ([name, channel, sent]) =>
+          name === "send" && channel === "scislide:command" && sent === command,
+      ),
+      command,
+    );
+  }
+  const count = received.length;
+  for (const command of [
+    "executeShell",
+    "nextSlide",
+    "moveSlideUp",
+    "moveSlideLast",
+  ])
+    listener({}, command);
+  assert.equal(received.length, count);
+  for (const command of [
+    "exportSvg",
+    "showShortcuts",
+    "insertEquation",
+    "bringToFront",
+    "finishTextEditing",
+    "presentFromStart",
+    "presenterView",
+    "duplicateSlide",
+  ])
+    assert.ok(received.includes(command), command);
 });
 
 test("only an exact local presenter page can open a secondary window", () => {

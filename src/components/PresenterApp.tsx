@@ -4,6 +4,8 @@ import { validateDeck } from "../lib/model";
 import { SlideScene } from "./SlideScene";
 import { maxBuildStep } from "../lib/presentation";
 import { presenterChannelName, validatePresenterState } from "../lib/presenter";
+import { desktop } from "../lib/desktop";
+import { getKeyboardPlatform } from "../lib/shortcuts";
 import type {
   PresenterAction,
   PresenterMessage,
@@ -18,6 +20,9 @@ function clock(seconds: number): string {
 }
 
 export function PresenterApp({ token }: { token: string }) {
+  const [keyboardPlatform] = useState(() =>
+    getKeyboardPlatform(desktop?.platform),
+  );
   const [deck, setDeck] = useState<Deck | null>(null);
   const [state, setState] = useState<PresenterState | null>(null);
   const [ended, setEnded] = useState(false);
@@ -104,23 +109,45 @@ export function PresenterApp({ token }: { token: string }) {
   useEffect(() => {
     if (ended) return;
     const key = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.keyCode === 229 ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        event.getModifierState("AltGraph")
+      )
+        return;
       const target = event.target instanceof Element ? event.target : null;
       if (
-        target?.closest("input,textarea,select") ||
+        target?.closest(
+          'input,textarea,select,video,audio,.video-player,[contenteditable]:not([contenteditable="false"])',
+        ) ||
+        (target instanceof HTMLElement && target.isContentEditable) ||
         (target?.closest("button") && [" ", "Enter"].includes(event.key))
       )
         return;
-      const action = ["ArrowRight", "ArrowDown", " ", "PageDown"].includes(
-        event.key,
-      )
+      const nextKey =
+        ["ArrowRight", "ArrowDown", " ", "PageDown"].includes(event.key) ||
+        (keyboardPlatform !== "mac" && event.key === "Enter") ||
+        (keyboardPlatform === "windows" && event.key.toLowerCase() === "n");
+      const previousKey =
+        ["ArrowLeft", "ArrowUp", "PageUp"].includes(event.key) ||
+        (keyboardPlatform !== "mac" && event.key === "Backspace") ||
+        (keyboardPlatform === "windows" && event.key.toLowerCase() === "p");
+      const action = nextKey
         ? "next"
-        : ["ArrowLeft", "ArrowUp", "PageUp"].includes(event.key)
+        : previousKey
           ? "previous"
           : event.key === "Home"
             ? "first"
             : event.key === "End"
               ? "last"
-              : event.key === "Escape"
+              : event.key === "Escape" ||
+                  (keyboardPlatform === "linux" && event.key === "-") ||
+                  (keyboardPlatform === "mac" &&
+                    event.key.toLowerCase() === "q")
                 ? "exit"
                 : null;
       if (action) {

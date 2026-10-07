@@ -3,6 +3,7 @@ import {
   getKeyboardPlatform,
   getPlatformShortcuts,
   getShortcut,
+  isShortcutAvailable,
   matchShortcut,
   matchesShortcut,
   modifierLabel,
@@ -68,8 +69,8 @@ describe("platform-aware keyboard shortcuts", () => {
     expect(shortcutLabel("save", "mac")).toBe("⌘+S");
     expect(shortcutLabel("redo", "mac")).toBe("⌘+⇧+Z");
     expect(shortcutLabel("redo", "windows")).toBe("Ctrl+Y");
-    expect(shortcutLabel("redo", "linux")).toBe("Ctrl+Shift+Z");
-    expect(shortcutLabel("exportPdf", "mac")).toBe("⌘+⌥+P");
+    expect(shortcutLabel("redo", "linux")).toBe("Ctrl+Y");
+    expect(shortcutLabel("exportPdf", "mac")).toBe("⌘+⌥+⇧+P");
     expect(shortcutLabel("exportPdf", "windows")).toBe("Ctrl+Alt+P");
     expect(getShortcut("redo", "windows").alternateKeys).toEqual([
       "Ctrl+Shift+Z",
@@ -82,7 +83,11 @@ describe("platform-aware keyboard shortcuts", () => {
     "makes every documented %s shortcut executable",
     (platform) => {
       const shortcuts = getPlatformShortcuts(platform);
-      expect(shortcuts.map(({ action }) => action)).toEqual(SHORTCUT_ACTIONS);
+      expect(shortcuts.map(({ action }) => action)).toEqual(
+        SHORTCUT_ACTIONS.filter((action) =>
+          isShortcutAvailable(action, platform),
+        ),
+      );
       expect(new Set(shortcuts.map(({ action }) => action)).size).toBe(
         shortcuts.length,
       );
@@ -143,6 +148,12 @@ describe("platform-aware keyboard shortcuts", () => {
     ).toBe("exportSvg");
     expect(
       matchShortcut(key("p", { metaKey: true, altKey: true }), "mac"),
+    ).toBe("present");
+    expect(
+      matchShortcut(
+        key("P", { metaKey: true, altKey: true, shiftKey: true }),
+        "mac",
+      ),
     ).toBe("exportPdf");
   });
 
@@ -174,7 +185,7 @@ describe("platform-aware keyboard shortcuts", () => {
         key("π", { code: "KeyP", metaKey: true, altKey: true }),
         "mac",
       ),
-    ).toBe("exportPdf");
+    ).toBe("present");
     expect(
       matchShortcut(
         key("q", { code: "KeyS", metaKey: true, altKey: true }),
@@ -186,13 +197,98 @@ describe("platform-aware keyboard shortcuts", () => {
     ).toBeNull();
   });
 
-  it("keeps Windows Ctrl+Shift+Z as a redo alias", () => {
-    expect(matchShortcut(key("y", { ctrlKey: true }), "windows")).toBe("redo");
+  it.each(["windows", "linux"] as const)(
+    "keeps Ctrl+Shift+Z as a %s redo alias",
+    (platform) => {
+      expect(matchShortcut(key("y", { ctrlKey: true }), platform)).toBe("redo");
+      expect(
+        matchShortcut(key("Z", { ctrlKey: true, shiftKey: true }), platform),
+      ).toBe("redo");
+    },
+  );
+
+  it("follows Keynote grouping and Save As while retaining existing SciSlide aliases", () => {
     expect(
-      matchShortcut(key("Z", { ctrlKey: true, shiftKey: true }), "windows"),
-    ).toBe("redo");
-    expect(matchShortcut(key("y", { ctrlKey: true }), "linux")).toBeNull();
+      matchShortcut(key("g", { metaKey: true, altKey: true }), "mac"),
+    ).toBe("group");
+    expect(
+      matchShortcut(
+        key("g", { metaKey: true, altKey: true, shiftKey: true }),
+        "mac",
+      ),
+    ).toBe("ungroup");
+    expect(
+      matchShortcut(
+        key("s", { metaKey: true, altKey: true, shiftKey: true }),
+        "mac",
+      ),
+    ).toBe("saveAs");
+    expect(matchShortcut(key("g", { metaKey: true }), "mac")).toBe("group");
+    expect(
+      matchShortcut(key("g", { metaKey: true, shiftKey: true }), "mac"),
+    ).toBe("ungroup");
+    expect(
+      matchShortcut(key("s", { metaKey: true, shiftKey: true }), "mac"),
+    ).toBe("saveAs");
+    expect(matchShortcut(key("Enter", { metaKey: true }), "mac")).toBe(
+      "present",
+    );
   });
+
+  it("recognizes Mac punctuation and Option-modified digit keys independently of keycaps", () => {
+    expect(
+      matchShortcut(
+        key(".", { code: "Period", metaKey: true, shiftKey: true }),
+        "mac",
+      ),
+    ).toBe("zoomIn");
+    expect(
+      matchShortcut(
+        key(",", { code: "Comma", metaKey: true, shiftKey: true }),
+        "mac",
+      ),
+    ).toBe("zoomOut");
+    expect(
+      matchShortcut(
+        key("º", { code: "Digit0", metaKey: true, altKey: true }),
+        "mac",
+      ),
+    ).toBe("fitSlide");
+    expect(
+      matchShortcut(
+        key("+", { code: "Equal", metaKey: true, shiftKey: true }),
+        "mac",
+      ),
+    ).toBe("increaseFontSize");
+    expect(
+      matchShortcut(key("=", { code: "Equal", metaKey: true }), "mac"),
+    ).toBe("increaseFontSize");
+    expect(
+      matchShortcut(
+        key("[", { code: "BracketLeft", metaKey: true, shiftKey: true }),
+        "mac",
+      ),
+    ).toBe("alignTextLeft");
+  });
+
+  it.each(["linux", "windows"] as const)(
+    "shares supported commands without leaking Keynote-only keys on %s",
+    (platform) => {
+      expect(
+        matchShortcut(key("n", { ctrlKey: true, shiftKey: true }), platform),
+      ).toBeNull();
+      expect(matchShortcut(key("l", { ctrlKey: true }), platform)).toBe(
+        "alignTextLeft",
+      );
+      expect(
+        matchShortcut(key("e", { ctrlKey: true, altKey: true }), platform),
+      ).toBeNull();
+      expect(isShortcutAvailable("lock", platform)).toBe(false);
+      expect(isShortcutAvailable("insertFigure", platform)).toBe(false);
+      expect(matchShortcut(key("PageDown"), platform)).toBe("nextSlide");
+      expect(matchShortcut(key("Home"), platform)).toBe("firstSlide");
+    },
+  );
 
   it("uses physical letter keys in Korean input layouts without remapping Latin layouts", () => {
     expect(
@@ -205,11 +301,165 @@ describe("platform-aware keyboard shortcuts", () => {
       matchShortcut(key("ы", { code: "KeyS", ctrlKey: true }), "windows"),
     ).toBe("save");
     expect(
-      matchShortcut(key("y", { code: "KeyZ", ctrlKey: true }), "linux"),
+      matchShortcut(key("q", { code: "KeyZ", ctrlKey: true }), "linux"),
     ).toBeNull();
     expect(
       matchShortcut(key("é", { code: "KeyS", ctrlKey: true }), "linux"),
     ).toBeNull();
+  });
+
+  it.each(["windows", "linux"] as const)(
+    "uses F5/Shift-F5 and Ctrl-M in the %s profile",
+    (platform) => {
+      expect(matchShortcut(key("F5"), platform)).toBe("presentFromStart");
+      expect(matchShortcut(key("F5", { shiftKey: true }), platform)).toBe(
+        "present",
+      );
+      expect(matchShortcut(key("m", { ctrlKey: true }), platform)).toBe(
+        "addSlide",
+      );
+      expect(matchShortcut(key("F1"), platform)).toBe("help");
+      expect(matchShortcut(key("Enter", { ctrlKey: true }), platform)).toBe(
+        "present",
+      );
+    },
+  );
+
+  it("distinguishes PowerPoint grouping, formula, slide duplication and layer shortcuts", () => {
+    expect(matchShortcut(key("g", { ctrlKey: true }), "windows")).toBe("group");
+    expect(
+      matchShortcut(key("g", { ctrlKey: true, shiftKey: true }), "windows"),
+    ).toBe("ungroup");
+    expect(
+      matchShortcut(key("=", { altKey: true, code: "Equal" }), "windows"),
+    ).toBe("insertEquation");
+    expect(
+      matchShortcut(key("=", { ctrlKey: true, altKey: true }), "windows"),
+    ).toBeNull();
+    expect(
+      matchShortcut(key("d", { ctrlKey: true, shiftKey: true }), "windows"),
+    ).toBe("duplicateSlide");
+    expect(
+      matchShortcut(
+        key("]", { ctrlKey: true, shiftKey: true, code: "BracketRight" }),
+        "windows",
+      ),
+    ).toBe("bringForward");
+    expect(
+      matchShortcut(
+        key("[", { ctrlKey: true, shiftKey: true, code: "BracketLeft" }),
+        "windows",
+      ),
+    ).toBe("sendBackward");
+    expect(matchShortcut(key("F5", { altKey: true }), "windows")).toBe(
+      "presenterView",
+    );
+    expect(isShortcutAvailable("bringToFront", "windows")).toBe(false);
+    expect(
+      matchShortcut(key("f", { ctrlKey: true, shiftKey: true }), "windows"),
+    ).toBeNull();
+  });
+
+  it("uses current Impress group, formula and arrange defaults", () => {
+    expect(
+      matchShortcut(key("g", { ctrlKey: true, shiftKey: true }), "linux"),
+    ).toBe("group");
+    expect(
+      matchShortcut(
+        key("g", { ctrlKey: true, shiftKey: true, altKey: true }),
+        "linux",
+      ),
+    ).toBe("ungroup");
+    expect(
+      matchShortcut(key("E", { shiftKey: true, altKey: true }), "linux"),
+    ).toBe("insertEquation");
+    expect(
+      matchShortcut(
+        key("=", { ctrlKey: true, altKey: true, code: "Equal" }),
+        "linux",
+      ),
+    ).toBe("insertEquation");
+    expect(matchShortcut(key("F3", { shiftKey: true }), "linux")).toBe(
+      "duplicate",
+    );
+    expect(
+      matchShortcut(key("+", { ctrlKey: true, code: "NumpadAdd" }), "linux"),
+    ).toBe("bringForward");
+    expect(
+      matchShortcut(
+        key("+", { ctrlKey: true, shiftKey: true, code: "Equal" }),
+        "linux",
+      ),
+    ).toBe("bringToFront");
+    expect(matchShortcut(key("-", { ctrlKey: true }), "linux")).toBe(
+      "sendBackward",
+    );
+    expect(
+      matchShortcut(
+        key("_", { ctrlKey: true, shiftKey: true, code: "Minus" }),
+        "linux",
+      ),
+    ).toBe("sendToBack");
+    expect(matchShortcut(key("]", { ctrlKey: true }), "linux")).toBe(
+      "increaseFontSize",
+    );
+    expect(isShortcutAvailable("duplicateSlide", "linux")).toBe(false);
+    expect(isShortcutAvailable("presenterView", "linux")).toBe(false);
+  });
+
+  it("separates platform zoom from text sizing and restricts Impress fit to the keypad", () => {
+    expect(
+      matchShortcut(
+        key("+", { ctrlKey: true, shiftKey: true, code: "Equal" }),
+        "windows",
+      ),
+    ).toBe("zoomIn");
+    expect(
+      matchShortcut(
+        key(">", { ctrlKey: true, shiftKey: true, code: "Period" }),
+        "windows",
+      ),
+    ).toBe("increaseFontSize");
+    expect(
+      matchShortcut(key("o", { ctrlKey: true, altKey: true }), "windows"),
+    ).toBe("fitSlide");
+    expect(matchShortcut(key("+", { shiftKey: true }), "linux")).toBe("zoomIn");
+    expect(matchShortcut(key("-"), "linux")).toBe("zoomOut");
+    expect(matchShortcut(key("*", { code: "NumpadMultiply" }), "linux")).toBe(
+      "fitSlide",
+    );
+    expect(
+      matchShortcut(key("*", { code: "Digit8", shiftKey: true }), "linux"),
+    ).toBeNull();
+    expect(shortcutLabel("fitSlide", "linux")).toBe("Num *");
+  });
+
+  it("registers the platform slide reorder keys and Impress guide aliases", () => {
+    expect(matchShortcut(key("ArrowUp", { ctrlKey: true }), "windows")).toBe(
+      "moveSlideUp",
+    );
+    expect(
+      matchShortcut(
+        key("ArrowUp", { ctrlKey: true, shiftKey: true }),
+        "windows",
+      ),
+    ).toBe("moveSlideFirst");
+    expect(
+      matchShortcut(key("PageDown", { altKey: true, shiftKey: true }), "linux"),
+    ).toBe("moveSlideDown");
+    expect(
+      matchShortcut(key("End", { altKey: true, shiftKey: true }), "linux"),
+    ).toBe("moveSlideLast");
+    expect(
+      matchShortcut(
+        key("ArrowDown", { ctrlKey: true, shiftKey: true }),
+        "linux",
+      ),
+    ).toBe("moveSlideDown");
+    expect(
+      matchShortcut(key("Home", { ctrlKey: true, shiftKey: true }), "linux"),
+    ).toBe("moveSlideFirst");
+    expect(matchShortcut(key("F5"), "mac")).toBeNull();
   });
 
   it.each([

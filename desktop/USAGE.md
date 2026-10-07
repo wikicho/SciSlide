@@ -1,4 +1,4 @@
-# SciSlide 0.6.0 — Linux x64 standalone app
+# SciSlide 0.6.2 — Linux x64 standalone app
 
 Run the `scislide` executable in this folder. Keep the Electron runtime files together. Node.js, TeX and a development server are not required for MathJax editing.
 
@@ -6,7 +6,7 @@ Run the `scislide` executable in this folder. Keep the Electron runtime files to
 ./scislide
 ```
 
-For system installation, the separate `SciSlide-0.6.0-linux-x64.deb` adds a desktop launcher and icon. Install it with `sudo apt install ./SciSlide-0.6.0-linux-x64.deb`, then launch `scislide`. Ubuntu 24.04 x64 is the packaging target; Debian calls the architecture `amd64`. No SciSlide APT repository or Snap package is currently provided.
+For system installation, the separate `SciSlide-0.6.2-linux-x64.deb` adds a desktop launcher and icon. Install it with `sudo apt install ./SciSlide-0.6.2-linux-x64.deb`, then launch `scislide`. Ubuntu 24.04 x64 is the packaging target; Debian calls the architecture `amd64`. No SciSlide APT repository or Snap package is currently provided.
 
 ## Start and edit a presentation
 
@@ -22,11 +22,15 @@ Double-click text or press **Enter** on a selected text box to edit on the slide
 
 Choose **Draw rectangle / ellipse / line / arrow**, then drag. **Shift** constrains geometry; **Escape** cancels. The Inspector controls stroke color/width/style, no-fill outlines and arrowheads. Drag a selected line/arrow's endpoints to edit it. Shapes export as vectors.
 
-**Shift+click** selects objects. **Ctrl+G / Ctrl+Shift+G** group/ungroup; flat groups move together and duplicate independently. Ungroup before resizing or rotating a member. Use six-way alignment and equal-gap distribution for a selection. Smart guides help while moving/resizing; **Alt** bypasses them. Separate **Snap to 20 px grid** takes precedence. **OBJECTS & LAYERS** selects hidden/covered objects and controls visibility, locks and order. Object copy/cut/paste works across slides or decks in one session. Nested groups, whole-group scaling/rotation, attached connectors and freehand paths remain planned.
+**Shift+click** selects objects. **Ctrl+Shift+G / Ctrl+Alt+Shift+G** group/ungroup; flat groups move together and duplicate independently. Ungroup before resizing or rotating a member. Use six-way alignment and equal-gap distribution for a selection. Smart guides help while moving/resizing; **Alt** bypasses them. Separate **Snap to 20 px grid** takes precedence. **OBJECTS & LAYERS** selects hidden/covered objects and controls visibility, locks and order. Object copy/cut/paste works across slides or decks in one session. Nested groups, whole-group scaling/rotation, attached connectors and freehand paths remain planned.
 
 ## Shortcuts, recovery and presentation
 
-Linux shortcuts use **Ctrl** and **Alt**. **Ctrl+O / Ctrl+S / Ctrl+Shift+S** open/save/save as; **Ctrl+Z / Ctrl+Shift+Z** undo/redo. **Ctrl+Enter** presents from the canvas, **Ctrl+Alt+P / Ctrl+Alt+S** export PDF/current-slide SVG and **Ctrl+Shift+/** opens platform shortcut help. While editing text, Ctrl+Enter applies the edit without presenting. Text-field clipboard and IME behavior are preserved.
+Linux shortcuts follow LibreOffice Impress for supported actions. **Ctrl+O / Ctrl+S / Ctrl+Shift+S** open/save/save as, **Ctrl+Z / Ctrl+Y** undo/redo, **Ctrl+M** opens the new-slide layout chooser, and **Shift+F3** immediately duplicates the selection or current slide. **F5 / Shift+F5** start at the first / current slide. **Page Up / Page Down** navigate slides; **Home / End** select the first / last. With a thumbnail focused, **Alt+Shift+Page Up / Page Down** moves it one position and **Alt+Shift+Home / End** moves it first / last. **Ctrl+Shift+Up / Down / Home / End** also move thumbnails.
+
+For selected objects, **Ctrl++ / Ctrl+-** move one layer forward / backward, and **Ctrl+Shift++ / Ctrl+Shift+-** move to front / back. Use numeric-keypad **+** to distinguish layer-forward from front; main-keyboard **Ctrl+= / Ctrl+Shift+=** also performs those two actions. Bare **+ / -** zoom the canvas and numeric-keypad **\*** fits the slide to the window. **Ctrl+B** toggles bold, **Ctrl+] / Ctrl+[** changes font size, and **Ctrl+L / E / R** aligns whole selected text objects left / center / right.
+
+**Alt+Shift+E** inserts an equation and **Ctrl+Alt+P / Ctrl+Alt+S** export PDF/current-slide SVG. **F1** opens platform shortcut help. Existing **Ctrl+D**, **Ctrl+G**, **Ctrl+Shift+Z**, **Ctrl+Shift+/** and **Ctrl+Enter** remain duplicate, group, Redo, help and present-current aliases. Equation insertion also accepts **Ctrl+Alt+=**. **Ctrl+Shift+G** now groups, matching Impress. During a slideshow, **Enter** advances a build or slide, **Backspace** goes back, and **Esc / -** exits. While editing text, Ctrl+Enter applies the edit without presenting; text-field clipboard, cursor, undo and IME behavior are preserved. See [LINUX.md](LINUX.md) for the complete reference and official sources.
 
 **My equations** stores named/tagged formulas locally and transfers them through JSON import/export. Recovery uses IndexedDB, bounded to 100 MiB, and retains up to 200 unfinished equation drafts, with a localStorage fallback. Personal libraries and unapplied drafts are workspace data, separate from portable source files; save explicitly and check failure feedback.
 

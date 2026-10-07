@@ -345,10 +345,10 @@ describe("dragging slides in the sidebar", () => {
     expect(await persist()).toEqual(original);
     expect(selected()).toBe("Alpha");
     expect(button("Undo · Ctrl+Z").disabled).toBe(true);
-    await click("Redo · Ctrl+Shift+Z");
+    await click("Redo · Ctrl+Y");
     expect(order()).toEqual(["Beta", "Gamma", "Delta", "Alpha"]);
     expect(selected()).toBe("Alpha");
-    expect(button("Redo · Ctrl+Shift+Z").disabled).toBe(true);
+    expect(button("Redo · Ctrl+Y").disabled).toBe(true);
   });
 
   it("renumbers thumbnails and the active scene, and saves the reordered native deck", async () => {
@@ -512,7 +512,7 @@ describe("dragging slides in the sidebar", () => {
       await drag("Alpha", target, side);
       expect(await persist()).toEqual(original);
       expect(button("Undo · Ctrl+Z").disabled).toBe(true);
-      expect(button("Redo · Ctrl+Shift+Z").disabled).toBe(true);
+      expect(button("Redo · Ctrl+Y").disabled).toBe(true);
     },
   );
 
