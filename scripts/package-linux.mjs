@@ -64,7 +64,7 @@ export const LINUX_DEPENDS = [
 export function parseLinuxOptions(args) {
   const options = {
     arch: "x64",
-    out: "release",
+    out: "release/linux-deb",
     overwrite: false,
     help: false,
   };
@@ -412,7 +412,7 @@ if (
     const options = parseLinuxOptions(process.argv.slice(2));
     if (options.help)
       console.log(
-        "Usage: node scripts/package-linux.mjs [--arch=x64] [--out=release] [--overwrite]\nBuild the editor first (pnpm build). Creates an amd64 .deb, SHA-256 checksum, desktop launcher and Linux instructions. Requires Linux and dpkg-deb.",
+        "Usage: node scripts/package-linux.mjs [--arch=x64] [--out=release/linux-deb] [--overwrite]\nBuild the editor first (pnpm build). Creates an amd64 .deb, SHA-256 checksum, desktop launcher and Linux instructions. Requires Linux and dpkg-deb.",
       );
     else {
       const result = await packageLinux(options);

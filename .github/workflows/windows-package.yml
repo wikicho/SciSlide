@@ -8,7 +8,7 @@ on:
         description: Immutable ID of the verified Windows artifact
         value: ${{ jobs.package.outputs.artifact_ids }}
   push:
-    branches: [main]
+    branches: [main, codex/package-0.6.1]
     paths:
       - .github/workflows/windows-package.yml
       - scripts/package-desktop.mjs
