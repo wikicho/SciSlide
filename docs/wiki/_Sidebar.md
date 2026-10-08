@@ -6,6 +6,7 @@
 - [Editing slides](Editing-Slides)
 - [Equations and fonts](Equations-and-Fonts)
 - [Keyboard shortcuts](Keyboard-Shortcuts)
+- [Shortcut specification](Shortcut-Specification)
 - [Export and presenting](Export-and-Presenting)
 - [AI assistance](AI-Assistance)
 - [Troubleshooting](Troubleshooting)

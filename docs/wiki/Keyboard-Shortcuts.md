@@ -4,6 +4,8 @@ SciSlide **0.6.2** follows Keynote conventions on macOS, PowerPoint on Windows a
 
 Open **Keyboard shortcuts** in the app for the full reference and compatibility aliases. Its platform tabs change the displayed reference, not the active bindings. Native menus and toolbar hints follow the detected host OS. In browsers, use the toolbar if a browser-reserved shortcut takes precedence.
 
+For the Keynote reference mapping, compatibility exceptions, focus-routing requirements, and planned additions, see the [Shortcut specification](Shortcut-Specification). This page lists the implemented 0.6.2 bindings.
+
 ## Files and common editing
 
 | Action                                         | macOS                                 | Windows               | Ubuntu/Linux                          |
@@ -52,7 +54,7 @@ Text-formatting shortcuts act on whole selected text objects. Text-field cursor,
 
 **Page Down / Page Up** navigates slides; **Home / End** selects first/last. Compact Mac keyboards send these using **Fn+↓ / ↑** and **Fn+← / →**.
 
-When a thumbnail has focus, **Up / Down** selects slides and **Delete / Backspace** removes the focused slide. The following reorder commands also require thumbnail focus:
+When a thumbnail has focus, **Up / Down** selects slides and **Delete / Backspace** removes the focused slide. Tab focus alone does not select an inactive thumbnail; duplication still uses the active slide in 0.6.2. Click or navigate to select the intended slide before duplicating. The following reorder commands also require thumbnail focus:
 
 | Action                  | Windows              | Ubuntu/Linux                  |
 | ----------------------- | -------------------- | ----------------------------- |

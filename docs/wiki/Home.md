@@ -27,6 +27,8 @@ This wiki documents **v0.6.2**, a development prototype. The latest release adds
 | [Architecture and roadmap](Architecture-and-Roadmap) | Document format, application structure, and planned work          |
 | [Development](Development)                           | Source setup, checks, packaging, and contributions                |
 
+For the formal Keynote mapping, routing contract, compatibility exceptions, and implementation targets, see the [Shortcut specification](Shortcut-Specification).
+
 ## Downloads and project
 
 - [Download v0.6.2](https://github.com/wikicho/SciSlide/releases/tag/v0.6.2) — macOS Apple Silicon/Intel, Windows x64, and Linux x64.

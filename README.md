@@ -124,9 +124,11 @@ The desktop menu provides New Presentation, Open, Save, Save As, object editing,
 
 ## Keyboard Shortcuts
 
+The [Keyboard Shortcut Specification](docs/specifications/keyboard-shortcuts.md) defines the Keynote mapping, current exceptions, context rules, planned additions and acceptance criteria. The tables below remain the implemented 0.6.2 user reference.
+
 SciSlide detects the host operating system and uses **Command (⌘)** on macOS or **Ctrl** on Ubuntu/Linux and Windows. **Option (⌥)** is the macOS equivalent of **Alt**. Toolbar hints, native menus and **Keyboard shortcuts** show the current platform's bindings. The help dialog's platform tabs change only the reference being displayed.
 
-For supported actions, macOS follows [Keynote](https://support.apple.com/ko-kr/guide/keynote/tanfde4a3e6d/mac), Windows follows [PowerPoint](https://support.microsoft.com/en-us/accessibility/powerpoint/use-keyboard-shortcuts-to-create-powerpoint-presentations), and Ubuntu/Linux follows [LibreOffice Impress](https://help.libreoffice.org/latest/en-US/text/simpress/04/01020000.html). SciSlide keeps its own export commands. Linux equation insertion uses **Alt+Shift+E**, following LibreOffice's [Formula Object shortcut](https://help.libreoffice.org/latest/en-US/text/shared/01/04160300.html).
+For supported actions, macOS follows [Keynote](https://support.apple.com/en-gb/guide/keynote/tanfde4a3e6d/mac), Windows follows [PowerPoint](https://support.microsoft.com/en-us/accessibility/powerpoint/use-keyboard-shortcuts-to-create-powerpoint-presentations), and Ubuntu/Linux follows [LibreOffice Impress](https://help.libreoffice.org/latest/en-US/text/simpress/04/01020000.html). SciSlide keeps its own export commands. Linux equation insertion uses **Alt+Shift+E**, following LibreOffice's [Formula Object shortcut](https://help.libreoffice.org/latest/en-US/text/shared/01/04160300.html).
 
 | Action                                 | macOS                         | Ubuntu / Linux                  | Windows               |
 | -------------------------------------- | ----------------------------- | ------------------------------- | --------------------- |
