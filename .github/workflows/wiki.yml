@@ -1,0 +1,36 @@
+name: Publish SciSlide wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/wiki/**
+      - scripts/publish-wiki.mjs
+      - .github/workflows/wiki.yml
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: scislide-wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'wikicho/SciSlide' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the trusted main source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate wiki sources
+        run: node scripts/publish-wiki.mjs --validate-only
+      - name: Publish and verify wiki
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/publish-wiki.mjs

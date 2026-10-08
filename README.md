@@ -2,6 +2,8 @@
 
 A scientific presentation editor with editable equations, vector output, and an Electron desktop host.
 
+[Documentation Wiki](https://github.com/wikicho/SciSlide/wiki) · [Downloads](https://github.com/wikicho/SciSlide/releases/tag/v0.6.2) · [Report an issue](https://github.com/wikicho/SciSlide/issues)
+
 **v0.6.2 is a working prototype.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews and font-aware inline formulas inside text; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux systems. Fourteen existing starter layouts combine scientific structure with minimal Keynote-inspired composition; the **Keynote White** theme adds a dedicated set of fifteen coordinated layouts. Drawing, groups, smart guides, equal-spacing commands and an object/layer list help compose slides. Figures support SVG/PNG/JPEG import and PDF page selection, reversible cropping, enlarged insets and replacement without rebuilding the layout. A personal equation library, separate presenter display and recovery of unfinished equation drafts extend the authoring workflow. The included three-slide cosmology deck uses synthetic demonstration data. Compatible installed AI CLIs generate editable slide drafts. Deck-wide page numbers, embedded video, and ordered click-triggered builds remain available.
 
 v0.6.2 adds platform-specific keyboard shortcuts: Keynote conventions on macOS, PowerPoint on Windows and LibreOffice Impress on Ubuntu/Linux. Native menus, toolbar hints and shortcut help use the same bindings. Drag-and-drop slide ordering and Linux Debian output in `release/linux-deb/` remain available.
