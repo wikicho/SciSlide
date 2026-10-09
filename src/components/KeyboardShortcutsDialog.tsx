@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Keyboard, X } from "lucide-react";
 import {
   isShortcutAvailable,
+  getShortcut,
   shortcutLabel,
   type KeyboardPlatform,
   type ShortcutAction,
@@ -98,8 +99,15 @@ const groups: { title: string; rows: ShortcutRow[] }[] = [
   {
     title: "Canvas",
     rows: [
-      { label: "Move objects by 1 px", keys: "Arrow keys" },
-      { label: "Move objects by 10 px", keys: "Shift + Arrow keys" },
+      { label: "Move objects by 1 document unit", keys: "Arrow keys" },
+      {
+        label: "Move objects by 10 document units",
+        keys: "Shift + Arrow keys",
+      },
+      {
+        label: "Select next / previous canvas object",
+        keys: "Tab / Shift + Tab",
+      },
       {
         label: "Add or remove objects from selection",
         keys: (platform) =>
@@ -134,6 +142,8 @@ const groups: { title: string; rows: ShortcutRow[] }[] = [
       { label: "Zoom in", action: "zoomIn" },
       { label: "Zoom out", action: "zoomOut" },
       { label: "Fit slide to window", action: "fitSlide" },
+      { label: "Toggle Inspector", action: "toggleInspector" },
+      { label: "Toggle objects and layers", action: "toggleObjectList" },
     ],
   },
   {
@@ -218,11 +228,17 @@ export function KeyboardShortcutsDialog({
       .find((tab) => tab?.getAttribute("aria-selected") === "true")
       ?.focus();
     const key = (event: KeyboardEvent) => {
-      if (event.isComposing) return;
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.keyCode === 229 ||
+        event.getModifierState("AltGraph")
+      )
+        return;
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
-        closeRef.current();
+        if (!event.repeat) closeRef.current();
         return;
       }
       if (event.key !== "Tab") return;
@@ -350,6 +366,17 @@ export function KeyboardShortcutsDialog({
                             ? row.keys(previewPlatform)
                             : row.keys}
                       </kbd>
+                      {"action" in row &&
+                        getShortcut(row.action, previewPlatform).alternateKeys
+                          .length > 0 && (
+                          <small className="keyboard-shortcuts-aliases">
+                            Also:{" "}
+                            {getShortcut(
+                              row.action,
+                              previewPlatform,
+                            ).alternateKeys.join(" / ")}
+                          </small>
+                        )}
                     </dd>
                   </div>
                 ))}
@@ -360,6 +387,15 @@ export function KeyboardShortcutsDialog({
             While editing text, copy, paste, selection, and arrow keys work on
             the text. Browsers may reserve New and Open; use their toolbar
             buttons or the desktop app.
+          </p>
+          <p className="keyboard-shortcuts-note">
+            Focus the slide canvas to select objects with Tab or Shift+Tab.
+            Hidden and locked objects are skipped; groups are one selection. At
+            either end, Tab moves to the surrounding controls. Pane shortcuts
+            focus a pane when showing it and return to the canvas when hiding
+            it. During playback, media and text controls own their keys,
+            including Escape. Navigation and slide deletion do not repeat while
+            a key is held.
           </p>
           {previewPlatform === "mac" && (
             <p className="keyboard-shortcuts-note">

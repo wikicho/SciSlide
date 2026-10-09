@@ -98,6 +98,8 @@ import {
 } from "./lib/object-clipboard";
 import type { ObjectClipboard } from "./lib/object-clipboard";
 import { ObjectLayers } from "./components/ObjectLayers";
+import { traverseObjects } from "./lib/object-traversal";
+import { matchPlaybackShortcut } from "./lib/playback-shortcuts";
 import { FigureTools } from "./components/FigureTools";
 import { createFigureInset } from "./lib/figure-editing";
 import { EquationLibraryDialog } from "./components/EquationLibraryDialog";
@@ -138,6 +140,10 @@ import { ThemeChooser } from "./components/ThemeChooser";
 import { KeyboardShortcutsDialog } from "./components/KeyboardShortcutsDialog";
 import {
   getKeyboardPlatform,
+  getShortcut,
+  getPlatformShortcuts,
+  isShortcutEnabled,
+  isShortcutAvailable,
   matchShortcut,
   shortcutLabel,
 } from "./lib/shortcuts";
@@ -157,7 +163,7 @@ import { AIDraftDialog, aiAnchorFingerprint } from "./components/AIDraftDialog";
 import type { AIDraftApplication } from "./components/AIDraftDialog";
 import type { EquationFontId } from "./lib/equations";
 import { desktop, DEFAULT_LOCAL_PREAMBLE } from "./lib/desktop";
-import type { TexCapabilities } from "./lib/desktop";
+import type { DesktopCommand, TexCapabilities } from "./lib/desktop";
 import { localTexInputFingerprint } from "./lib/equation-renderer";
 import { sanitizeLocalEquationSvg } from "./lib/local-equation-svg";
 import {
@@ -268,6 +274,9 @@ export default function App() {
     value: string;
   };
   const [textEditing, setTextEditing] = useState<TextEdit | null>(null);
+  const [inspectorVisible, setInspectorVisible] = useState(true);
+  const [objectListVisible, setObjectListVisible] = useState(true);
+  const paneFocus = useRef<"inspector" | "objects" | null>(null);
   const textEditingRef = useRef<TextEdit | null>(null);
   const [recoveryLoaded, setRecoveryLoaded] = useState(false);
   const [showEquationLibrary, setShowEquationLibrary] = useState(false);
@@ -401,7 +410,16 @@ export default function App() {
     imageInput = useRef<HTMLInputElement>(null),
     videoInput = useRef<HTMLInputElement>(null),
     canvasRef = useRef<HTMLDivElement>(null),
+    inspectorRef = useRef<HTMLDivElement>(null),
+    objectListRef = useRef<HTMLDivElement>(null),
     sourceRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!paneFocus.current) return;
+    const target =
+      paneFocus.current === "inspector" ? inspectorRef : objectListRef;
+    paneFocus.current = null;
+    target.current?.focus();
+  }, [inspectorVisible, objectListVisible]);
   const slide = deck.slides.find((s) => s.id === slideId) ?? deck.slides[0];
   const slideIndex = deck.slides.indexOf(slide),
     object = slide.objects.find((o) => o.id === selected[0]);
@@ -516,6 +534,8 @@ export default function App() {
       const session = textEditingRef.current;
       textEditingRef.current = null;
       setTextEditing(null);
+      if (document.activeElement?.matches(".inline-text-editor"))
+        canvasRef.current?.focus({ preventScroll: true });
       if (!apply || !session || session.value === session.original) return;
       const current = deckRef.current;
       const targetSlide = current.slides.find((s) => s.id === session.slideId);
@@ -627,9 +647,23 @@ export default function App() {
       to = direction === "undo" ? redo.current : undo.current;
     const next = from.pop();
     if (!next) return;
+    const focusedCard = document.activeElement?.closest<HTMLButtonElement>(
+      ".slide-list [data-slide-id]",
+    );
+    const focusedId = focusedCard?.dataset.slideId;
+    const focusedIndex = deckRef.current.slides.findIndex(
+      (s) => s.id === focusedId,
+    );
+    const survivingId = next.slides.some((s) => s.id === focusedId)
+      ? focusedId!
+      : next.slides[
+          Math.max(0, Math.min(next.slides.length - 1, focusedIndex - 1))
+        ].id;
     to.push(cloneDeck(deckRef.current));
     deckRef.current = next;
     setDeck(next);
+    if (!next.slides.some((s) => s.id === slide.id)) setSlideId(survivingId);
+    if (focusedCard) setTimeout(() => focusSlideCard(survivingId), 0);
     setSelected([]);
     lastCommit.current = { key: "", time: 0 };
     setHistoryTick((t) => t + 1);
@@ -918,13 +952,18 @@ export default function App() {
     switchSlide(s.id);
     setShowSlideTemplates(false);
   };
-  const duplicateSlide = () => {
-    const s = clone(slide);
+  const duplicateSlide = (sourceId = slide.id, retainFocus = false) => {
+    finishTextEditing();
+    const current = deckRef.current;
+    const index = current.slides.findIndex((s) => s.id === sourceId);
+    if (index < 0) return;
+    const s = clone(current.slides[index]);
     s.id = newId();
     s.title += " · copy";
     s.objects = cloneObjectsWithGroups(s.objects);
-    change((d) => d.slides.splice(slideIndex + 1, 0, s));
+    change((d) => d.slides.splice(index + 1, 0, s));
     switchSlide(s.id);
+    if (retainFocus) setTimeout(() => focusSlideCard(s.id), 0);
   };
   const removeSlide = (id = slide.id) => {
     const current = deckRef.current;
@@ -1718,8 +1757,37 @@ export default function App() {
           .map((o) => o.id),
       ),
     );
+  const shortcutAvailability = () => {
+    const unlocked = editableSelection(slide.objects, selected);
+    return {
+      busy: !!busy,
+      canUndo: !!undo.current.length,
+      canRedo: !!redo.current.length,
+      canPaste: hasClipboard,
+      hasSelection: !!selected.length,
+      hasUnlockedSelection: !!unlocked.length,
+      hasLockedSelection: slide.objects.some(
+        (o) => selected.includes(o.id) && isObjectLocked(o, slide.objects),
+      ),
+      canGroup: unlocked.length >= 2,
+      canUngroup: slide.objects.some(
+        (o) => unlocked.includes(o.id) && !!o.groupId,
+      ),
+      hasTextSelection: slide.objects.some(
+        (o) => unlocked.includes(o.id) && o.type === "text",
+      ),
+      hasObjects: slide.objects.some(
+        (o) => o.visible && !isObjectLocked(o, slide.objects),
+      ),
+      hasSlide: !!slide,
+      hasFocusedSlide: !!document.activeElement?.closest(
+        ".slide-list [data-slide-id]",
+      ),
+    };
+  };
   const executeShortcut = (action: ShortcutAction) => {
-    if (busy && action !== "help") return;
+    if (!isShortcutEnabled(action, keyboardPlatform, shortcutAvailability()))
+      return;
     switch (action) {
       case "new":
         newPresentation();
@@ -1759,13 +1827,25 @@ export default function App() {
         pasteObjects();
         break;
       case "duplicate":
-        selected.length && !document.activeElement?.closest(".slide-list")
-          ? duplicateObjects()
-          : duplicateSlide();
+      case "duplicateSlide": {
+        const card = document.activeElement?.closest<HTMLButtonElement>(
+          ".slide-list [data-slide-id]",
+        );
+        if (action === "duplicate" && selected.length && !card)
+          duplicateObjects();
+        else duplicateSlide(card?.dataset.slideId ?? slide.id, !!card);
         break;
-      case "duplicateSlide":
-        duplicateSlide();
+      }
+      case "toggleInspector":
+      case "toggleObjectList": {
+        const inspector = action === "toggleInspector";
+        const visible = inspector ? inspectorVisible : objectListVisible;
+        if (visible) canvasRef.current?.focus();
+        else paneFocus.current = inspector ? "inspector" : "objects";
+        if (inspector) setInspectorVisible(!visible);
+        else setObjectListVisible(!visible);
         break;
+      }
       case "group":
         groupSelection();
         break;
@@ -1900,10 +1980,45 @@ export default function App() {
     showSlideTemplates ||
     showMathLibrary ||
     showEquationLibrary;
+  useEffect(() => {
+    if (!desktop?.setCommandAvailability) return;
+    const syncMenu = () => {
+      const states: Partial<Record<DesktopCommand, boolean>> = {};
+      const state = shortcutAvailability();
+      const editing = isTextInput(document.activeElement);
+      const inline = !!document.activeElement?.matches(".inline-text-editor");
+      for (const shortcut of getPlatformShortcuts(keyboardPlatform)) {
+        if (!shortcut.nativeCommand) continue;
+        const action = shortcut.action;
+        let enabled = isShortcutEnabled(action, keyboardPlatform, state);
+        if (
+          editing &&
+          ["cut", "copy", "paste", "selectAll", "undo", "redo"].includes(action)
+        ) {
+          enabled = true; // The focused text control owns native editing, even in a modal.
+        } else if (hasEditorDialog || presenting) {
+          enabled = false;
+        } else if (showThemeChooser) {
+          enabled = ["new", "open", "help"].includes(action) && enabled;
+        } else if (editing && !shortcut.globalInText) {
+          enabled =
+            inline &&
+            ["present", "finishTextEditing"].includes(action) &&
+            enabled;
+        }
+        states[shortcut.nativeCommand] = enabled;
+      }
+      void desktop?.setCommandAvailability?.(states).catch(() => undefined);
+    };
+    syncMenu();
+    document.addEventListener("focusin", syncMenu);
+    return () => document.removeEventListener("focusin", syncMenu);
+  });
   useEffect(() =>
     desktop?.onCommand((command) => {
       if (hasEditorDialog || presenting) return;
       const action = command === "showShortcuts" ? "help" : command;
+      if (!isShortcutAvailable(action, keyboardPlatform)) return;
       if (showThemeChooser && !["new", "open", "help"].includes(action)) return;
       const editing = isTextInput(document.activeElement);
       if (
@@ -1913,18 +2028,7 @@ export default function App() {
         document.execCommand(action);
         return;
       }
-      if (
-        editing &&
-        ![
-          "new",
-          "open",
-          "save",
-          "saveAs",
-          "exportPdf",
-          "exportSvg",
-          "help",
-        ].includes(action)
-      ) {
+      if (editing && !getShortcut(action, keyboardPlatform).globalInText) {
         if (
           textEditingRef.current &&
           ["present", "finishTextEditing"].includes(action)
@@ -2010,7 +2114,7 @@ export default function App() {
       o.renderer === "local-latex"
     )
       return;
-    if (e.button !== 0) return;
+    if (e.button !== 0 || busy || hasEditorDialog) return;
     const svg = e.currentTarget.ownerSVGElement!;
     if (mode !== "drag" && o.groupId) return;
     const clicked = expandSelection(slide.objects, [o.id]);
@@ -2378,68 +2482,34 @@ export default function App() {
       }
       const input = isTextInput(e.target);
       if (presenting) {
-        if (e.key === "Escape") {
-          stopPresent();
-          return;
-        }
-        const target = e.target instanceof Element ? e.target : null;
-        const mediaControl = !!target?.closest(
-          "video,audio,.video-player,input,select,textarea",
-        );
-        if (
-          mediaControl ||
-          (target?.closest("button") && [" ", "Enter"].includes(e.key))
-        )
-          return;
-        if (e.ctrlKey || e.metaKey || e.altKey || input) return;
-        if (keyboardPlatform === "mac" && e.key.toLowerCase() === "q") {
-          e.preventDefault();
-          stopPresent();
-          return;
-        }
-        if (keyboardPlatform === "linux" && e.key === "-") {
-          e.preventDefault();
-          stopPresent();
-          return;
-        }
-        const nextKey =
-          ["ArrowRight", "ArrowDown", " ", "PageDown"].includes(e.key) ||
-          (keyboardPlatform !== "mac" && e.key === "Enter") ||
-          (keyboardPlatform === "windows" && e.key.toLowerCase() === "n");
-        const previousKey =
-          ["ArrowLeft", "ArrowUp", "PageUp"].includes(e.key) ||
-          (keyboardPlatform !== "mac" && e.key === "Backspace") ||
-          (keyboardPlatform === "windows" && e.key.toLowerCase() === "p");
-        if (nextKey) {
-          e.preventDefault();
-          nextPresentation();
-        } else if (previousKey) {
-          e.preventDefault();
-          previousPresentation();
-        } else if (e.key === "Home") {
-          e.preventDefault();
-          switchSlide(deck.slides[0].id);
-        } else if (e.key === "End") {
-          e.preventDefault();
-          const last = deck.slides[deck.slides.length - 1];
-          switchSlide(last.id);
-          setPresentationStep(maxBuildStep(last));
+        const playback = matchPlaybackShortcut(e, keyboardPlatform);
+        if (!playback) return;
+        e.preventDefault();
+        if (!playback.execute) return;
+        switch (playback.action) {
+          case "exit":
+            stopPresent();
+            break;
+          case "next":
+            nextPresentation();
+            break;
+          case "previous":
+            previousPresentation();
+            break;
+          case "first":
+            switchSlide(deck.slides[0].id);
+            break;
+          case "last": {
+            const last = deck.slides[deck.slides.length - 1];
+            switchSlide(last.id);
+            setPresentationStep(maxBuildStep(last));
+            break;
+          }
         }
         return;
       }
       if (action) {
-        if (
-          input &&
-          ![
-            "new",
-            "open",
-            "save",
-            "saveAs",
-            "exportPdf",
-            "exportSvg",
-            "help",
-          ].includes(action)
-        ) {
+        if (input && !getShortcut(action, keyboardPlatform).globalInText) {
           // F5 must not reload the browser while a text field owns focus.
           if (e.key === "F5") e.preventDefault();
           return;
@@ -2475,6 +2545,7 @@ export default function App() {
             ["ArrowLeft", "ArrowRight"].includes(e.key))
         ) {
           e.preventDefault();
+          if (e.repeat) return;
           const index =
             (focusedIndex >= 0 ? focusedIndex : slideIndex) +
             (["ArrowDown", "ArrowRight"].includes(e.key) ? 1 : -1);
@@ -2486,6 +2557,7 @@ export default function App() {
         }
         if (["Delete", "Backspace"].includes(e.key)) {
           e.preventDefault();
+          if (e.repeat) return;
           removeSlide(card?.dataset.slideId ?? slide.id);
           if (deck.slides.length > 1) {
             const index = focusedIndex >= 0 ? focusedIndex : slideIndex;
@@ -2493,6 +2565,22 @@ export default function App() {
           }
           return;
         }
+      }
+      // A single focus stop owns canvas object traversal. At either end,
+      // leave Tab untouched so native focus proceeds into the surrounding UI.
+      if (e.key === "Tab" && e.target === canvasRef.current) {
+        if (e.repeat) {
+          e.preventDefault();
+          return;
+        }
+        const ids = traverseObjects(slide.objects, selected, e.shiftKey);
+        if (ids) {
+          e.preventDefault();
+          cancelGesture();
+          setDrawingTool(null);
+          setSelected(ids);
+        }
+        return;
       }
       // Buttons and non-text inputs retain their own Enter/arrow behavior.
       if (
@@ -2509,11 +2597,13 @@ export default function App() {
         object?.type === "text"
       ) {
         e.preventDefault();
-        beginTextEditing(object);
+        if (!e.repeat) beginTextEditing(object);
       } else if (["Delete", "Backspace"].includes(e.key)) {
         e.preventDefault();
-        deleteObjects();
+        if (!e.repeat) deleteObjects();
       } else if (e.key === "Escape") {
+        e.preventDefault();
+        if (e.repeat) return;
         cancelGesture();
         setDrawingTool(null);
         setSelected([]);
@@ -2526,6 +2616,7 @@ export default function App() {
         e.preventDefault();
         const delta = e.shiftKey ? 10 : 1;
         const movable = editableSelection(slide.objects, selected);
+        if (!movable.length) return;
         change(
           (d) =>
             d.slides
@@ -2760,7 +2851,7 @@ export default function App() {
           <span className="avatar">SC</span>
         </div>
       </header>
-      <div className="toolbar">
+      <fieldset className="toolbar" disabled={!!busy || hasEditorDialog}>
         <div className="toolbar-group">
           <IconButton
             title={shortcutTitle("Open .scislide", "open")}
@@ -3007,9 +3098,28 @@ export default function App() {
           >
             <GripVertical size={18} />
           </IconButton>
+          <IconButton
+            title={shortcutTitle("Toggle Inspector", "toggleInspector")}
+            active={inspectorVisible}
+            disabled={!!busy || hasEditorDialog}
+            onClick={() => executeShortcut("toggleInspector")}
+          >
+            <Settings2 size={18} />
+          </IconButton>
+          <IconButton
+            title={shortcutTitle(
+              "Toggle objects and layers",
+              "toggleObjectList",
+            )}
+            active={objectListVisible}
+            disabled={!!busy || hasEditorDialog}
+            onClick={() => executeShortcut("toggleObjectList")}
+          >
+            <Layers size={18} />
+          </IconButton>
           <span>16:9</span>
         </div>
-      </div>
+      </fieldset>
       <div className="workspace">
         <aside className="slide-sidebar">
           <div className="sidebar-heading">
@@ -3031,7 +3141,10 @@ export default function App() {
             <Plus size={17} /> New slide
           </button>
           <div className="sidebar-bottom">
-            <IconButton title="Duplicate slide" onClick={duplicateSlide}>
+            <IconButton
+              title="Duplicate slide"
+              onClick={() => duplicateSlide()}
+            >
               <Copy size={15} />
             </IconButton>
             <IconButton
@@ -3087,6 +3200,20 @@ export default function App() {
           <div
             className={`canvas-viewport ${grid ? "show-grid" : ""}`}
             ref={canvasRef}
+            tabIndex={0}
+            role="region"
+            aria-label="Slide canvas"
+            aria-description="Tab selects objects from back to front. Shift+Tab selects backwards. At either end, Tab moves focus to the surrounding controls."
+            onPointerDownCapture={(event) => {
+              if (
+                !isTextInput(event.target) &&
+                !(
+                  event.target instanceof Element &&
+                  event.target.closest("button,input,video,audio")
+                )
+              )
+                canvasRef.current?.focus({ preventScroll: true });
+            }}
           >
             <div
               className="slide-paper"
@@ -3116,6 +3243,7 @@ export default function App() {
                     return;
                   }
                   setSelected([o.id]);
+                  setInspectorVisible(true);
                   setTimeout(() => {
                     if (o.type === "equation") sourceRef.current?.focus();
                     else document.getElementById("text-content")?.focus();
@@ -3145,6 +3273,21 @@ export default function App() {
               {selected.length
                 ? `${selected.length} selected`
                 : `${slide.objects.length} objects`}
+              <span
+                className="screen-reader-only"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                {selected.length
+                  ? `Selected: ${slide.objects
+                      .filter((o) => selected.includes(o.id) && o.visible)
+                      .map((o) => o.name || "Untitled object")
+                      .join(
+                        ", ",
+                      )} (${selected.length} ${selected.length === 1 ? "object" : "objects"})`
+                  : `${slide.objects.length} objects`}
+              </span>
             </span>
             <div>
               <IconButton title="Fit slide" onClick={() => setZoom(100)}>
@@ -3179,1242 +3322,1272 @@ export default function App() {
             />
           </section>
         </main>
-        <aside className="inspector">
-          <div className="inspector-heading">
+        <aside
+          className="inspector"
+          hidden={!inspectorVisible && !objectListVisible}
+        >
+          <div className="inspector-heading" hidden={!inspectorVisible}>
             <span>
               <Settings2 size={17} /> Inspector
             </span>
             <MoreHorizontal size={18} />
           </div>
-          <ObjectLayers
-            platform={keyboardPlatform}
-            objects={slide.objects}
-            selected={selected}
-            onSelect={(ids) => {
-              cancelGesture();
-              setDrawingTool(null);
-              setSelected(ids);
-            }}
-            onRename={(id, name) =>
-              updateObject(
-                id,
-                (o) => {
-                  o.name = name;
-                },
-                "name",
-              )
-            }
-            onVisibility={(id, visible) =>
-              updateObject(id, (o) => {
-                o.visible = visible;
-              })
-            }
-            onLock={(id, locked) =>
-              updateObject(id, (o) => {
-                o.locked = locked;
-              })
-            }
-            onMove={moveLayer}
-          />
-          {object ? (
-            <>
-              <div className="object-heading">
-                <span className="object-type-icon">
-                  {object.type === "equation" ? (
-                    <Sigma size={22} />
-                  ) : object.type === "text" ? (
-                    <Type size={20} />
-                  ) : object.type === "figure" ? (
-                    <ImagePlus size={20} />
-                  ) : object.type === "video" ? (
-                    <Video size={20} />
-                  ) : (
-                    <Square size={20} />
-                  )}
-                </span>
-                <div>
-                  <h2>{object.name}</h2>
-                  <span>
-                    {object.groupId
-                      ? `Group · ${slide.objects.filter((o) => o.groupId === object.groupId).length} objects`
-                      : object.type === "equation"
-                        ? "Native LaTeX object"
-                        : `${object.type[0].toUpperCase() + object.type.slice(1)} object`}
+          <div
+            ref={objectListRef}
+            tabIndex={-1}
+            role="region"
+            aria-label="Objects and layers panel"
+            hidden={!objectListVisible}
+          >
+            <ObjectLayers
+              platform={keyboardPlatform}
+              objects={slide.objects}
+              selected={selected}
+              onSelect={(ids) => {
+                cancelGesture();
+                setDrawingTool(null);
+                setSelected(ids);
+              }}
+              onRename={(id, name) =>
+                updateObject(
+                  id,
+                  (o) => {
+                    o.name = name;
+                  },
+                  "name",
+                )
+              }
+              onVisibility={(id, visible) =>
+                updateObject(id, (o) => {
+                  o.visible = visible;
+                })
+              }
+              onLock={(id, locked) =>
+                updateObject(id, (o) => {
+                  o.locked = locked;
+                })
+              }
+              onMove={moveLayer}
+            />
+          </div>
+          <div
+            ref={inspectorRef}
+            tabIndex={-1}
+            role="region"
+            aria-label="Inspector panel"
+            hidden={!inspectorVisible}
+          >
+            {object ? (
+              <>
+                <div className="object-heading">
+                  <span className="object-type-icon">
+                    {object.type === "equation" ? (
+                      <Sigma size={22} />
+                    ) : object.type === "text" ? (
+                      <Type size={20} />
+                    ) : object.type === "figure" ? (
+                      <ImagePlus size={20} />
+                    ) : object.type === "video" ? (
+                      <Video size={20} />
+                    ) : (
+                      <Square size={20} />
+                    )}
                   </span>
+                  <div>
+                    <h2>{object.name}</h2>
+                    <span>
+                      {object.groupId
+                        ? `Group · ${slide.objects.filter((o) => o.groupId === object.groupId).length} objects`
+                        : object.type === "equation"
+                          ? "Native LaTeX object"
+                          : `${object.type[0].toUpperCase() + object.type.slice(1)} object`}
+                    </span>
+                  </div>
+                  <IconButton
+                    title="Lock or unlock object"
+                    active={object.locked}
+                    onClick={() =>
+                      updateObject(object.id, (o) => {
+                        o.locked = !o.locked;
+                      })
+                    }
+                  >
+                    <LockKeyhole size={15} />
+                  </IconButton>
                 </div>
-                <IconButton
-                  title="Lock or unlock object"
-                  active={object.locked}
-                  onClick={() =>
-                    updateObject(object.id, (o) => {
-                      o.locked = !o.locked;
-                    })
-                  }
-                >
-                  <LockKeyhole size={15} />
-                </IconButton>
-              </div>
-              {activeEquation && (
-                <>
-                  <div className="inspector-section">
-                    <Field label="Equation renderer">
-                      <select
-                        aria-label="Equation renderer"
-                        value={draft.renderer}
-                        onChange={(e) => {
-                          const renderer = e.target
-                            .value as EquationDraft["renderer"];
-                          try {
-                            const converted =
-                              renderer === "local-latex" &&
-                              draft.renderer === "mathjax"
-                                ? moveLeadingPackagesToPreamble(
-                                    draft.latex,
-                                    draft.preamble,
-                                  )
-                                : {
-                                    source: draft.latex,
-                                    preamble: draft.preamble,
-                                  };
-                            assertEquationDocumentLimits(
-                              converted.source,
-                              renderer === "local-latex"
-                                ? converted.preamble
-                                : undefined,
-                            );
-                            setDraft({
-                              ...draft,
-                              renderer,
-                              latex: converted.source,
-                              preamble: converted.preamble,
-                            });
-                          } catch (error) {
-                            notify((error as Error).message);
-                          }
-                        }}
+                {activeEquation && (
+                  <>
+                    <div className="inspector-section">
+                      <Field label="Equation renderer">
+                        <select
+                          aria-label="Equation renderer"
+                          value={draft.renderer}
+                          onChange={(e) => {
+                            const renderer = e.target
+                              .value as EquationDraft["renderer"];
+                            try {
+                              const converted =
+                                renderer === "local-latex" &&
+                                draft.renderer === "mathjax"
+                                  ? moveLeadingPackagesToPreamble(
+                                      draft.latex,
+                                      draft.preamble,
+                                    )
+                                  : {
+                                      source: draft.latex,
+                                      preamble: draft.preamble,
+                                    };
+                              assertEquationDocumentLimits(
+                                converted.source,
+                                renderer === "local-latex"
+                                  ? converted.preamble
+                                  : undefined,
+                              );
+                              setDraft({
+                                ...draft,
+                                renderer,
+                                latex: converted.source,
+                                preamble: converted.preamble,
+                              });
+                            } catch (error) {
+                              notify((error as Error).message);
+                            }
+                          }}
+                        >
+                          <option value="mathjax">
+                            MathJax · Live preview
+                          </option>
+                          <option value="local-latex">
+                            Local LaTeX · Installed packages
+                          </option>
+                        </select>
+                      </Field>
+                      <div className="section-label">
+                        LATEX SOURCE{" "}
+                        <span>
+                          {draft.renderer === "mathjax"
+                            ? "Live preview"
+                            : "Local compile"}
+                        </span>
+                      </div>
+                      <textarea
+                        ref={sourceRef}
+                        className="latex-input"
+                        aria-label="LaTeX source"
+                        value={draft.latex}
+                        spellCheck={false}
+                        maxLength={MAX_EQUATION_SOURCE_CHARACTERS}
+                        onChange={(e) =>
+                          setDraft({ ...draft, latex: e.target.value })
+                        }
+                      />
+                      <button
+                        className="math-library-button"
+                        onClick={() => setShowMathLibrary(true)}
+                        hidden={draft.renderer === "local-latex"}
                       >
-                        <option value="mathjax">MathJax · Live preview</option>
-                        <option value="local-latex">
-                          Local LaTeX · Installed packages
-                        </option>
-                      </select>
-                    </Field>
-                    <div className="section-label">
-                      LATEX SOURCE{" "}
-                      <span>
-                        {draft.renderer === "mathjax"
-                          ? "Live preview"
-                          : "Local compile"}
-                      </span>
+                        <span>
+                          <Check size={12} /> AMS fonts & symbols
+                        </span>
+                        <span>
+                          Packages & examples <ChevronRight size={12} />
+                        </span>
+                      </button>
+                      {draft.renderer === "local-latex" && (
+                        <div className="local-tex-panel">
+                          <Field label="TeX engine">
+                            <select
+                              aria-label="TeX engine"
+                              value={draft.engine}
+                              onChange={(e) =>
+                                setDraft({
+                                  ...draft,
+                                  engine: e.target
+                                    .value as EquationDraft["engine"],
+                                })
+                              }
+                            >
+                              <option value="latex">
+                                LaTeX · Classic math fonts
+                              </option>
+                              <option value="xelatex">
+                                XeLaTeX · OpenType math fonts
+                              </option>
+                            </select>
+                          </Field>
+                          <div className="section-label">
+                            PREAMBLE <span>Packages & fonts</span>
+                          </div>
+                          <textarea
+                            className="latex-input preamble-input"
+                            aria-label="LaTeX preamble"
+                            value={draft.preamble}
+                            spellCheck={false}
+                            maxLength={MAX_LOCAL_PREAMBLE_CHARACTERS}
+                            onChange={(e) =>
+                              setDraft({ ...draft, preamble: e.target.value })
+                            }
+                          />
+                          <p className="field-hint">
+                            패키지·매크로·글꼴 설정은 여기에 입력하세요.
+                            XeLaTeX에서는 unicode-math와 setmathfont를 사용할 수
+                            있습니다.
+                          </p>
+                          {desktop ? (
+                            <p
+                              className={`tex-status ${texCapabilities?.available ? "ready" : ""}`}
+                              aria-label="Local LaTeX status"
+                            >
+                              {texDetectionError ||
+                                (texCapabilities
+                                  ? texCapabilities.available
+                                    ? "Installed LaTeX is ready"
+                                    : texCapabilities.message ||
+                                      texCapabilities.sandbox.reason ||
+                                      "로컬 LaTeX을 사용할 수 없습니다."
+                                  : "Checking installed LaTeX…")}
+                            </p>
+                          ) : (
+                            <p className="field-hint">
+                              저장된 결과는 웹에서도 볼 수 있습니다. 컴파일은
+                              SciSlide 데스크톱 앱에서 사용할 수 있습니다.
+                            </p>
+                          )}
+                          <button
+                            className="button compile-button"
+                            disabled={
+                              !desktop ||
+                              !texCapabilities?.available ||
+                              !texCapabilities.engines.some(
+                                (e) => e.id === draft.engine,
+                              ) ||
+                              compileBusy
+                            }
+                            onClick={() => void compileEquation()}
+                          >
+                            <Sigma size={14} />
+                            {compileBusy ? "Compiling…" : "Compile with LaTeX"}
+                          </button>
+                          {compileBusy && (
+                            <button
+                              className="text-button"
+                              onClick={() => {
+                                const id = compileJob.current;
+                                compileJob.current = null;
+                                setCompileBusy(false);
+                                if (id) void desktop?.cancelCompile(id);
+                              }}
+                            >
+                              Cancel compile
+                            </button>
+                          )}
+                          {!!draftTexRender?.warnings.length && (
+                            <p className="field-hint">
+                              {draftTexRender.warnings.join(" · ")}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      <div
+                        className={`equation-preview ${draftError ? "error" : ""}`}
+                        aria-label="Equation preview"
+                      >
+                        {draftError ? (
+                          <span>{draftError}</span>
+                        ) : (
+                          <div dangerouslySetInnerHTML={{ __html: draftSvg }} />
+                        )}
+                        {draftBusy && <small>Rendering…</small>}
+                      </div>
+                      {draftFallbackCount > 0 && !draftBusy && (
+                        <p className="math-fallback-note">
+                          일부 기호는 STIX Two의 벡터 글자로 보완했습니다.
+                        </p>
+                      )}
+                      <button
+                        className="button apply-button"
+                        disabled={draftBusy || compileBusy || !!draftError}
+                        onClick={() => void applyEquation()}
+                      >
+                        <Check size={15} /> Apply equation
+                      </button>
                     </div>
+                    <div className="inspector-section">
+                      <div className="section-label">TYPOGRAPHY</div>
+                      {draft.renderer === "mathjax" && (
+                        <>
+                          <Field label="Math font">
+                            <select
+                              aria-label="Math font"
+                              value={draft.font}
+                              onChange={(e) =>
+                                setDraft({
+                                  ...draft,
+                                  font: e.target.value as EquationDraft["font"],
+                                })
+                              }
+                            >
+                              {FONT_OPTIONS.map((f) => (
+                                <option key={f.id} value={f.id}>
+                                  {f.label}
+                                </option>
+                              ))}
+                            </select>
+                          </Field>
+                          <p className="field-hint">
+                            {
+                              FONT_OPTIONS.find((f) => f.id === draft.font)
+                                ?.description
+                            }
+                          </p>
+                        </>
+                      )}
+                      <div className="field-row">
+                        <Field label="Size">
+                          <input
+                            aria-label="Equation size"
+                            type="number"
+                            min="12"
+                            max="180"
+                            value={draft.size}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                size: Math.max(
+                                  12,
+                                  Math.min(180, Number(e.target.value)),
+                                ),
+                              })
+                            }
+                          />
+                        </Field>
+                        <Field label="Color">
+                          <div className="color-field">
+                            <input
+                              aria-label="Equation color"
+                              type="color"
+                              value={draft.color}
+                              onChange={(e) =>
+                                setDraft({ ...draft, color: e.target.value })
+                              }
+                            />
+                            <span>{draft.color.toUpperCase()}</span>
+                          </div>
+                        </Field>
+                      </div>
+                      {draft.renderer === "local-latex" && (
+                        <p className="field-hint">
+                          크기를 바꾸려면 Size → Compile → Apply 순서로
+                          반영하세요.
+                        </p>
+                      )}
+                      <button
+                        className="text-button"
+                        disabled={draft.renderer === "local-latex"}
+                        onClick={() =>
+                          updateObject(object.id, (o) => {
+                            if (o.type === "equation") o.style = {};
+                          })
+                        }
+                      >
+                        Use deck typography
+                      </button>
+                    </div>
+                  </>
+                )}
+                {object.type === "text" && (
+                  <div className="inspector-section">
+                    <div className="section-label">CONTENT & TYPE</div>
                     <textarea
-                      ref={sourceRef}
-                      className="latex-input"
-                      aria-label="LaTeX source"
-                      value={draft.latex}
-                      spellCheck={false}
-                      maxLength={MAX_EQUATION_SOURCE_CHARACTERS}
+                      id="text-content"
+                      aria-label="Text content"
+                      aria-describedby="inline-math-hint"
+                      className="text-input"
+                      value={object.text}
                       onChange={(e) =>
-                        setDraft({ ...draft, latex: e.target.value })
+                        updateObject(
+                          object.id,
+                          (o) => {
+                            if (o.type === "text") o.text = e.target.value;
+                          },
+                          "text-" + object.id,
+                        )
                       }
                     />
-                    <button
-                      className="math-library-button"
-                      onClick={() => setShowMathLibrary(true)}
-                      hidden={draft.renderer === "local-latex"}
-                    >
-                      <span>
-                        <Check size={12} /> AMS fonts & symbols
-                      </span>
-                      <span>
-                        Packages & examples <ChevronRight size={12} />
-                      </span>
-                    </button>
-                    {draft.renderer === "local-latex" && (
-                      <div className="local-tex-panel">
-                        <Field label="TeX engine">
-                          <select
-                            aria-label="TeX engine"
-                            value={draft.engine}
-                            onChange={(e) =>
-                              setDraft({
-                                ...draft,
-                                engine: e.target
-                                  .value as EquationDraft["engine"],
-                              })
-                            }
-                          >
-                            <option value="latex">
-                              LaTeX · Classic math fonts
-                            </option>
-                            <option value="xelatex">
-                              XeLaTeX · OpenType math fonts
-                            </option>
-                          </select>
-                        </Field>
-                        <div className="section-label">
-                          PREAMBLE <span>Packages & fonts</span>
-                        </div>
-                        <textarea
-                          className="latex-input preamble-input"
-                          aria-label="LaTeX preamble"
-                          value={draft.preamble}
-                          spellCheck={false}
-                          maxLength={MAX_LOCAL_PREAMBLE_CHARACTERS}
-                          onChange={(e) =>
-                            setDraft({ ...draft, preamble: e.target.value })
-                          }
-                        />
-                        <p className="field-hint">
-                          패키지·매크로·글꼴 설정은 여기에 입력하세요.
-                          XeLaTeX에서는 unicode-math와 setmathfont를 사용할 수
-                          있습니다.
-                        </p>
-                        {desktop ? (
-                          <p
-                            className={`tex-status ${texCapabilities?.available ? "ready" : ""}`}
-                            aria-label="Local LaTeX status"
-                          >
-                            {texDetectionError ||
-                              (texCapabilities
-                                ? texCapabilities.available
-                                  ? "Installed LaTeX is ready"
-                                  : texCapabilities.message ||
-                                    texCapabilities.sandbox.reason ||
-                                    "로컬 LaTeX을 사용할 수 없습니다."
-                                : "Checking installed LaTeX…")}
-                          </p>
-                        ) : (
-                          <p className="field-hint">
-                            저장된 결과는 웹에서도 볼 수 있습니다. 컴파일은
-                            SciSlide 데스크톱 앱에서 사용할 수 있습니다.
-                          </p>
-                        )}
-                        <button
-                          className="button compile-button"
-                          disabled={
-                            !desktop ||
-                            !texCapabilities?.available ||
-                            !texCapabilities.engines.some(
-                              (e) => e.id === draft.engine,
-                            ) ||
-                            compileBusy
-                          }
-                          onClick={() => void compileEquation()}
-                        >
-                          <Sigma size={14} />
-                          {compileBusy ? "Compiling…" : "Compile with LaTeX"}
-                        </button>
-                        {compileBusy && (
-                          <button
-                            className="text-button"
-                            onClick={() => {
-                              const id = compileJob.current;
-                              compileJob.current = null;
-                              setCompileBusy(false);
-                              if (id) void desktop?.cancelCompile(id);
-                            }}
-                          >
-                            Cancel compile
-                          </button>
-                        )}
-                        {!!draftTexRender?.warnings.length && (
-                          <p className="field-hint">
-                            {draftTexRender.warnings.join(" · ")}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    <div
-                      className={`equation-preview ${draftError ? "error" : ""}`}
-                      aria-label="Equation preview"
-                    >
-                      {draftError ? (
-                        <span>{draftError}</span>
-                      ) : (
-                        <div dangerouslySetInnerHTML={{ __html: draftSvg }} />
-                      )}
-                      {draftBusy && <small>Rendering…</small>}
-                    </div>
-                    {draftFallbackCount > 0 && !draftBusy && (
-                      <p className="math-fallback-note">
-                        일부 기호는 STIX Two의 벡터 글자로 보완했습니다.
-                      </p>
-                    )}
-                    <button
-                      className="button apply-button"
-                      disabled={draftBusy || compileBusy || !!draftError}
-                      onClick={() => void applyEquation()}
-                    >
-                      <Check size={15} /> Apply equation
-                    </button>
-                  </div>
-                  <div className="inspector-section">
-                    <div className="section-label">TYPOGRAPHY</div>
-                    {draft.renderer === "mathjax" && (
-                      <>
-                        <Field label="Math font">
-                          <select
-                            aria-label="Math font"
-                            value={draft.font}
-                            onChange={(e) =>
-                              setDraft({
-                                ...draft,
-                                font: e.target.value as EquationDraft["font"],
-                              })
-                            }
-                          >
-                            {FONT_OPTIONS.map((f) => (
-                              <option key={f.id} value={f.id}>
-                                {f.label}
-                              </option>
-                            ))}
-                          </select>
-                        </Field>
-                        <p className="field-hint">
-                          {
-                            FONT_OPTIONS.find((f) => f.id === draft.font)
-                              ?.description
-                          }
-                        </p>
-                      </>
-                    )}
+                    <p id="inline-math-hint" className="field-hint">
+                      Inline math: <code>{"$\\chi$"}</code> or{" "}
+                      <code>{"\\(\\chi\\)"}</code>.{" Use "}
+                      <code>{"\\$"}</code> for a dollar sign.
+                    </p>
                     <div className="field-row">
                       <Field label="Size">
                         <input
-                          aria-label="Equation size"
+                          aria-label="Text size"
                           type="number"
-                          min="12"
+                          min="8"
                           max="180"
-                          value={draft.size}
+                          value={object.fontSize}
                           onChange={(e) =>
-                            setDraft({
-                              ...draft,
-                              size: Math.max(
-                                12,
-                                Math.min(180, Number(e.target.value)),
-                              ),
+                            updateObject(
+                              object.id,
+                              (o) => {
+                                if (o.type === "text")
+                                  o.fontSize = Math.max(
+                                    8,
+                                    Math.min(180, Number(e.target.value)),
+                                  );
+                              },
+                              "textsize",
+                            )
+                          }
+                        />
+                      </Field>
+                      <Field label="Weight">
+                        <select
+                          value={object.fontWeight}
+                          onChange={(e) =>
+                            updateObject(object.id, (o) => {
+                              if (o.type === "text")
+                                o.fontWeight = Number(e.target.value);
+                            })
+                          }
+                        >
+                          <option value="400">Regular</option>
+                          <option value="500">Medium</option>
+                          <option value="600">Semibold</option>
+                          <option value="700">Bold</option>
+                        </select>
+                      </Field>
+                    </div>
+                    <div className="field-row">
+                      <Field label="Color">
+                        <input
+                          aria-label="Text color"
+                          type="color"
+                          value={object.color}
+                          onChange={(e) =>
+                            updateObject(object.id, (o) => {
+                              if (o.type === "text") o.color = e.target.value;
                             })
                           }
                         />
                       </Field>
-                      <Field label="Color">
-                        <div className="color-field">
-                          <input
-                            aria-label="Equation color"
-                            type="color"
-                            value={draft.color}
-                            onChange={(e) =>
-                              setDraft({ ...draft, color: e.target.value })
-                            }
-                          />
-                          <span>{draft.color.toUpperCase()}</span>
-                        </div>
+                      <Field label="Alignment">
+                        <select
+                          value={object.align}
+                          onChange={(e) =>
+                            updateObject(object.id, (o) => {
+                              if (o.type === "text")
+                                o.align = e.target.value as TextObject["align"];
+                            })
+                          }
+                        >
+                          <option value="left">Left</option>
+                          <option value="center">Center</option>
+                          <option value="right">Right</option>
+                        </select>
                       </Field>
                     </div>
-                    {draft.renderer === "local-latex" && (
-                      <p className="field-hint">
-                        크기를 바꾸려면 Size → Compile → Apply 순서로
-                        반영하세요.
-                      </p>
+                  </div>
+                )}
+                {object.type === "shape" && (
+                  <div className="inspector-section">
+                    <div className="section-label">APPEARANCE</div>
+                    <div className="field-row">
+                      {!isLineShape(object) && (
+                        <Field label="Fill">
+                          <input
+                            aria-label="Shape fill"
+                            type="color"
+                            value={
+                              object.fill === "none" ? "#dcf2eb" : object.fill
+                            }
+                            disabled={object.fill === "none"}
+                            onChange={(e) =>
+                              updateObject(object.id, (o) => {
+                                if (o.type === "shape") o.fill = e.target.value;
+                              })
+                            }
+                          />
+                        </Field>
+                      )}
+                      <Field label="Stroke">
+                        <input
+                          aria-label="Shape stroke"
+                          type="color"
+                          value={
+                            object.stroke === "none" ? "#259f87" : object.stroke
+                          }
+                          onChange={(e) =>
+                            updateObject(object.id, (o) => {
+                              if (o.type === "shape") o.stroke = e.target.value;
+                            })
+                          }
+                        />
+                      </Field>
+                    </div>
+                    {!isLineShape(object) && (
+                      <label className="drawing-checkbox">
+                        <input
+                          type="checkbox"
+                          aria-label="No shape fill"
+                          checked={object.fill === "none"}
+                          onChange={(e) =>
+                            updateObject(object.id, (o) => {
+                              if (o.type === "shape")
+                                o.fill = e.target.checked ? "none" : "#dcf2eb";
+                            })
+                          }
+                        />
+                        No fill (transparent)
+                      </label>
                     )}
+                    <Field label="Stroke width">
+                      <input
+                        type="number"
+                        aria-label="Shape stroke width"
+                        min="0"
+                        max="20"
+                        value={object.strokeWidth}
+                        onChange={(e) =>
+                          updateObject(object.id, (o) => {
+                            if (o.type === "shape")
+                              o.strokeWidth = Math.max(
+                                0,
+                                Math.min(20, Number(e.target.value)),
+                              );
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field label="Line style">
+                      <select
+                        aria-label="Shape line style"
+                        value={object.strokeStyle ?? "solid"}
+                        onChange={(e) =>
+                          updateObject(object.id, (o) => {
+                            if (o.type === "shape")
+                              o.strokeStyle = e.target
+                                .value as ShapeObject["strokeStyle"];
+                          })
+                        }
+                      >
+                        <option value="solid">Solid</option>
+                        <option value="dashed">Dashed</option>
+                        <option value="dotted">Dotted</option>
+                      </select>
+                    </Field>
+                    {isLineShape(object) && (
+                      <>
+                        <Field label="Arrowheads">
+                          <select
+                            aria-label="Arrowheads"
+                            value={`${object.startArrow ? "1" : "0"}${(object.endArrow ?? object.shape === "arrow") ? "1" : "0"}`}
+                            onChange={(e) =>
+                              updateObject(object.id, (o) => {
+                                if (o.type === "shape") {
+                                  o.startArrow = e.target.value[0] === "1";
+                                  o.endArrow = e.target.value[1] === "1";
+                                }
+                              })
+                            }
+                          >
+                            <option value="00">None</option>
+                            <option value="10">Start</option>
+                            <option value="01">End</option>
+                            <option value="11">Both</option>
+                          </select>
+                        </Field>
+                        <p className="field-hint">
+                          Drag either endpoint to edit the line. Hold Shift for
+                          45° angles.
+                          {object.groupId ? " Ungroup to edit endpoints." : ""}
+                        </p>
+                        {(["start", "end"] as const).map((endpoint) => (
+                          <div className="field-row" key={endpoint}>
+                            {(["x", "y"] as const).map((axis) => (
+                              <Field
+                                label={`${endpoint === "start" ? "Start" : "End"} ${axis.toUpperCase()}`}
+                                key={axis}
+                              >
+                                <input
+                                  aria-label={`Line ${endpoint} ${axis}`}
+                                  type="number"
+                                  disabled={
+                                    !!object.groupId ||
+                                    isObjectLocked(object, slide.objects)
+                                  }
+                                  value={numeric(
+                                    lineWorldEndpoints(object)[endpoint][axis],
+                                  )}
+                                  onChange={(e) =>
+                                    updateObject(
+                                      object.id,
+                                      (o) => {
+                                        if (isLineShape(o)) {
+                                          const p =
+                                            lineWorldEndpoints(o)[endpoint];
+                                          p[axis] = Math.max(
+                                            -1_000_000,
+                                            Math.min(
+                                              1_000_000,
+                                              Number(e.target.value),
+                                            ),
+                                          );
+                                          Object.assign(
+                                            o,
+                                            moveLineEndpoint(o, endpoint, p),
+                                          );
+                                        }
+                                      },
+                                      `${endpoint}-${axis}`,
+                                    )
+                                  }
+                                />
+                              </Field>
+                            ))}
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
+                {object.type === "figure" && (
+                  <div className="inspector-section">
+                    <div className="section-label">FIGURE</div>
                     <button
-                      className="text-button"
-                      disabled={draft.renderer === "local-latex"}
-                      onClick={() =>
+                      className="button light figure-replace"
+                      disabled={!!busy || isObjectLocked(object, slide.objects)}
+                      onClick={() => {
+                        replaceFigureTarget.current = {
+                          deckId: deck.id,
+                          slideId: slide.id,
+                          objectId: object.id,
+                        };
+                        replaceFigureInput.current?.click();
+                      }}
+                    >
+                      <ImagePlus size={15} /> Replace figure
+                    </button>
+                    <FigureTools
+                      object={object}
+                      asset={deck.assets.find((a) => a.id === object.assetId)}
+                      disabled={
+                        isObjectLocked(object, slide.objects) ||
+                        !!object.groupId
+                      }
+                      onCropChange={(crop) =>
                         updateObject(object.id, (o) => {
-                          if (o.type === "equation") o.style = {};
+                          if (o.type === "figure") {
+                            if (crop) o.crop = crop;
+                            else delete o.crop;
+                          }
                         })
                       }
-                    >
-                      Use deck typography
-                    </button>
-                  </div>
-                </>
-              )}
-              {object.type === "text" && (
-                <div className="inspector-section">
-                  <div className="section-label">CONTENT & TYPE</div>
-                  <textarea
-                    id="text-content"
-                    aria-label="Text content"
-                    aria-describedby="inline-math-hint"
-                    className="text-input"
-                    value={object.text}
-                    onChange={(e) =>
-                      updateObject(
-                        object.id,
-                        (o) => {
-                          if (o.type === "text") o.text = e.target.value;
-                        },
-                        "text-" + object.id,
-                      )
-                    }
-                  />
-                  <p id="inline-math-hint" className="field-hint">
-                    Inline math: <code>{"$\\chi$"}</code> or{" "}
-                    <code>{"\\(\\chi\\)"}</code>.{" Use "}
-                    <code>{"\\$"}</code> for a dollar sign.
-                  </p>
-                  <div className="field-row">
-                    <Field label="Size">
-                      <input
-                        aria-label="Text size"
-                        type="number"
-                        min="8"
-                        max="180"
-                        value={object.fontSize}
+                      onCreateInset={(crop) => {
+                        const inset = createFigureInset(
+                          { ...object, crop },
+                          deck.assets.find((a) => a.id === object.assetId)!,
+                          deck.slideSize,
+                        );
+                        change((d) =>
+                          d.slides
+                            .find((s) => s.id === slide.id)!
+                            .objects.push(inset),
+                        );
+                        setSelected([inset.id]);
+                      }}
+                    />
+                    <Field label="Description">
+                      <textarea
+                        value={object.alt}
                         onChange={(e) =>
                           updateObject(
                             object.id,
                             (o) => {
-                              if (o.type === "text")
-                                o.fontSize = Math.max(
-                                  8,
-                                  Math.min(180, Number(e.target.value)),
-                                );
+                              if (o.type === "figure") o.alt = e.target.value;
                             },
-                            "textsize",
+                            "alt",
                           )
                         }
                       />
                     </Field>
-                    <Field label="Weight">
-                      <select
-                        value={object.fontWeight}
-                        onChange={(e) =>
-                          updateObject(object.id, (o) => {
-                            if (o.type === "text")
-                              o.fontWeight = Number(e.target.value);
-                          })
-                        }
-                      >
-                        <option value="400">Regular</option>
-                        <option value="500">Medium</option>
-                        <option value="600">Semibold</option>
-                        <option value="700">Bold</option>
-                      </select>
-                    </Field>
+                    <p className="field-hint">
+                      Original asset is bundled with the deck.
+                    </p>
                   </div>
-                  <div className="field-row">
-                    <Field label="Color">
-                      <input
-                        aria-label="Text color"
-                        type="color"
-                        value={object.color}
+                )}
+                {object.type === "video" && (
+                  <div className="inspector-section">
+                    <div className="section-label">VIDEO</div>
+                    <Field label="Description">
+                      <textarea
+                        aria-label="Video description"
+                        value={object.alt}
                         onChange={(e) =>
-                          updateObject(object.id, (o) => {
-                            if (o.type === "text") o.color = e.target.value;
-                          })
+                          updateObject(
+                            object.id,
+                            (o) => {
+                              if (o.type === "video") o.alt = e.target.value;
+                            },
+                            "video-alt",
+                          )
                         }
                       />
                     </Field>
-                    <Field label="Alignment">
-                      <select
-                        value={object.align}
-                        onChange={(e) =>
-                          updateObject(object.id, (o) => {
-                            if (o.type === "text")
-                              o.align = e.target.value as TextObject["align"];
-                          })
-                        }
-                      >
-                        <option value="left">Left</option>
-                        <option value="center">Center</option>
-                        <option value="right">Right</option>
-                      </select>
-                    </Field>
-                  </div>
-                </div>
-              )}
-              {object.type === "shape" && (
-                <div className="inspector-section">
-                  <div className="section-label">APPEARANCE</div>
-                  <div className="field-row">
-                    {!isLineShape(object) && (
-                      <Field label="Fill">
-                        <input
-                          aria-label="Shape fill"
-                          type="color"
-                          value={
-                            object.fill === "none" ? "#dcf2eb" : object.fill
-                          }
-                          disabled={object.fill === "none"}
-                          onChange={(e) =>
-                            updateObject(object.id, (o) => {
-                              if (o.type === "shape") o.fill = e.target.value;
-                            })
-                          }
-                        />
-                      </Field>
-                    )}
-                    <Field label="Stroke">
-                      <input
-                        aria-label="Shape stroke"
-                        type="color"
-                        value={
-                          object.stroke === "none" ? "#259f87" : object.stroke
-                        }
-                        onChange={(e) =>
-                          updateObject(object.id, (o) => {
-                            if (o.type === "shape") o.stroke = e.target.value;
-                          })
-                        }
-                      />
-                    </Field>
-                  </div>
-                  {!isLineShape(object) && (
-                    <label className="drawing-checkbox">
-                      <input
-                        type="checkbox"
-                        aria-label="No shape fill"
-                        checked={object.fill === "none"}
-                        onChange={(e) =>
-                          updateObject(object.id, (o) => {
-                            if (o.type === "shape")
-                              o.fill = e.target.checked ? "none" : "#dcf2eb";
-                          })
-                        }
-                      />
-                      No fill (transparent)
-                    </label>
-                  )}
-                  <Field label="Stroke width">
-                    <input
-                      type="number"
-                      aria-label="Shape stroke width"
-                      min="0"
-                      max="20"
-                      value={object.strokeWidth}
-                      onChange={(e) =>
-                        updateObject(object.id, (o) => {
-                          if (o.type === "shape")
-                            o.strokeWidth = Math.max(
-                              0,
-                              Math.min(20, Number(e.target.value)),
-                            );
-                        })
-                      }
-                    />
-                  </Field>
-                  <Field label="Line style">
-                    <select
-                      aria-label="Shape line style"
-                      value={object.strokeStyle ?? "solid"}
-                      onChange={(e) =>
-                        updateObject(object.id, (o) => {
-                          if (o.type === "shape")
-                            o.strokeStyle = e.target
-                              .value as ShapeObject["strokeStyle"];
-                        })
-                      }
-                    >
-                      <option value="solid">Solid</option>
-                      <option value="dashed">Dashed</option>
-                      <option value="dotted">Dotted</option>
-                    </select>
-                  </Field>
-                  {isLineShape(object) && (
-                    <>
-                      <Field label="Arrowheads">
-                        <select
-                          aria-label="Arrowheads"
-                          value={`${object.startArrow ? "1" : "0"}${(object.endArrow ?? object.shape === "arrow") ? "1" : "0"}`}
-                          onChange={(e) =>
-                            updateObject(object.id, (o) => {
-                              if (o.type === "shape") {
-                                o.startArrow = e.target.value[0] === "1";
-                                o.endArrow = e.target.value[1] === "1";
-                              }
-                            })
-                          }
-                        >
-                          <option value="00">None</option>
-                          <option value="10">Start</option>
-                          <option value="01">End</option>
-                          <option value="11">Both</option>
-                        </select>
-                      </Field>
-                      <p className="field-hint">
-                        Drag either endpoint to edit the line. Hold Shift for
-                        45° angles.
-                        {object.groupId ? " Ungroup to edit endpoints." : ""}
-                      </p>
-                      {(["start", "end"] as const).map((endpoint) => (
-                        <div className="field-row" key={endpoint}>
-                          {(["x", "y"] as const).map((axis) => (
-                            <Field
-                              label={`${endpoint === "start" ? "Start" : "End"} ${axis.toUpperCase()}`}
-                              key={axis}
-                            >
-                              <input
-                                aria-label={`Line ${endpoint} ${axis}`}
-                                type="number"
-                                disabled={
-                                  !!object.groupId ||
-                                  isObjectLocked(object, slide.objects)
-                                }
-                                value={numeric(
-                                  lineWorldEndpoints(object)[endpoint][axis],
-                                )}
-                                onChange={(e) =>
-                                  updateObject(
-                                    object.id,
-                                    (o) => {
-                                      if (isLineShape(o)) {
-                                        const p =
-                                          lineWorldEndpoints(o)[endpoint];
-                                        p[axis] = Math.max(
-                                          -1_000_000,
-                                          Math.min(
-                                            1_000_000,
-                                            Number(e.target.value),
-                                          ),
-                                        );
-                                        Object.assign(
-                                          o,
-                                          moveLineEndpoint(o, endpoint, p),
-                                        );
-                                      }
-                                    },
-                                    `${endpoint}-${axis}`,
-                                  )
-                                }
-                              />
-                            </Field>
-                          ))}
-                        </div>
-                      ))}
-                    </>
-                  )}
-                </div>
-              )}
-              {object.type === "figure" && (
-                <div className="inspector-section">
-                  <div className="section-label">FIGURE</div>
-                  <button
-                    className="button light figure-replace"
-                    disabled={!!busy || isObjectLocked(object, slide.objects)}
-                    onClick={() => {
-                      replaceFigureTarget.current = {
-                        deckId: deck.id,
-                        slideId: slide.id,
-                        objectId: object.id,
-                      };
-                      replaceFigureInput.current?.click();
-                    }}
-                  >
-                    <ImagePlus size={15} /> Replace figure
-                  </button>
-                  <FigureTools
-                    object={object}
-                    asset={deck.assets.find((a) => a.id === object.assetId)}
-                    disabled={
-                      isObjectLocked(object, slide.objects) || !!object.groupId
-                    }
-                    onCropChange={(crop) =>
-                      updateObject(object.id, (o) => {
-                        if (o.type === "figure") {
-                          if (crop) o.crop = crop;
-                          else delete o.crop;
-                        }
-                      })
-                    }
-                    onCreateInset={(crop) => {
-                      const inset = createFigureInset(
-                        { ...object, crop },
-                        deck.assets.find((a) => a.id === object.assetId)!,
-                        deck.slideSize,
-                      );
-                      change((d) =>
-                        d.slides
-                          .find((s) => s.id === slide.id)!
-                          .objects.push(inset),
-                      );
-                      setSelected([inset.id]);
-                    }}
-                  />
-                  <Field label="Description">
-                    <textarea
-                      value={object.alt}
-                      onChange={(e) =>
-                        updateObject(
-                          object.id,
-                          (o) => {
-                            if (o.type === "figure") o.alt = e.target.value;
-                          },
-                          "alt",
-                        )
-                      }
-                    />
-                  </Field>
-                  <p className="field-hint">
-                    Original asset is bundled with the deck.
-                  </p>
-                </div>
-              )}
-              {object.type === "video" && (
-                <div className="inspector-section">
-                  <div className="section-label">VIDEO</div>
-                  <Field label="Description">
-                    <textarea
-                      aria-label="Video description"
-                      value={object.alt}
-                      onChange={(e) =>
-                        updateObject(
-                          object.id,
-                          (o) => {
-                            if (o.type === "video") o.alt = e.target.value;
-                          },
-                          "video-alt",
-                        )
-                      }
-                    />
-                  </Field>
-                  {(["autoplay", "loop", "muted", "controls"] as const).map(
-                    (property) => (
-                      <label className="check-field" key={property}>
-                        <input
-                          type="checkbox"
-                          checked={object[property]}
-                          onChange={(e) =>
-                            updateObject(object.id, (o) => {
-                              if (o.type === "video")
-                                o[property] = e.target.checked;
-                            })
-                          }
-                        />
-                        <span>
-                          {
+                    {(["autoplay", "loop", "muted", "controls"] as const).map(
+                      (property) => (
+                        <label className="check-field" key={property}>
+                          <input
+                            type="checkbox"
+                            checked={object[property]}
+                            onChange={(e) =>
+                              updateObject(object.id, (o) => {
+                                if (o.type === "video")
+                                  o[property] = e.target.checked;
+                              })
+                            }
+                          />
+                          <span>
                             {
-                              autoplay: "Play when revealed",
-                              loop: "Loop video",
-                              muted: "Mute audio",
-                              controls: "Show playback controls",
-                            }[property]
-                          }
-                        </span>
-                      </label>
-                    ),
-                  )}
-                  <p className="field-hint">
-                    {deck.assets.find((a) => a.id === object.assetId)?.mime ||
-                      "Embedded video"}
-                    {" · "}
-                    {(() => {
-                      const asset = deck.assets.find(
-                        (a) => a.id === object.assetId,
-                      );
-                      if (!asset) return "Missing asset";
-                      const bytes = Math.floor(
-                        ((asset.dataUrl.length -
-                          asset.dataUrl.indexOf(",") -
-                          1) *
-                          3) /
-                          4,
-                      );
-                      return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-                    })()}
-                    <br />
-                    Stored inside the deck. Videos play only in Present mode.
-                    Codec support depends on your browser or Electron; autoplay
-                    may require a click.
-                  </p>
-                </div>
-              )}
-              <div className="inspector-section">
-                <div className="section-label">APPEARANCE STEPS</div>
-                <Field label="Reveal step (0 = visible at start)">
-                  <input
-                    aria-label="Object reveal step"
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={object.build?.step ?? 0}
-                    onChange={(e) =>
-                      updateObject(
-                        object.id,
-                        (o) => {
-                          o.build = {
-                            step: Math.max(
-                              0,
-                              Math.min(100, Math.round(Number(e.target.value))),
-                            ),
-                            effect: o.build?.effect ?? "appear",
-                            durationMs: o.build?.durationMs ?? 300,
-                          };
-                        },
-                        "build-step",
-                      )
-                    }
-                  />
-                </Field>
-                <div className="field-row">
-                  <Field label="Effect">
-                    <select
-                      aria-label="Object reveal effect"
-                      value={object.build?.effect ?? "appear"}
-                      onChange={(e) =>
-                        updateObject(object.id, (o) => {
-                          o.build = {
-                            step: o.build?.step ?? 0,
-                            effect: e.target.value as "appear" | "fade",
-                            durationMs: o.build?.durationMs ?? 300,
-                          };
-                        })
-                      }
-                    >
-                      <option value="appear">Appear</option>
-                      <option value="fade">Fade in</option>
-                    </select>
-                  </Field>
-                  <Field label="Duration (ms)">
+                              {
+                                autoplay: "Play when revealed",
+                                loop: "Loop video",
+                                muted: "Mute audio",
+                                controls: "Show playback controls",
+                              }[property]
+                            }
+                          </span>
+                        </label>
+                      ),
+                    )}
+                    <p className="field-hint">
+                      {deck.assets.find((a) => a.id === object.assetId)?.mime ||
+                        "Embedded video"}
+                      {" · "}
+                      {(() => {
+                        const asset = deck.assets.find(
+                          (a) => a.id === object.assetId,
+                        );
+                        if (!asset) return "Missing asset";
+                        const bytes = Math.floor(
+                          ((asset.dataUrl.length -
+                            asset.dataUrl.indexOf(",") -
+                            1) *
+                            3) /
+                            4,
+                        );
+                        return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+                      })()}
+                      <br />
+                      Stored inside the deck. Videos play only in Present mode.
+                      Codec support depends on your browser or Electron;
+                      autoplay may require a click.
+                    </p>
+                  </div>
+                )}
+                <div className="inspector-section">
+                  <div className="section-label">APPEARANCE STEPS</div>
+                  <Field label="Reveal step (0 = visible at start)">
                     <input
-                      aria-label="Object reveal duration"
+                      aria-label="Object reveal step"
                       type="number"
-                      min="100"
-                      max="3000"
-                      step="100"
-                      disabled={object.build?.effect !== "fade"}
-                      value={object.build?.durationMs ?? 300}
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={object.build?.step ?? 0}
                       onChange={(e) =>
                         updateObject(
                           object.id,
                           (o) => {
                             o.build = {
-                              step: o.build?.step ?? 0,
-                              effect: o.build?.effect ?? "appear",
-                              durationMs: Math.max(
-                                100,
-                                Math.min(3000, Number(e.target.value)),
+                              step: Math.max(
+                                0,
+                                Math.min(
+                                  100,
+                                  Math.round(Number(e.target.value)),
+                                ),
                               ),
+                              effect: o.build?.effect ?? "appear",
+                              durationMs: o.build?.durationMs ?? 300,
                             };
                           },
-                          "build-duration",
+                          "build-step",
                         )
                       }
                     />
                   </Field>
-                </div>
-                <p className="field-hint">
-                  Present reveals each step with Next or an arrow key. Objects
-                  with the same step appear together. Editor and PDF/SVG exports
-                  show all steps.
-                </p>
-              </div>
-              <div className="inspector-section">
-                <div className="section-label">POSITION & SIZE</div>
-                {object.groupId && (
-                  <p className="field-hint">
-                    Position moves the whole group. Ungroup to resize or rotate
-                    a member.
-                  </p>
-                )}
-                <div className="field-row">
-                  {(["x", "y"] as const).map((k) => (
-                    <Field key={k} label={k.toUpperCase()}>
-                      <input
-                        aria-label={`Object ${k}`}
-                        type="number"
-                        disabled={isObjectLocked(object, slide.objects)}
-                        value={numeric(object.transform[k])}
+                  <div className="field-row">
+                    <Field label="Effect">
+                      <select
+                        aria-label="Object reveal effect"
+                        value={object.build?.effect ?? "appear"}
                         onChange={(e) =>
-                          updatePosition(k, Number(e.target.value))
+                          updateObject(object.id, (o) => {
+                            o.build = {
+                              step: o.build?.step ?? 0,
+                              effect: e.target.value as "appear" | "fade",
+                              durationMs: o.build?.durationMs ?? 300,
+                            };
+                          })
                         }
-                      />
+                      >
+                        <option value="appear">Appear</option>
+                        <option value="fade">Fade in</option>
+                      </select>
                     </Field>
-                  ))}
-                </div>
-                <div className="field-row">
-                  {(["width", "height"] as const).map((k) => (
-                    <Field key={k} label={k === "width" ? "W" : "H"}>
+                    <Field label="Duration (ms)">
                       <input
-                        aria-label={`Object ${k}`}
+                        aria-label="Object reveal duration"
                         type="number"
-                        min={isLineShape(object) ? 0.01 : 1}
-                        step={isLineShape(object) ? 0.01 : 1}
-                        disabled={
-                          object.type === "equation" ||
-                          !!object.groupId ||
-                          isObjectLocked(object, slide.objects)
-                        }
-                        value={
-                          isLineShape(object)
-                            ? Number(object.transform[k].toFixed(4))
-                            : numeric(
-                                object.type === "equation"
-                                  ? (metrics[object.id]?.[k] ??
-                                      object.transform[k])
-                                  : object.transform[k],
-                              )
-                        }
+                        min="100"
+                        max="3000"
+                        step="100"
+                        disabled={object.build?.effect !== "fade"}
+                        value={object.build?.durationMs ?? 300}
                         onChange={(e) =>
                           updateObject(
                             object.id,
                             (o) => {
-                              o.transform[k] = Math.max(
-                                isLineShape(o) ? 0.01 : 1,
-                                Number(e.target.value),
-                              );
+                              o.build = {
+                                step: o.build?.step ?? 0,
+                                effect: o.build?.effect ?? "appear",
+                                durationMs: Math.max(
+                                  100,
+                                  Math.min(3000, Number(e.target.value)),
+                                ),
+                              };
                             },
-                            k,
+                            "build-duration",
                           )
                         }
                       />
                     </Field>
-                  ))}
+                  </div>
+                  <p className="field-hint">
+                    Present reveals each step with Next or an arrow key. Objects
+                    with the same step appear together. Editor and PDF/SVG
+                    exports show all steps.
+                  </p>
                 </div>
-                <div className="field-row">
-                  <Field label="Rotation">
-                    <input
-                      aria-label="Object rotation"
-                      type="number"
+                <div className="inspector-section">
+                  <div className="section-label">POSITION & SIZE</div>
+                  {object.groupId && (
+                    <p className="field-hint">
+                      Position moves the whole group. Ungroup to resize or
+                      rotate a member.
+                    </p>
+                  )}
+                  <div className="field-row">
+                    {(["x", "y"] as const).map((k) => (
+                      <Field key={k} label={k.toUpperCase()}>
+                        <input
+                          aria-label={`Object ${k}`}
+                          type="number"
+                          disabled={isObjectLocked(object, slide.objects)}
+                          value={numeric(object.transform[k])}
+                          onChange={(e) =>
+                            updatePosition(k, Number(e.target.value))
+                          }
+                        />
+                      </Field>
+                    ))}
+                  </div>
+                  <div className="field-row">
+                    {(["width", "height"] as const).map((k) => (
+                      <Field key={k} label={k === "width" ? "W" : "H"}>
+                        <input
+                          aria-label={`Object ${k}`}
+                          type="number"
+                          min={isLineShape(object) ? 0.01 : 1}
+                          step={isLineShape(object) ? 0.01 : 1}
+                          disabled={
+                            object.type === "equation" ||
+                            !!object.groupId ||
+                            isObjectLocked(object, slide.objects)
+                          }
+                          value={
+                            isLineShape(object)
+                              ? Number(object.transform[k].toFixed(4))
+                              : numeric(
+                                  object.type === "equation"
+                                    ? (metrics[object.id]?.[k] ??
+                                        object.transform[k])
+                                    : object.transform[k],
+                                )
+                          }
+                          onChange={(e) =>
+                            updateObject(
+                              object.id,
+                              (o) => {
+                                o.transform[k] = Math.max(
+                                  isLineShape(o) ? 0.01 : 1,
+                                  Number(e.target.value),
+                                );
+                              },
+                              k,
+                            )
+                          }
+                        />
+                      </Field>
+                    ))}
+                  </div>
+                  <div className="field-row">
+                    <Field label="Rotation">
+                      <input
+                        aria-label="Object rotation"
+                        type="number"
+                        disabled={
+                          !!object.groupId ||
+                          isObjectLocked(object, slide.objects)
+                        }
+                        value={object.transform.rotation}
+                        onChange={(e) =>
+                          updateObject(
+                            object.id,
+                            (o) => {
+                              o.transform.rotation = Number(e.target.value);
+                            },
+                            "rotation",
+                          )
+                        }
+                      />
+                    </Field>
+                    <Field label="Opacity">
+                      <input
+                        aria-label="Object opacity"
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={numeric(object.opacity * 100)}
+                        onChange={(e) =>
+                          updateObject(
+                            object.id,
+                            (o) => {
+                              o.opacity =
+                                Math.max(
+                                  0,
+                                  Math.min(100, Number(e.target.value)),
+                                ) / 100;
+                            },
+                            "opacity",
+                          )
+                        }
+                      />
+                    </Field>
+                  </div>
+                </div>
+                <div className="inspector-section">
+                  <div className="section-label">ARRANGE</div>
+                  <div className="selection-arrange-grid">
+                    {(
+                      [
+                        "left",
+                        "center",
+                        "right",
+                        "top",
+                        "middle",
+                        "bottom",
+                      ] as SelectionAlignment[]
+                    ).map((where) => (
+                      <button
+                        key={where}
+                        disabled={
+                          !editableSelection(slide.objects, selected).length
+                        }
+                        onClick={() => align(where)}
+                      >
+                        {where[0].toUpperCase() + where.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="arrange-buttons">
+                    <button
                       disabled={
-                        !!object.groupId ||
-                        isObjectLocked(object, slide.objects)
+                        selectionLayoutUnits(slide.objects, selected, metrics)
+                          .length < 3
                       }
-                      value={object.transform.rotation}
-                      onChange={(e) =>
-                        updateObject(
-                          object.id,
-                          (o) => {
-                            o.transform.rotation = Number(e.target.value);
-                          },
-                          "rotation",
+                      onClick={() => distribute("x")}
+                    >
+                      Equal horizontal gaps
+                    </button>
+                    <button
+                      disabled={
+                        selectionLayoutUnits(slide.objects, selected, metrics)
+                          .length < 3
+                      }
+                      onClick={() => distribute("y")}
+                    >
+                      Equal vertical gaps
+                    </button>
+                  </div>
+                  <div className="arrange-buttons">
+                    <button
+                      onClick={groupSelection}
+                      disabled={
+                        editableSelection(slide.objects, selected).length < 2
+                      }
+                    >
+                      <Group size={14} /> Group
+                    </button>
+                    <button
+                      onClick={ungroupSelection}
+                      disabled={
+                        !slide.objects.some(
+                          (o) =>
+                            selected.includes(o.id) &&
+                            o.groupId &&
+                            !isObjectLocked(o, slide.objects),
                         )
+                      }
+                    >
+                      <Ungroup size={14} /> Ungroup
+                    </button>
+                  </div>
+                  <div className="arrange-buttons">
+                    <button onClick={() => layer(false)}>
+                      <Layers size={14} /> Send back
+                    </button>
+                    <button onClick={() => layer(true)}>
+                      <Layers size={14} /> Bring front
+                    </button>
+                  </div>
+                  <div className="object-actions">
+                    <button onClick={duplicateObjects}>
+                      <Copy size={14} /> Duplicate
+                    </button>
+                    <button
+                      className="danger"
+                      disabled={object.locked}
+                      onClick={deleteObjects}
+                    >
+                      <Trash2 size={14} /> Delete
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="inspector-empty">
+                  <MousePointer2 size={27} />
+                  <h2>Your ideas, precisely placed.</h2>
+                  <p>
+                    Select an object to edit its content, typography, and
+                    position.
+                  </p>
+                </div>
+                <div className="inspector-section">
+                  <div className="section-label">SLIDE</div>
+                  <Field label="Slide title">
+                    <input
+                      value={slide.title}
+                      onChange={(e) =>
+                        change((d) => {
+                          d.slides.find((s) => s.id === slide.id)!.title =
+                            e.target.value;
+                        }, "slidetitle")
                       }
                     />
                   </Field>
-                  <Field label="Opacity">
+                  <Field label="Background">
+                    <div className="color-field">
+                      <input
+                        aria-label="Slide background"
+                        type="color"
+                        value={slide.background}
+                        onChange={(e) =>
+                          change((d) => {
+                            d.slides.find(
+                              (s) => s.id === slide.id,
+                            )!.background = e.target.value;
+                          })
+                        }
+                      />
+                      <span>{slide.background.toUpperCase()}</span>
+                    </div>
+                  </Field>
+                </div>
+                <div className="inspector-section">
+                  <div className="section-label">DECK TYPOGRAPHY</div>
+                  <Field label="Default math font">
+                    <select
+                      aria-label="Default math font"
+                      value={deck.theme.equation.fontSetId}
+                      onChange={(e) =>
+                        change((d) => {
+                          d.theme.equation.fontSetId = e.target
+                            .value as NonNullable<
+                            EquationObject["style"]["fontSetId"]
+                          >;
+                        })
+                      }
+                    >
+                      {FONT_OPTIONS.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <p className="field-hint">
+                    Applies to equations using deck typography.
+                  </p>
+                </div>
+                <div className="inspector-section">
+                  <div className="section-label">PAGE NUMBERS</div>
+                  <label className="check-field">
                     <input
-                      aria-label="Object opacity"
+                      type="checkbox"
+                      checked={pageNumbers.enabled}
+                      onChange={(e) =>
+                        change((d) => {
+                          d.pageNumbers = {
+                            ...pageNumbers,
+                            enabled: e.target.checked,
+                          };
+                        })
+                      }
+                    />
+                    <span>Show page numbers</span>
+                  </label>
+                  <div className="field-row">
+                    <Field label="Position">
+                      <select
+                        aria-label="Page number position"
+                        disabled={!pageNumbers.enabled}
+                        value={pageNumbers.position}
+                        onChange={(e) =>
+                          change((d) => {
+                            d.pageNumbers = {
+                              ...pageNumbers,
+                              position: e.target
+                                .value as typeof pageNumbers.position,
+                            };
+                          })
+                        }
+                      >
+                        <option value="bottom-left">Bottom left</option>
+                        <option value="bottom-center">Bottom center</option>
+                        <option value="bottom-right">Bottom right</option>
+                      </select>
+                    </Field>
+                    <Field label="Format">
+                      <select
+                        aria-label="Page number format"
+                        disabled={!pageNumbers.enabled}
+                        value={pageNumbers.format}
+                        onChange={(e) =>
+                          change((d) => {
+                            d.pageNumbers = {
+                              ...pageNumbers,
+                              format: e.target
+                                .value as typeof pageNumbers.format,
+                            };
+                          })
+                        }
+                      >
+                        <option value="number">1</option>
+                        <option value="number-total">Number / last page</option>
+                      </select>
+                    </Field>
+                  </div>
+                  <Field label="Start numbering at">
+                    <input
+                      aria-label="Page number starting value"
                       type="number"
                       min="0"
-                      max="100"
-                      value={numeric(object.opacity * 100)}
-                      onChange={(e) =>
-                        updateObject(
-                          object.id,
-                          (o) => {
-                            o.opacity =
-                              Math.max(
-                                0,
-                                Math.min(100, Number(e.target.value)),
-                              ) / 100;
-                          },
-                          "opacity",
-                        )
-                      }
-                    />
-                  </Field>
-                </div>
-              </div>
-              <div className="inspector-section">
-                <div className="section-label">ARRANGE</div>
-                <div className="selection-arrange-grid">
-                  {(
-                    [
-                      "left",
-                      "center",
-                      "right",
-                      "top",
-                      "middle",
-                      "bottom",
-                    ] as SelectionAlignment[]
-                  ).map((where) => (
-                    <button
-                      key={where}
-                      disabled={
-                        !editableSelection(slide.objects, selected).length
-                      }
-                      onClick={() => align(where)}
-                    >
-                      {where[0].toUpperCase() + where.slice(1)}
-                    </button>
-                  ))}
-                </div>
-                <div className="arrange-buttons">
-                  <button
-                    disabled={
-                      selectionLayoutUnits(slide.objects, selected, metrics)
-                        .length < 3
-                    }
-                    onClick={() => distribute("x")}
-                  >
-                    Equal horizontal gaps
-                  </button>
-                  <button
-                    disabled={
-                      selectionLayoutUnits(slide.objects, selected, metrics)
-                        .length < 3
-                    }
-                    onClick={() => distribute("y")}
-                  >
-                    Equal vertical gaps
-                  </button>
-                </div>
-                <div className="arrange-buttons">
-                  <button
-                    onClick={groupSelection}
-                    disabled={
-                      editableSelection(slide.objects, selected).length < 2
-                    }
-                  >
-                    <Group size={14} /> Group
-                  </button>
-                  <button
-                    onClick={ungroupSelection}
-                    disabled={
-                      !slide.objects.some(
-                        (o) =>
-                          selected.includes(o.id) &&
-                          o.groupId &&
-                          !isObjectLocked(o, slide.objects),
-                      )
-                    }
-                  >
-                    <Ungroup size={14} /> Ungroup
-                  </button>
-                </div>
-                <div className="arrange-buttons">
-                  <button onClick={() => layer(false)}>
-                    <Layers size={14} /> Send back
-                  </button>
-                  <button onClick={() => layer(true)}>
-                    <Layers size={14} /> Bring front
-                  </button>
-                </div>
-                <div className="object-actions">
-                  <button onClick={duplicateObjects}>
-                    <Copy size={14} /> Duplicate
-                  </button>
-                  <button
-                    className="danger"
-                    disabled={object.locked}
-                    onClick={deleteObjects}
-                  >
-                    <Trash2 size={14} /> Delete
-                  </button>
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="inspector-empty">
-                <MousePointer2 size={27} />
-                <h2>Your ideas, precisely placed.</h2>
-                <p>
-                  Select an object to edit its content, typography, and
-                  position.
-                </p>
-              </div>
-              <div className="inspector-section">
-                <div className="section-label">SLIDE</div>
-                <Field label="Slide title">
-                  <input
-                    value={slide.title}
-                    onChange={(e) =>
-                      change((d) => {
-                        d.slides.find((s) => s.id === slide.id)!.title =
-                          e.target.value;
-                      }, "slidetitle")
-                    }
-                  />
-                </Field>
-                <Field label="Background">
-                  <div className="color-field">
-                    <input
-                      aria-label="Slide background"
-                      type="color"
-                      value={slide.background}
-                      onChange={(e) =>
-                        change((d) => {
-                          d.slides.find((s) => s.id === slide.id)!.background =
-                            e.target.value;
-                        })
-                      }
-                    />
-                    <span>{slide.background.toUpperCase()}</span>
-                  </div>
-                </Field>
-              </div>
-              <div className="inspector-section">
-                <div className="section-label">DECK TYPOGRAPHY</div>
-                <Field label="Default math font">
-                  <select
-                    aria-label="Default math font"
-                    value={deck.theme.equation.fontSetId}
-                    onChange={(e) =>
-                      change((d) => {
-                        d.theme.equation.fontSetId = e.target
-                          .value as NonNullable<
-                          EquationObject["style"]["fontSetId"]
-                        >;
-                      })
-                    }
-                  >
-                    {FONT_OPTIONS.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.label}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <p className="field-hint">
-                  Applies to equations using deck typography.
-                </p>
-              </div>
-              <div className="inspector-section">
-                <div className="section-label">PAGE NUMBERS</div>
-                <label className="check-field">
-                  <input
-                    type="checkbox"
-                    checked={pageNumbers.enabled}
-                    onChange={(e) =>
-                      change((d) => {
-                        d.pageNumbers = {
-                          ...pageNumbers,
-                          enabled: e.target.checked,
-                        };
-                      })
-                    }
-                  />
-                  <span>Show page numbers</span>
-                </label>
-                <div className="field-row">
-                  <Field label="Position">
-                    <select
-                      aria-label="Page number position"
+                      max="10000"
+                      step="1"
                       disabled={!pageNumbers.enabled}
-                      value={pageNumbers.position}
+                      value={pageNumbers.startAt}
                       onChange={(e) =>
                         change((d) => {
                           d.pageNumbers = {
                             ...pageNumbers,
-                            position: e.target
-                              .value as typeof pageNumbers.position,
-                          };
-                        })
-                      }
-                    >
-                      <option value="bottom-left">Bottom left</option>
-                      <option value="bottom-center">Bottom center</option>
-                      <option value="bottom-right">Bottom right</option>
-                    </select>
-                  </Field>
-                  <Field label="Format">
-                    <select
-                      aria-label="Page number format"
-                      disabled={!pageNumbers.enabled}
-                      value={pageNumbers.format}
-                      onChange={(e) =>
-                        change((d) => {
-                          d.pageNumbers = {
-                            ...pageNumbers,
-                            format: e.target.value as typeof pageNumbers.format,
-                          };
-                        })
-                      }
-                    >
-                      <option value="number">1</option>
-                      <option value="number-total">Number / last page</option>
-                    </select>
-                  </Field>
-                </div>
-                <Field label="Start numbering at">
-                  <input
-                    aria-label="Page number starting value"
-                    type="number"
-                    min="0"
-                    max="10000"
-                    step="1"
-                    disabled={!pageNumbers.enabled}
-                    value={pageNumbers.startAt}
-                    onChange={(e) =>
-                      change((d) => {
-                        d.pageNumbers = {
-                          ...pageNumbers,
-                          startAt: Math.max(
-                            0,
-                            Math.min(10000, Math.round(Number(e.target.value))),
-                          ),
-                        };
-                      }, "page-start")
-                    }
-                  />
-                </Field>
-                <label className="check-field">
-                  <input
-                    type="checkbox"
-                    disabled={!pageNumbers.enabled}
-                    checked={pageNumbers.hideFirst}
-                    onChange={(e) =>
-                      change((d) => {
-                        d.pageNumbers = {
-                          ...pageNumbers,
-                          hideFirst: e.target.checked,
-                        };
-                      })
-                    }
-                  />
-                  <span>Hide number on the first slide</span>
-                </label>
-                <div className="field-row">
-                  <Field label="Size">
-                    <input
-                      aria-label="Page number size"
-                      type="number"
-                      min="4"
-                      max="200"
-                      disabled={!pageNumbers.enabled}
-                      value={pageNumbers.fontSize}
-                      onChange={(e) =>
-                        change((d) => {
-                          d.pageNumbers = {
-                            ...pageNumbers,
-                            fontSize: Math.max(
-                              4,
-                              Math.min(200, Number(e.target.value)),
+                            startAt: Math.max(
+                              0,
+                              Math.min(
+                                10000,
+                                Math.round(Number(e.target.value)),
+                              ),
                             ),
                           };
-                        }, "page-size")
+                        }, "page-start")
                       }
                     />
                   </Field>
-                  <Field label="Color">
+                  <label className="check-field">
                     <input
-                      aria-label="Page number color"
-                      type="color"
+                      type="checkbox"
                       disabled={!pageNumbers.enabled}
-                      value={pageNumbers.color}
+                      checked={pageNumbers.hideFirst}
                       onChange={(e) =>
                         change((d) => {
                           d.pageNumbers = {
                             ...pageNumbers,
-                            color: e.target.value,
+                            hideFirst: e.target.checked,
                           };
                         })
                       }
                     />
-                  </Field>
+                    <span>Hide number on the first slide</span>
+                  </label>
+                  <div className="field-row">
+                    <Field label="Size">
+                      <input
+                        aria-label="Page number size"
+                        type="number"
+                        min="4"
+                        max="200"
+                        disabled={!pageNumbers.enabled}
+                        value={pageNumbers.fontSize}
+                        onChange={(e) =>
+                          change((d) => {
+                            d.pageNumbers = {
+                              ...pageNumbers,
+                              fontSize: Math.max(
+                                4,
+                                Math.min(200, Number(e.target.value)),
+                              ),
+                            };
+                          }, "page-size")
+                        }
+                      />
+                    </Field>
+                    <Field label="Color">
+                      <input
+                        aria-label="Page number color"
+                        type="color"
+                        disabled={!pageNumbers.enabled}
+                        value={pageNumbers.color}
+                        onChange={(e) =>
+                          change((d) => {
+                            d.pageNumbers = {
+                              ...pageNumbers,
+                              color: e.target.value,
+                            };
+                          })
+                        }
+                      />
+                    </Field>
+                  </div>
+                  <p className="field-hint">
+                    Applies to every slide and static exports. Hiding the first
+                    number keeps the remaining numbering unchanged.
+                  </p>
                 </div>
-                <p className="field-hint">
-                  Applies to every slide and static exports. Hiding the first
-                  number keeps the remaining numbering unchanged.
-                </p>
-              </div>
-            </>
-          )}
-          <div className="inspector-tip">
-            <span className="tip-icon">
-              <Atom size={16} />
-            </span>
-            <p>
-              Equations stay editable.
-              <br />
-              <strong>Source first. Vector always.</strong>
-            </p>
+              </>
+            )}
+            <div className="inspector-tip">
+              <span className="tip-icon">
+                <Atom size={16} />
+              </span>
+              <p>
+                Equations stay editable.
+                <br />
+                <strong>Source first. Vector always.</strong>
+              </p>
+            </div>
           </div>
         </aside>
       </div>

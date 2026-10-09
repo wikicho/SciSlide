@@ -1,6 +1,6 @@
 # Development
 
-SciSlide uses a shared React/TypeScript editor with an Electron desktop host. This page describes the **0.6.2** development workflow. See [Architecture and roadmap](Architecture-and-Roadmap) for module boundaries and planned work.
+SciSlide uses a shared React/TypeScript editor with an Electron desktop host. This page describes the **0.6.2** development workflow and current source, including unreleased P1 shortcut changes. See [Architecture and roadmap](Architecture-and-Roadmap) for module boundaries and planned work.
 
 ## Prerequisites and setup
 
@@ -80,18 +80,20 @@ Separate platform workflows also exist. Workflow artifacts are retained for 30 d
 
 ## Useful source locations
 
-| Location                                         | Responsibility                                                         |
-| ------------------------------------------------ | ---------------------------------------------------------------------- |
-| `src/App.tsx`, `src/components/`                 | Editor interaction, scenes, dialogs and presenter display.             |
-| `src/lib/model.ts`, `src/lib/persistence.ts`     | Versioned model, migration, `.scislide` archives and asset validation. |
-| `src/lib/equations.ts`, `src/lib/inline-math.ts` | MathJax and shared text/math layout.                                   |
-| `src/lib/export.ts`                              | SVG scenes, PDF export and resource/font preflight.                    |
-| `src/lib/ai-draft.ts`, `desktop/ai.mjs`          | Draft validation/insertion and installed-provider adapters.            |
-| `desktop/main.cjs`, `desktop/preload.cjs`        | Native window/file/menu handling and narrow renderer API.              |
-| `desktop/tex.mjs`                                | Installed TeX detection and isolated Linux compiler worker.            |
-| `scripts/`, `.github/workflows/`, `tests/`       | Packaging, release automation and regression tests.                    |
+| Location                                                       | Responsibility                                                         |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `src/App.tsx`, `src/components/`                               | Editor interaction, scenes, dialogs and presenter display.             |
+| `desktop/keyboard-shortcuts.json`, `src/lib/shortcuts.ts`      | Shared command metadata and typed platform/context matching.           |
+| `src/lib/playback-shortcuts.ts`, `src/lib/object-traversal.ts` | Playback ownership/repeat policy and canvas object traversal.          |
+| `src/lib/model.ts`, `src/lib/persistence.ts`                   | Versioned model, migration, `.scislide` archives and asset validation. |
+| `src/lib/equations.ts`, `src/lib/inline-math.ts`               | MathJax and shared text/math layout.                                   |
+| `src/lib/export.ts`                                            | SVG scenes, PDF export and resource/font preflight.                    |
+| `src/lib/ai-draft.ts`, `desktop/ai.mjs`                        | Draft validation/insertion and installed-provider adapters.            |
+| `desktop/main.cjs`, `desktop/preload.cjs`                      | Native window/file/menu handling and narrow renderer API.              |
+| `desktop/tex.mjs`                                              | Installed TeX detection and isolated Linux compiler worker.            |
+| `scripts/`, `.github/workflows/`, `tests/`                     | Packaging, release automation and regression tests.                    |
 
-App version **0.6.2** and document format **0.5.0** are separate version numbers. Preserve source/archive migrations and saved-result validation when extending the model. Loading or exporting a document must not execute imported TeX source.
+Package version **0.6.2** and document format **0.5.0** are separate version numbers. Current source P1 shortcuts have not yet been packaged as a new release. Native menus receive live focus/selection/busy enabled states from the same availability rules as renderer dispatch. The optional availability bridge accepts only bounded fixed command IDs and booleans from the trusted main editor frame. Focused text retains native clipboard/history; disabled application commands do not dispatch. Physical-platform validation of native application/window roles remains required. Preserve source/archive migrations and saved-result validation when extending the model. Loading or exporting a document must not execute imported TeX source.
 
 ## Wiki maintenance
 

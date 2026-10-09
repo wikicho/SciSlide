@@ -1,6 +1,6 @@
 # Editing slides
 
-These instructions describe SciSlide **0.6.2**. Start with [[Getting-Started]] or see [[Keyboard-Shortcuts]] for platform-specific commands.
+These instructions describe SciSlide **0.6.2** and explicitly marked **unreleased source additions**. Published installers remain unchanged. Start with [[Getting-Started]] or see [[Keyboard-Shortcuts]] for platform-specific commands.
 
 ## Slides and layouts
 
@@ -16,13 +16,17 @@ In **Keynote White**, select a single Photo placeholder frame, icon or label bef
 
 Double-click text or select it and press **Enter** to edit on the canvas. **Enter** creates a new line; **⌘/Ctrl+Enter** or clicking outside applies one undoable edit; **Escape** cancels. The Inspector also offers text and formatting controls. Inline LaTeX syntax is described in [[Equations-and-Fonts]].
 
-Click an object to select it; **Shift+click** selects several. macOS also supports **Command+click**. Drag to move, use the lower-right handle to resize, or enter geometry in the Inspector. Canvas arrow keys move selected objects by **1 px**; **Shift+Arrow** moves them by **10 px**.
+Click an object to select it; **Shift+click** selects several. macOS also supports **Command+click**. Drag to move, use the lower-right handle to resize, or enter geometry in the Inspector. Canvas arrow keys move selected objects by **1 logical document unit**; **Shift+Arrow** moves them by **10**.
+
+**Unreleased:** with the canvas focused, Tab/Shift+Tab selects eligible objects in back-to-front stacking order, treating a flat group as one unit and skipping hidden/locked content. At either end, Tab follows normal UI focus order into surrounding controls. A polite canvas status announces selected object names/counts.
 
 **Copy / Cut / Paste** reuses objects across slides or decks in the same editor session. Copies have independent IDs and carry their figures/videos. The object clipboard is internal to SciSlide; text fields keep their ordinary clipboard behavior. Locked objects can be copied but are protected from cutting.
 
 ## Arrange, layers and groups
 
-Use **OBJECTS & LAYERS** in the Inspector to select covered or hidden objects, rename them, change visibility/locks or change their stacking order.
+Use **OBJECTS & LAYERS** to select covered or hidden objects, rename them, change visibility/locks or change their stacking order.
+
+**Unreleased:** Inspector and Objects & Layers have independent visibility. Their toolbar buttons and [shortcuts](Keyboard-Shortcuts) focus the pane when shown and return to the canvas when hidden. Text fields, dialogs and playback retain input ownership. Double-clicking an equation reveals Inspector before focusing its source.
 
 The toolbar and **ARRANGE** controls align objects left/center/right/top/middle/bottom. A single object or group aligns to slide margins; several align within their combined bounds. **Distribute horizontally / vertically** equalizes edge gaps between at least three unlocked objects/groups, keeping the first and last in place.
 

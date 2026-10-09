@@ -7,6 +7,8 @@ const vm = require("node:vm");
 const { JSDOM } = require("jsdom");
 const {
   buildMenuTemplate,
+  setMenuCommandAvailability,
+  isMenuCommandEnabled,
   dispatchMenuCommand,
   protectTextComposition,
 } = require("./menu-commands.cjs");
@@ -17,6 +19,7 @@ const {
   allowsFullscreen,
   isAllowedRequest,
   validateSaveDocument,
+  validateCommandAvailability,
   validateSaveExport,
   validateCompile,
   resolveAsset,
@@ -45,6 +48,8 @@ const macCommands = [
   ["Zoom in", "Shift+.", "zoomIn"],
   ["Zoom out", "Shift+,", "zoomOut"],
   ["Fit slide", "Alt+0", "fitSlide"],
+  ["Inspector", "Alt+I", "toggleInspector"],
+  ["Object list", "Shift+L", "toggleObjectList"],
 ];
 
 // Electron's keyboard_util.cc marks Plus as a shifted OEM_PLUS character;
@@ -115,6 +120,8 @@ for (const platform of ["darwin", "linux", "win32"]) {
             ["Align text left", "Control+L", "alignTextLeft"],
             ["Align text center", "Control+E", "alignTextCenter"],
             ["Align text right", "Control+R", "alignTextRight"],
+            ["Inspector", "Control+Alt+I", "toggleInspector"],
+            ["Object list", "Control+Shift+L", "toggleObjectList"],
           ]),
       ...(platform === "win32"
         ? [
@@ -262,7 +269,7 @@ test("macOS accelerators reserve Keynote presentation without PDF, text or navig
   );
   for (const accelerator of accelerators)
     assert.match(accelerator, /^Command\+/);
-  assert.equal(accelerators.length, 37);
+  assert.equal(accelerators.length, 39);
 });
 
 test("PowerPoint and Impress menus keep canonical bindings distinct and scoped", () => {
@@ -489,6 +496,10 @@ test("native accelerators do not consume composing text or AltGraph characters",
   key({ key: "AltGraph", type: "keyDown" });
   events.get("blur")();
   key({ key: "s", type: "keyDown", control: true });
+  key({ key: "d", type: "keyDown", control: true, isAutoRepeat: true });
+  key({ key: "d", type: "keyUp", control: true, isAutoRepeat: false });
+  key({ key: "Enter", type: "keyDown", isComposing: true, isAutoRepeat: true });
+  key({ key: "Enter", type: "keyUp", isComposing: false, isAutoRepeat: false });
   assert.deepEqual(ignored, [
     true,
     false,
@@ -498,6 +509,10 @@ test("native accelerators do not consume composing text or AltGraph characters",
     false,
     true,
     false,
+    false,
+    true,
+    false,
+    true,
     false,
   ]);
 });
@@ -534,7 +549,7 @@ test("the sandbox preload and host allowlists forward all platform menu actions 
       if (typeof item.click === "function") item.click();
   }
   const expectedCommands = new Set(received);
-  assert.equal(expectedCommands.size, 40);
+  assert.equal(expectedCommands.size, 42);
   assert.deepEqual(expectedCommands, COMMANDS);
   const types = await fs.readFile(
     path.join(__dirname, "../src/lib/desktop.ts"),
@@ -893,4 +908,154 @@ test("custom app resources reject file symlinks outside dist", async (context) =
     throw error;
   }
   await assert.rejects(resolveAsset("scislide://app/leak.txt", dist));
+});
+
+test("native menu availability accepts only bounded fixed boolean states", () => {
+  const items = new Map(
+    buildMenuTemplate("darwin", () => {})
+      .flatMap((menu) => menu.submenu ?? [])
+      .filter((item) => item.id)
+      .map((item) => [item.id, item]),
+  );
+  const menu = { getMenuItemById: (command) => items.get(command) };
+  assert.deepEqual(
+    validateCommandAvailability({ save: false, showShortcuts: true }),
+    { save: false, showShortcuts: true },
+  );
+  for (const value of [
+    null,
+    [],
+    true,
+    { save: "false" },
+    { executeShell: true },
+    { constructor: false },
+    JSON.parse('{"__proto__":true}'),
+    { moveSlideUp: true },
+  ]) {
+    assert.throws(() => validateCommandAvailability(value));
+    assert.throws(() => setMenuCommandAvailability(menu, value));
+  }
+  assert.equal(isMenuCommandEnabled(menu, "save"), true);
+  setMenuCommandAvailability(menu, { save: false, showShortcuts: true });
+  assert.equal(isMenuCommandEnabled(menu, "save"), false);
+  assert.equal(isMenuCommandEnabled(menu, "showShortcuts"), true);
+  assert.equal(isMenuCommandEnabled(menu, "presenterView"), false);
+  assert.equal(isMenuCommandEnabled(menu, "executeShell"), false);
+  assert.equal(isMenuCommandEnabled(null, "save"), false);
+  setMenuCommandAvailability(menu, { save: true });
+  assert.equal(isMenuCommandEnabled(menu, "save"), true);
+  assert.equal(isMenuCommandEnabled(menu, "showShortcuts"), true);
+});
+
+test("sandbox preload validates availability before forwarding fixed menu state", async () => {
+  let api;
+  const invoked = [];
+  vm.runInNewContext(
+    await fs.readFile(path.join(__dirname, "preload.cjs"), "utf8"),
+    {
+      process: { platform: "darwin" },
+      require: () => ({
+        contextBridge: {
+          exposeInMainWorld: (_name, value) => {
+            api = value;
+          },
+        },
+        ipcRenderer: {
+          invoke: async (channel, value) => invoked.push([channel, value]),
+        },
+      }),
+    },
+  );
+  for (const value of [
+    undefined,
+    null,
+    [],
+    5,
+    { save: "false" },
+    { run: true },
+    { moveSlideUp: true },
+    JSON.parse('{"__proto__":false}'),
+  ]) {
+    assert.throws(() => api.setCommandAvailability(value));
+  }
+  assert.equal(invoked.length, 0);
+  await api.setCommandAvailability({
+    save: false,
+    toggleInspector: true,
+    showShortcuts: true,
+  });
+  assert.equal(invoked[0][0], "scislide:set-command-availability");
+  assert.deepEqual(JSON.parse(JSON.stringify(invoked[0][1])), {
+    save: false,
+    toggleInspector: true,
+    showShortcuts: true,
+  });
+});
+
+test("availability IPC trusts only the main editor and disabled native commands cannot dispatch", async () => {
+  const handlers = new Map();
+  const sent = [];
+  const items = new Map(
+    buildMenuTemplate("linux", () => {})
+      .flatMap((menu) => menu.submenu ?? [])
+      .filter((item) => item.id)
+      .map((item) => [item.id, item]),
+  );
+  const menu = { getMenuItemById: (command) => items.get(command) };
+  const frame = { url: "scislide://app/" };
+  const contents = {
+    mainFrame: frame,
+    getURL: () => frame.url,
+    isDestroyed: () => false,
+    send: (channel, command) => sent.push([channel, command]),
+  };
+  const window = { webContents: contents, isDestroyed: () => false };
+  const electron = {
+    app: {
+      setName() {},
+      enableSandbox() {},
+      isPackaged: true,
+      requestSingleInstanceLock: () => false,
+      quit() {},
+    },
+    protocol: { registerSchemesAsPrivileged() {} },
+    Menu: { getApplicationMenu: () => menu },
+    ipcMain: { handle: (channel, action) => handlers.set(channel, action) },
+  };
+  const context = vm.createContext({
+    require: (name) => (name === "electron" ? electron : require(name)),
+    process: { platform: "linux", env: {} },
+    URL,
+    __dirname,
+    testWindow: window,
+  });
+  vm.runInContext(
+    await fs.readFile(path.join(__dirname, "main.cjs"), "utf8"),
+    context,
+  );
+  vm.runInContext("mainWindow = testWindow; registerIpc();", context);
+  const update = handlers.get("scislide:set-command-availability");
+  const trusted = { sender: contents, senderFrame: frame };
+  update(trusted, { save: false, showShortcuts: true });
+  assert.equal(items.get("save").enabled, false);
+  assert.throws(
+    () => update({ ...trusted, sender: {} }, { save: true }),
+    /main window/,
+  );
+  assert.throws(
+    () =>
+      update({ ...trusted, senderFrame: { url: frame.url } }, { save: true }),
+    /main window/,
+  );
+  frame.url = "https://example.com/";
+  assert.throws(() => update(trusted, { save: true }), /main window/);
+  frame.url = "scislide://app/#presenter=12345678901234567890";
+  assert.throws(() => update(trusted, { save: true }), /main editor/);
+  frame.url = "scislide://app/";
+  assert.throws(() => update(trusted, { executeShell: true }), /fixed command/);
+  vm.runInContext('sendCommand("save"); sendCommand("executeShell");', context);
+  assert.equal(sent.length, 0);
+  update(trusted, { save: true });
+  vm.runInContext('sendCommand("save");', context);
+  assert.deepEqual(sent, [["scislide:command", "save"]]);
 });

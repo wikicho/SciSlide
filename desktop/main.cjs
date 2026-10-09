@@ -29,6 +29,8 @@ const {
 const { pdfResourcePolicy } = require("./pdf-policy.cjs");
 const {
   buildMenuTemplate,
+  setMenuCommandAvailability,
+  isMenuCommandEnabled,
   dispatchMenuCommand,
   protectTextComposition,
 } = require("./menu-commands.cjs");
@@ -117,9 +119,13 @@ function validateSender(event) {
     );
 }
 
-function ipc(channel, action) {
+function ipc(channel, action, { editorOnly = false } = {}) {
   ipcMain.handle(channel, (event, ...args) => {
     validateSender(event);
+    if (editorOnly && new URL(event.senderFrame.url).hash)
+      throw new Error(
+        "Command availability is only available to the main editor.",
+      );
     return action(...args);
   });
 }
@@ -199,6 +205,13 @@ async function chosenDestination(selectedPath, extension) {
 }
 
 function registerIpc() {
+  ipc(
+    "scislide:set-command-availability",
+    (states) => {
+      setMenuCommandAvailability(Menu.getApplicationMenu(), states);
+    },
+    { editorOnly: true },
+  );
   ipc("scislide:open-document", () =>
     withFileOperation(async () => {
       const result = await dialog.showOpenDialog(mainWindow, {
@@ -290,7 +303,13 @@ function registerIpc() {
 }
 
 function sendCommand(command) {
-  if (!COMMANDS.has(command) || !mainWindow || mainWindow.isDestroyed()) return;
+  if (
+    !COMMANDS.has(command) ||
+    !mainWindow ||
+    mainWindow.isDestroyed() ||
+    !isMenuCommandEnabled(Menu.getApplicationMenu(), command)
+  )
+    return;
   const contents = mainWindow.webContents;
   if (!isTrustedPage(contents.getURL(), devUrl)) return;
   void dispatchMenuCommand(contents, command);

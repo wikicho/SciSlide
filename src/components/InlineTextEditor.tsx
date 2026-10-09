@@ -81,21 +81,23 @@ export function InlineTextEditor({
           onBlur={() => finish(true)}
           onKeyDown={(event) => {
             if (
+              event.defaultPrevented ||
               composing.current ||
               event.nativeEvent.isComposing ||
-              event.keyCode === 229
+              event.keyCode === 229 ||
+              event.getModifierState("AltGraph")
             )
               return;
             if (event.key === "Escape") {
               event.preventDefault();
               event.stopPropagation();
-              finish(false);
+              if (!event.repeat) finish(false);
             } else if (
               matchesShortcut(event.nativeEvent, "finishTextEditing", platform)
             ) {
               event.preventDefault();
               event.stopPropagation();
-              finish(true);
+              if (!event.repeat) finish(true);
             }
           }}
         />

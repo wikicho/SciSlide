@@ -179,6 +179,7 @@ describe("OS-specific keyboard commands in the editor", () => {
   function enableDesktop(platform = "darwin") {
     const bridge = {
       platform,
+      setCommandAvailability: vi.fn().mockResolvedValue(undefined),
       detectTex: vi.fn().mockResolvedValue({
         available: false,
         engines: [],
@@ -1137,5 +1138,550 @@ describe("OS-specific keyboard commands in the editor", () => {
     expect(host.querySelector(".presentation-view")).toBeNull();
     await command("finishTextEditing");
     expect(host.querySelector(".presentation-view")).toBeTruthy();
+  });
+
+  it.each(["MacIntel", "Win32", "Linux x86_64"])(
+    "duplicates the focused inactive thumbnail on %s despite a lingering canvas selection",
+    async (platform) => {
+      const second = {
+        ...createBlankSlide(),
+        title: "Second",
+        notes: "The focused slide must be copied",
+        objects: [
+          {
+            ...shapeFromDrag("ellipse", { x: 400, y: 100 }, { x: 550, y: 220 }),
+            name: "Second-slide figure",
+          },
+        ],
+      };
+      deck.slides.push(second, { ...createBlankSlide(), title: "Third" });
+      await render(platform);
+      await click("Select Research panel");
+      const card = button("Slide 2: Second");
+      await act(async () => card.focus());
+      expect(
+        host
+          .querySelector('.slide-card[aria-current="true"]')
+          ?.getAttribute("data-slide-id"),
+      ).toBe(deck.slides[0].id);
+      expect(button("Select Research panel").getAttribute("aria-pressed")).toBe(
+        "true",
+      );
+      expect(
+        (
+          await key(
+            "d",
+            {
+              metaKey: platform === "MacIntel",
+              ctrlKey: platform !== "MacIntel",
+            },
+            card,
+          )
+        ).defaultPrevented,
+      ).toBe(true);
+      const changed = await persist();
+      expect(changed.slides.map((slide) => slide.title)).toEqual([
+        "First slide",
+        "Second",
+        "Second · copy",
+        "Third",
+      ]);
+      expect(changed.slides[0].objects).toEqual(deck.slides[0].objects);
+      expect(changed.slides[2]).toMatchObject({ notes: second.notes });
+      expect(changed.slides[2].objects[0]).toMatchObject({
+        name: "Second-slide figure",
+        transform: second.objects[0].transform,
+      });
+      expect(changed.slides[2].objects[0].id).not.toBe(second.objects[0].id);
+      expect(document.activeElement).toBe(button("Slide 3: Second · copy"));
+      await key(
+        "z",
+        {
+          metaKey: platform === "MacIntel",
+          ctrlKey: platform !== "MacIntel",
+        },
+        document.activeElement!,
+      );
+      expect(await persist()).toEqual(deck);
+      expect(document.activeElement?.closest(".slide-list")).toBeTruthy();
+      expect(host.contains(document.activeElement)).toBe(true);
+      expect(button("Undo").disabled).toBe(true);
+    },
+  );
+
+  it("reorders Mac thumbnails by one step or to either end without stealing text or canvas keys", async () => {
+    deck.slides.push(
+      { ...createBlankSlide(), title: "Second" },
+      { ...createBlankSlide(), title: "Third" },
+    );
+    await render("MacIntel");
+    await click("Select Research panel");
+    const options = { metaKey: true, altKey: true };
+    const notes = host.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Speaker notes"]',
+    )!;
+    expect((await key("ArrowUp", options, notes)).defaultPrevented).toBe(false);
+    expect((await key("ArrowUp", options)).defaultPrevented).toBe(false);
+    expect(await persist()).toEqual(deck);
+    const second = button("Slide 2: Second");
+    await act(async () => second.focus());
+    expect((await key("ArrowUp", options, second)).defaultPrevented).toBe(true);
+    expect((await persist()).slides.map((slide) => slide.title)).toEqual([
+      "Second",
+      "First slide",
+      "Third",
+    ]);
+    expect(document.activeElement).toBe(button("Slide 1: Second"));
+    await key("ArrowDown", options, document.activeElement!);
+    expect(await persist()).toEqual(deck);
+    expect(document.activeElement).toBe(button("Slide 2: Second"));
+    await key(
+      "ArrowDown",
+      { ...options, shiftKey: true },
+      document.activeElement!,
+    );
+    expect((await persist()).slides.map((slide) => slide.title)).toEqual([
+      "First slide",
+      "Third",
+      "Second",
+    ]);
+    expect(document.activeElement).toBe(button("Slide 3: Second"));
+    await key(
+      "ArrowUp",
+      { ...options, shiftKey: true },
+      document.activeElement!,
+    );
+    expect((await persist()).slides.map((slide) => slide.title)).toEqual([
+      "Second",
+      "First slide",
+      "Third",
+    ]);
+    expect(document.activeElement).toBe(button("Slide 1: Second"));
+    const undoCount = 4;
+    await key("ArrowUp", options, document.activeElement!);
+    await key(
+      "ArrowDown",
+      { ...options, shiftKey: true, repeat: true },
+      document.activeElement!,
+    );
+    for (let index = 0; index < undoCount; index++)
+      await key("z", { metaKey: true });
+    expect(await persist()).toEqual(deck);
+    expect(button("Undo").disabled).toBe(true);
+  });
+
+  it("traverses canvas objects back to front, treats groups as one stop, and lets Tab leave either boundary", async () => {
+    const objects = deck.slides[0].objects;
+    for (const [name, flags] of [
+      ["Hidden", { visible: false }],
+      ["Group first", { groupId: "traversal-group" }],
+      ["Hidden group member", { groupId: "traversal-group", visible: false }],
+      ["Locked", { locked: true }],
+      ["Group mate", { groupId: "traversal-group" }],
+      ["Group lock", { groupId: "locked-group", locked: true }],
+      ["Locked by group", { groupId: "locked-group" }],
+      ["Front", {}],
+    ] as const)
+      objects.push({
+        ...shapeFromDrag("rect", { x: 400, y: 150 }, { x: 500, y: 250 }),
+        name,
+        ...flags,
+      });
+    await render("MacIntel");
+    const canvas = host.querySelector<HTMLElement>(
+      '[aria-label="Slide canvas"]',
+    )!;
+    await act(async () => canvas.focus());
+    const selectedNames = () =>
+      [
+        ...host.querySelectorAll<HTMLButtonElement>(
+          '.object-layer-row:not(.hidden) .object-layer-select[aria-pressed="true"]',
+        ),
+      ]
+        .map((element) =>
+          element.getAttribute("aria-label")!.replace("Select ", ""),
+        )
+        .sort();
+    const announcement = () =>
+      host.querySelector('.canvas-footer [role="status"]')?.textContent;
+    expect((await key("Tab", {}, canvas)).defaultPrevented).toBe(true);
+    expect(selectedNames()).toEqual(["Research panel"]);
+    expect(announcement()).toBe("Selected: Research panel (1 object)");
+    expect(document.activeElement).toBe(canvas);
+    expect((await key("Tab", { repeat: true }, canvas)).defaultPrevented).toBe(
+      true,
+    );
+    expect(selectedNames()).toEqual(["Research panel"]);
+    await key("Tab", {}, canvas);
+    expect(selectedNames()).toEqual(["Group first", "Group mate"]);
+    expect(announcement()).toBe(
+      "Selected: Group first, Group mate (2 objects)",
+    );
+    expect(announcement()).not.toContain("Hidden");
+    await key("Tab", {}, canvas);
+    expect(selectedNames()).toEqual(["Front"]);
+    expect((await key("Tab", {}, canvas)).defaultPrevented).toBe(false);
+    expect(selectedNames()).toEqual(["Front"]);
+    await key("Tab", { shiftKey: true }, canvas);
+    expect(selectedNames()).toEqual(["Group first", "Group mate"]);
+    await key("Tab", { shiftKey: true }, canvas);
+    expect(selectedNames()).toEqual(["Research panel"]);
+    expect(
+      (await key("Tab", { shiftKey: true }, canvas)).defaultPrevented,
+    ).toBe(false);
+    expect(button("Undo").disabled).toBe(true);
+    expect(await persist()).toEqual(deck);
+    const notes = host.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Speaker notes"]',
+    )!;
+    expect((await key("Tab", {}, notes)).defaultPrevented).toBe(false);
+    expect(selectedNames()).toEqual(["Research panel"]);
+    await key("N", { metaKey: true, shiftKey: true });
+    const dialog = host.querySelector('[role="dialog"]')!;
+    expect((await key("Tab", {}, dialog)).defaultPrevented).toBe(false);
+    expect(selectedNames()).toEqual(["Research panel"]);
+    await click("Close slide templates");
+    await key("A", { metaKey: true, shiftKey: true });
+    await act(async () => canvas.focus());
+    await key("Tab", { shiftKey: true }, canvas);
+    expect(selectedNames()).toEqual(["Front"]);
+  });
+
+  it("reveals a hidden Inspector and focuses LaTeX source when an equation is double-clicked on the canvas", async () => {
+    const equation = structuredClone(
+      createDemoDeck().slides[0].objects.find(
+        (object) => object.type === "equation",
+      )!,
+    );
+    if (equation.type !== "equation")
+      throw new Error("Expected equation fixture");
+    const equations = await import("../src/lib/equations");
+    vi.spyOn(equations, "renderEquation").mockResolvedValue({
+      svg: '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0H20" /></svg>',
+      width: equation.transform.width,
+      height: equation.transform.height,
+    });
+    deck.slides[0].objects.push(equation);
+    await render("MacIntel");
+    await key("i", { metaKey: true, altKey: true });
+    const inspector = host.querySelector<HTMLElement>(
+      '[aria-label="Inspector panel"]',
+    )!;
+    expect(inspector.hidden).toBe(true);
+    const equationView = [
+      ...host.querySelectorAll<SVGGElement>(".slide-paper svg g[aria-label]"),
+    ].find(
+      (element) => element.getAttribute("aria-label") === equation.description,
+    )!;
+    expect(equationView).toBeTruthy();
+    await act(async () =>
+      equationView.dispatchEvent(
+        new MouseEvent("dblclick", { bubbles: true, cancelable: true }),
+      ),
+    );
+    expect(inspector.hidden).toBe(false);
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    const source = host.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="LaTeX source"]',
+    )!;
+    expect(source.value).toBe(equation.latex);
+    expect(document.activeElement).toBe(source);
+    expect(button(`Select ${equation.name}`).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(button("Undo").disabled).toBe(true);
+    expect(await persist()).toEqual(deck);
+  });
+
+  it("toggles Inspector and objects independently by keyboard, toolbar and native menu with usable focus", async () => {
+    enableDesktop();
+    await render("Linux x86_64");
+    const inspector = host.querySelector<HTMLElement>(
+      '[aria-label="Inspector panel"]',
+    )!;
+    const objects = host.querySelector<HTMLElement>(
+      '[aria-label="Objects and layers panel"]',
+    )!;
+    const canvas = host.querySelector<HTMLElement>(
+      '[aria-label="Slide canvas"]',
+    )!;
+    expect(inspector.hidden).toBe(false);
+    expect(objects.hidden).toBe(false);
+    expect(
+      (await key("i", { metaKey: true, altKey: true })).defaultPrevented,
+    ).toBe(true);
+    expect(inspector.hidden).toBe(true);
+    expect(objects.hidden).toBe(false);
+    expect(document.activeElement).toBe(canvas);
+    await key("L", { metaKey: true, shiftKey: true }, canvas);
+    expect(objects.hidden).toBe(true);
+    expect(host.querySelector<HTMLElement>("aside.inspector")?.hidden).toBe(
+      true,
+    );
+    await click("Toggle Inspector");
+    expect(inspector.hidden).toBe(false);
+    expect(objects.hidden).toBe(true);
+    expect(document.activeElement).toBe(inspector);
+    await command("toggleObjectList");
+    expect(objects.hidden).toBe(false);
+    expect(document.activeElement).toBe(objects);
+    await command("toggleInspector");
+    expect(inspector.hidden).toBe(true);
+    expect(document.activeElement).toBe(canvas);
+    await key("i", { metaKey: true, altKey: true }, canvas);
+    expect(inspector.hidden).toBe(false);
+    expect(document.activeElement).toBe(inspector);
+    expect(button("Undo").disabled).toBe(true);
+    expect(await persist()).toEqual(deck);
+  });
+
+  it("suppresses pane toggles in text, modal and busy contexts", async () => {
+    enableDesktop();
+    await render("MacIntel");
+    const inspector = host.querySelector<HTMLElement>(
+      '[aria-label="Inspector panel"]',
+    )!;
+    const objects = host.querySelector<HTMLElement>(
+      '[aria-label="Objects and layers panel"]',
+    )!;
+    const notes = host.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Speaker notes"]',
+    )!;
+    await act(async () => notes.focus());
+    expect(
+      (await key("i", { metaKey: true, altKey: true }, notes)).defaultPrevented,
+    ).toBe(false);
+    expect(
+      (await key("L", { metaKey: true, shiftKey: true }, notes))
+        .defaultPrevented,
+    ).toBe(false);
+    await command("toggleInspector");
+    await command("toggleObjectList");
+    expect(inspector.hidden).toBe(false);
+    expect(objects.hidden).toBe(false);
+    await act(async () => notes.blur());
+    await key("N", { metaKey: true, shiftKey: true });
+    const dialog = host.querySelector('[role="dialog"]')!;
+    await key("i", { metaKey: true, altKey: true }, dialog);
+    await key("L", { metaKey: true, shiftKey: true }, dialog);
+    await command("toggleInspector");
+    expect(inspector.hidden).toBe(false);
+    expect(objects.hidden).toBe(false);
+    expect(button("Toggle Inspector").disabled).toBe(true);
+    expect(button("Toggle objects and layers").disabled).toBe(true);
+    await click("Close slide templates");
+    let finish!: (value: Blob) => void;
+    vi.mocked(buildDeckArchive).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await key("s", { metaKey: true });
+    expect(host.querySelector(".app-shell")?.getAttribute("aria-busy")).toBe(
+      "true",
+    );
+    expect(button("Toggle Inspector").disabled).toBe(true);
+    expect(button("Toggle objects and layers").disabled).toBe(true);
+    await key("i", { metaKey: true, altKey: true });
+    await key("L", { metaKey: true, shiftKey: true });
+    await command("toggleInspector");
+    await command("toggleObjectList");
+    expect(inspector.hidden).toBe(false);
+    expect(objects.hidden).toBe(false);
+    await act(async () => finish(new Blob(["archive"])));
+    expect(host.querySelector(".app-shell")?.getAttribute("aria-busy")).toBe(
+      "false",
+    );
+    expect(button("Undo").disabled).toBe(true);
+    expect(await persist()).toEqual(deck);
+  });
+
+  it("uses the shared playback Escape and repeat policy in the audience window", async () => {
+    deck.slides.push({ ...createBlankSlide(), title: "Second" });
+    await render("MacIntel");
+    await key("p", { metaKey: true, altKey: true });
+    const view = host.querySelector<HTMLElement>(".presentation-view")!;
+    const counter = () =>
+      host.querySelector(".presentation-controls > span")?.textContent;
+    expect(counter()).toBe("1 / 2");
+    for (const value of ["ArrowRight", "Home", "End", "Escape", "q"])
+      expect((await key(value, { repeat: true }, view)).defaultPrevented).toBe(
+        true,
+      );
+    expect(counter()).toBe("1 / 2");
+    expect(host.querySelector(".presentation-view")).toBe(view);
+    for (const value of ["Escape", "Q", "Home", "PageDown"])
+      expect(
+        (await key(value, { shiftKey: true }, view)).defaultPrevented,
+      ).toBe(false);
+    expect(host.querySelector(".presentation-view")).toBe(view);
+    const input = document.createElement("input");
+    const video = document.createElement("video");
+    const audio = document.createElement("audio");
+    const media = document.createElement("div");
+    media.className = "video-player";
+    const mediaButton = document.createElement("button");
+    media.append(mediaButton);
+    view.append(input, video, audio, media);
+    for (const control of [input, video, audio, mediaButton])
+      for (const value of ["Escape", "ArrowRight", " ", "Enter"])
+        expect((await key(value, {}, control)).defaultPrevented).toBe(false);
+    expect(counter()).toBe("1 / 2");
+    expect(host.querySelector(".presentation-view")).toBe(view);
+    const next = button("Next step or slide");
+    expect((await key(" ", {}, next)).defaultPrevented).toBe(false);
+    expect((await key("Enter", {}, next)).defaultPrevented).toBe(false);
+    await key("ArrowRight", { shiftKey: true }, view);
+    expect(counter()).toBe("2 / 2");
+    expect((await key("Escape", {}, next)).defaultPrevented).toBe(true);
+    expect(host.querySelector(".presentation-view")).toBeNull();
+    expect(await persist()).toEqual(deck);
+  });
+
+  it("ignores repeated canvas deletion and locked nudges without adding undo entries", async () => {
+    await render("MacIntel");
+    await click("Select Research panel");
+    for (const value of ["Delete", "Backspace"])
+      expect((await key(value, { repeat: true })).defaultPrevented).toBe(true);
+    expect(await persist()).toEqual(deck);
+    expect(button("Undo").disabled).toBe(true);
+    await key("l", { metaKey: true });
+    const locked = await persist();
+    for (const value of ["ArrowRight", "ArrowDown", "Delete", "Backspace"])
+      await key(value);
+    expect(await persist()).toEqual(locked);
+    await key("z", { metaKey: true });
+    expect(await persist()).toEqual(deck);
+    expect(button("Undo").disabled).toBe(true);
+  });
+
+  it("consumes repeated thumbnail navigation and deletion without changing selection, deck or history", async () => {
+    deck.slides.push({ ...createBlankSlide(), title: "Second" });
+    await render("MacIntel");
+    await click("Select Research panel");
+    const second = button("Slide 2: Second");
+    await act(async () => second.focus());
+    for (const value of ["ArrowUp", "ArrowDown", "Delete", "Backspace"])
+      expect(
+        (await key(value, { repeat: true }, second)).defaultPrevented,
+      ).toBe(true);
+    expect(document.activeElement).toBe(second);
+    expect(
+      host
+        .querySelector('.slide-card[aria-current="true"]')
+        ?.getAttribute("data-slide-id"),
+    ).toBe(deck.slides[0].id);
+    expect(button("Select Research panel").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(await persist()).toEqual(deck);
+    expect(button("Undo").disabled).toBe(true);
+  });
+
+  it("keeps native menu availability synchronized with text focus, selection, thumbnail focus, dialogs, busy work and playback", async () => {
+    const bridge = enableDesktop();
+    deck.slides.push({ ...createBlankSlide(), title: "Second" });
+    const states = (): Partial<Record<DesktopCommand, boolean>> =>
+      bridge.setCommandAvailability.mock.calls.at(-1)?.[0] ?? {};
+    await render("Linux x86_64", false);
+    expect(bridge.setCommandAvailability).toHaveBeenCalled();
+    expect(states()).toMatchObject({
+      new: true,
+      open: true,
+      showShortcuts: true,
+      save: false,
+      present: false,
+      toggleInspector: false,
+      toggleObjectList: false,
+    });
+    await click("Resume previous work");
+    expect(states()).toMatchObject({
+      save: true,
+      copy: false,
+      undo: false,
+      lock: false,
+      toggleInspector: true,
+      toggleObjectList: true,
+    });
+    await click("Select Research panel");
+    expect(states()).toMatchObject({
+      copy: true,
+      lock: true,
+      undo: false,
+      bold: false,
+    });
+    const notes = host.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Speaker notes"]',
+    )!;
+    await act(async () => notes.focus());
+    expect(states()).toMatchObject({
+      copy: true,
+      cut: true,
+      paste: true,
+      undo: true,
+      redo: true,
+      selectAll: true,
+      save: true,
+      present: false,
+      toggleInspector: false,
+      toggleObjectList: false,
+    });
+    const second = button("Slide 2: Second");
+    await act(async () => second.focus());
+    expect(states()).toMatchObject({ duplicate: true });
+    await key("N", { metaKey: true, shiftKey: true }, second);
+    expect(states()).toMatchObject({
+      new: false,
+      open: false,
+      save: false,
+      copy: false,
+      present: false,
+      toggleInspector: false,
+    });
+    await click("Close slide templates");
+    const canvas = host.querySelector<HTMLElement>(
+      '[aria-label="Slide canvas"]',
+    )!;
+    await act(async () => canvas.focus());
+    let finish!: (value: Blob) => void;
+    vi.mocked(buildDeckArchive).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await key("s", { metaKey: true }, canvas);
+    expect(states()).toMatchObject({
+      save: false,
+      copy: false,
+      undo: false,
+      present: false,
+      toggleInspector: false,
+      toggleObjectList: false,
+      showShortcuts: true,
+    });
+    const archive = new Blob(["archive"]);
+    Object.defineProperty(archive, "arrayBuffer", {
+      value: async () => new Uint8Array([1]).buffer,
+    });
+    await act(async () => finish(archive));
+    await key("p", { metaKey: true, altKey: true }, canvas);
+    expect(host.querySelector(".presentation-view")).toBeTruthy();
+    expect(states()).toMatchObject({
+      save: false,
+      copy: false,
+      undo: false,
+      present: false,
+      toggleInspector: false,
+      toggleObjectList: false,
+    });
+    await key("Escape");
+    expect(states()).toMatchObject({
+      save: true,
+      toggleInspector: true,
+      toggleObjectList: true,
+    });
+    expect(await persist()).toEqual(deck);
   });
 });

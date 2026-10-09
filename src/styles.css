@@ -516,6 +516,18 @@ button .lucide {
 .canvas-object {
   cursor: move;
 }
+.canvas-viewport:focus-visible {
+  outline: 2px solid #26867a;
+  outline-offset: -2px;
+}
+.inspector [role="region"]:focus-visible {
+  outline: 2px solid #26867a;
+  outline-offset: -2px;
+}
+.inspector[hidden],
+.inspector [hidden] {
+  display: none;
+}
 .canvas-object:hover {
   filter: brightness(0.995);
 }
@@ -2380,4 +2392,20 @@ button .lucide {
   border-radius: 4px;
   padding: 5px;
   font: inherit;
+}
+.toolbar {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+}
+.screen-reader-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }

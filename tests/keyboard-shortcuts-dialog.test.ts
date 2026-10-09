@@ -58,7 +58,7 @@ describe("platform keyboard shortcut reference", () => {
       (element) => element.textContent === label,
     );
     if (!row) throw new Error(`Missing shortcut row: ${label}`);
-    return row.nextElementSibling!.textContent!;
+    return row.nextElementSibling!.querySelector("kbd")!.textContent!;
   }
 
   async function click(element: Element) {
@@ -259,9 +259,9 @@ describe("platform keyboard shortcut reference", () => {
     expect(keys("Insert equation")).toBe("Alt+Shift+E");
     expect(keys("Group objects")).toBe("Ctrl+Shift+G");
     expect(keys("Ungroup objects")).toBe("Ctrl+Alt+Shift+G");
-    expect(keys("Bring forward one layer")).toBe("Ctrl++");
+    expect(keys("Bring forward one layer")).toBe("Ctrl+Num +");
     expect(keys("Send backward one layer")).toBe("Ctrl+-");
-    expect(keys("Bring to front")).toBe("Ctrl+Shift++");
+    expect(keys("Bring to front")).toBe("Ctrl+Shift+Num +");
     expect(keys("Send to back")).toBe("Ctrl+Shift+-");
     expect(keys("Zoom in")).toBe("+");
     expect(keys("Zoom out")).toBe("-");

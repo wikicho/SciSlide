@@ -3,48 +3,7 @@ const fs = require("node:fs/promises");
 
 const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
 const MAX_EXPORT_BYTES = 100 * 1024 * 1024;
-const COMMANDS = new Set([
-  "new",
-  "open",
-  "save",
-  "saveAs",
-  "undo",
-  "redo",
-  "present",
-  "presentFromStart",
-  "presenterView",
-  "exportPdf",
-  "exportSvg",
-  "cut",
-  "copy",
-  "paste",
-  "selectAll",
-  "duplicate",
-  "duplicateSlide",
-  "group",
-  "ungroup",
-  "showShortcuts",
-  "finishTextEditing",
-  "addSlide",
-  "insertEquation",
-  "insertFigure",
-  "deselectAll",
-  "lock",
-  "unlock",
-  "bringToFront",
-  "sendToBack",
-  "bringForward",
-  "sendBackward",
-  "zoomIn",
-  "zoomOut",
-  "fitSlide",
-  "bold",
-  "increaseFontSize",
-  "decreaseFontSize",
-  "alignTextLeft",
-  "alignTextCenter",
-  "alignTextRight",
-]);
+const { COMMANDS } = require("./shortcut-registry.cjs");
 
 function parseDevUrl(value) {
   if (!value) return null;
@@ -165,6 +124,22 @@ function suggestedName(value, extension) {
   return portable.toLowerCase().endsWith(`.${extension}`)
     ? portable
     : `${portable}.${extension}`;
+}
+
+function validateCommandAvailability(value) {
+  assertRecord(value, "Command availability");
+  const entries = Object.entries(value);
+  if (
+    entries.length > COMMANDS.size ||
+    entries.some(
+      ([command, enabled]) =>
+        !COMMANDS.has(command) || typeof enabled !== "boolean",
+    )
+  )
+    throw new Error(
+      "Command availability accepts only fixed command IDs and booleans.",
+    );
+  return Object.fromEntries(entries);
 }
 
 function validateSaveDocument(value) {
@@ -312,6 +287,7 @@ module.exports = {
   allowsFullscreen,
   isAllowedRequest,
   validateSaveDocument,
+  validateCommandAvailability,
   validateSaveExport,
   validateCompile,
   validateJobId,

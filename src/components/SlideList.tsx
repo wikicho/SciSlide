@@ -192,6 +192,7 @@ export function SlideList({
           className={`slide-card ${slide.id === activeSlideId ? "selected" : ""} ${slide.id === draggingId ? "dragging" : ""} ${position?.slideId === slide.id ? `drop-${position.edge}` : ""}`}
           key={slide.id}
           data-slide-id={slide.id}
+          disabled={disabled}
           data-reorderable={!disabled && deck.slides.length > 1}
           aria-label={`Slide ${index + 1}: ${slide.title || "Untitled slide"}`}
           aria-current={slide.id === activeSlideId ? "true" : undefined}

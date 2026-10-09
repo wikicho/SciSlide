@@ -2,7 +2,7 @@
 
 SciSlide is a scientific presentation editor that combines visual slide composition with editable LaTeX equations. It runs in a browser or as an Electron desktop app.
 
-This wiki documents **v0.6.2**, a development prototype. The latest release adds keyboard shortcuts based on Keynote for macOS, PowerPoint for Windows, and LibreOffice Impress for Ubuntu/Linux.
+This wiki documents **v0.6.2**, a development prototype, and clearly marked **unreleased source additions**. The latest release adds keyboard shortcuts based on Keynote for macOS, PowerPoint for Windows, and LibreOffice Impress for Ubuntu/Linux. Later P1 shortcut improvements are described in [Keyboard shortcuts](Keyboard-Shortcuts); published installers are unchanged.
 
 ## Start here
 

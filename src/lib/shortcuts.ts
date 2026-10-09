@@ -1,3 +1,6 @@
+import registry from "../../desktop/keyboard-shortcuts.json";
+import type { DesktopCommand } from "./desktop";
+
 export type KeyboardPlatform = "mac" | "windows" | "linux";
 
 export type ShortcutAction =
@@ -48,7 +51,9 @@ export type ShortcutAction =
   | "decreaseFontSize"
   | "alignTextLeft"
   | "alignTextCenter"
-  | "alignTextRight";
+  | "alignTextRight"
+  | "toggleInspector"
+  | "toggleObjectList";
 
 export type ShortcutCategory =
   | "File"
@@ -73,12 +78,56 @@ export interface ShortcutBinding {
   alt?: boolean;
   code?: string;
   codeOnly?: boolean;
+  /** Electron punctuation/keypad spelling; ignored by renderer matching. */
+  nativeKey?: string;
+}
+
+export type ShortcutScope =
+  "editor" | "thumbnail" | "slideNavigation" | "textEditing";
+export type ShortcutAvailability =
+  | "always"
+  | "idle"
+  | "undo"
+  | "redo"
+  | "clipboard"
+  | "selection"
+  | "unlockedSelection"
+  | "lockedSelection"
+  | "group"
+  | "ungroup"
+  | "objects"
+  | "textSelection"
+  | "selectionOrSlide"
+  | "slide"
+  | "focusedSlide";
+export type ShortcutRepeatPolicy = "once" | "repeat";
+
+/** Availability flags are derived from the active editor target, never DOM data. */
+export interface ShortcutAvailabilityState {
+  busy: boolean;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  canPaste?: boolean;
+  hasSelection?: boolean;
+  hasUnlockedSelection?: boolean;
+  hasLockedSelection?: boolean;
+  canGroup?: boolean;
+  canUngroup?: boolean;
+  hasTextSelection?: boolean;
+  hasObjects?: boolean;
+  hasSlide?: boolean;
+  hasFocusedSlide?: boolean;
 }
 
 export interface PlatformShortcut {
   action: ShortcutAction;
   label: string;
   category: ShortcutCategory;
+  scope: ShortcutScope;
+  availability: ShortcutAvailability;
+  repeatPolicy: ShortcutRepeatPolicy;
+  globalInText: boolean;
+  nativeCommand?: DesktopCommand;
   keys: string;
   alternateKeys: string[];
   binding: ShortcutBinding;
@@ -97,384 +146,68 @@ interface ShortcutDefinition {
   action: ShortcutAction;
   label: string;
   category: ShortcutCategory;
-  binding: ShortcutBinding;
-  platforms?: readonly KeyboardPlatform[];
+  scope: ShortcutScope;
+  availability: ShortcutAvailability;
+  repeatPolicy: ShortcutRepeatPolicy;
+  globalInText: boolean;
+  native?: { command: DesktopCommand; label: string };
+  platforms: Partial<
+    Record<
+      KeyboardPlatform,
+      {
+        binding: ShortcutBinding;
+        aliases: ShortcutBinding[];
+      }
+    >
+  >;
 }
 
-function macShortcut(
-  action: ShortcutAction,
-  label: string,
-  category: ShortcutCategory,
-  binding: ShortcutBinding,
-): ShortcutDefinition {
-  return { action, label, category, binding, platforms: ["mac"] };
-}
-
-const DEFINITIONS: readonly ShortcutDefinition[] = [
-  {
-    action: "new",
-    label: "New presentation",
-    category: "File",
-    binding: { key: "n", primary: true },
-  },
-  {
-    action: "open",
-    label: "Open presentation",
-    category: "File",
-    binding: { key: "o", primary: true },
-  },
-  {
-    action: "save",
-    label: "Save presentation",
-    category: "File",
-    binding: { key: "s", primary: true },
-  },
-  {
-    action: "saveAs",
-    label: "Save presentation as",
-    category: "File",
-    binding: { key: "s", primary: true, shift: true },
-  },
-  {
-    action: "undo",
-    label: "Undo",
-    category: "Editing",
-    binding: { key: "z", primary: true },
-  },
-  {
-    action: "redo",
-    label: "Redo",
-    category: "Editing",
-    binding: { key: "z", primary: true, shift: true },
-  },
-  {
-    action: "selectAll",
-    label: "Select all objects",
-    category: "Objects",
-    binding: { key: "a", primary: true },
-  },
-  {
-    action: "copy",
-    label: "Copy objects",
-    category: "Editing",
-    binding: { key: "c", primary: true },
-  },
-  {
-    action: "cut",
-    label: "Cut objects",
-    category: "Editing",
-    binding: { key: "x", primary: true },
-  },
-  {
-    action: "paste",
-    label: "Paste objects",
-    category: "Editing",
-    binding: { key: "v", primary: true },
-  },
-  {
-    action: "duplicate",
-    label: "Duplicate selection or slide",
-    category: "Objects",
-    binding: { key: "d", primary: true },
-  },
-  {
-    action: "group",
-    label: "Group selected objects",
-    category: "Objects",
-    binding: { key: "g", primary: true },
-  },
-  {
-    action: "ungroup",
-    label: "Ungroup selected objects",
-    category: "Objects",
-    binding: { key: "g", primary: true, shift: true },
-  },
-  {
-    action: "present",
-    label: "Present from current slide",
-    category: "Presentation",
-    binding: { key: "Enter", primary: true },
-  },
-  {
-    action: "presentFromStart",
-    label: "Present from first slide",
-    category: "Presentation",
-    binding: { key: "F5", primary: false },
-    platforms: ["windows", "linux"],
-  },
-  {
-    action: "presenterView",
-    label: "Open presenter display",
-    category: "Presentation",
-    binding: { key: "F5", primary: false, alt: true },
-    platforms: ["windows"],
-  },
-  {
-    action: "duplicateSlide",
-    label: "Duplicate current slide",
-    category: "Slides",
-    binding: { key: "d", primary: true, shift: true },
-    platforms: ["windows"],
-  },
-  ...(
-    [
-      ["moveSlideUp", "Move slide up", false, "ArrowUp"],
-      ["moveSlideDown", "Move slide down", false, "ArrowDown"],
-      ["moveSlideFirst", "Move slide to start", true, "ArrowUp"],
-      ["moveSlideLast", "Move slide to end", true, "ArrowDown"],
-    ] as const
-  ).map(([action, label, shift, key]): ShortcutDefinition => ({
-    action,
-    label,
-    category: "Slides",
-    binding: { key, primary: true, shift },
-    platforms: ["windows", "linux"],
-  })),
-  {
-    action: "exportPdf",
-    label: "Export PDF",
-    category: "File",
-    binding: { key: "p", primary: true, alt: true },
-  },
-  {
-    action: "exportSvg",
-    label: "Export current slide as SVG",
-    category: "File",
-    binding: { key: "s", primary: true, alt: true },
-  },
-  {
-    action: "help",
-    label: "Keyboard shortcuts",
-    category: "Help",
-    binding: { key: "/", code: "Slash", primary: true, shift: true },
-  },
-  {
-    action: "finishTextEditing",
-    label: "Apply text editing",
-    category: "Text",
-    binding: { key: "Enter", primary: true },
-  },
-  macShortcut("addSlide", "Add slide from a layout", "Slides", {
-    key: "n",
-    primary: true,
-    shift: true,
-  }),
-  macShortcut("insertEquation", "Insert equation", "Objects", {
-    key: "e",
-    primary: true,
-    alt: true,
-  }),
-  macShortcut("insertFigure", "Insert image, SVG or PDF", "Objects", {
-    key: "v",
-    primary: true,
-    shift: true,
-  }),
-  macShortcut("deselectAll", "Deselect all objects", "Objects", {
-    key: "a",
-    primary: true,
-    shift: true,
-  }),
-  macShortcut("lock", "Lock selected objects", "Objects", {
-    key: "l",
-    primary: true,
-  }),
-  macShortcut("unlock", "Unlock selected objects", "Objects", {
-    key: "l",
-    primary: true,
-    alt: true,
-  }),
-  macShortcut("bringToFront", "Bring to front", "Objects", {
-    key: "f",
-    primary: true,
-    shift: true,
-  }),
-  macShortcut("sendToBack", "Send to back", "Objects", {
-    key: "b",
-    primary: true,
-    shift: true,
-  }),
-  macShortcut("bringForward", "Bring forward one layer", "Objects", {
-    key: "f",
-    primary: true,
-    alt: true,
-    shift: true,
-  }),
-  macShortcut("sendBackward", "Send backward one layer", "Objects", {
-    key: "b",
-    primary: true,
-    alt: true,
-    shift: true,
-  }),
-  macShortcut("zoomIn", "Zoom in", "Canvas", {
-    key: ">",
-    code: "Period",
-    primary: true,
-    shift: true,
-  }),
-  macShortcut("zoomOut", "Zoom out", "Canvas", {
-    key: "<",
-    code: "Comma",
-    primary: true,
-    shift: true,
-  }),
-  macShortcut("fitSlide", "Fit slide to window", "Canvas", {
-    key: "0",
-    code: "Digit0",
-    primary: true,
-    alt: true,
-  }),
-  macShortcut("nextSlide", "Next slide", "Slides", {
-    key: "PageDown",
-    primary: false,
-  }),
-  macShortcut("previousSlide", "Previous slide", "Slides", {
-    key: "PageUp",
-    primary: false,
-  }),
-  macShortcut("firstSlide", "First slide", "Slides", {
-    key: "Home",
-    primary: false,
-  }),
-  macShortcut("lastSlide", "Last slide", "Slides", {
-    key: "End",
-    primary: false,
-  }),
-  macShortcut("bold", "Toggle bold on selected text objects", "Text", {
-    key: "b",
-    primary: true,
-  }),
-  macShortcut("increaseFontSize", "Increase selected text size", "Text", {
-    key: "+",
-    code: "Equal",
-    primary: true,
-  }),
-  macShortcut("decreaseFontSize", "Decrease selected text size", "Text", {
-    key: "-",
-    code: "Minus",
-    primary: true,
-  }),
-  macShortcut("alignTextLeft", "Align selected text left", "Text", {
-    key: "{",
-    code: "BracketLeft",
-    primary: true,
-    shift: true,
-  }),
-  macShortcut("alignTextCenter", "Center selected text", "Text", {
-    key: "|",
-    code: "Backslash",
-    primary: true,
-    shift: true,
-  }),
-  macShortcut("alignTextRight", "Align selected text right", "Text", {
-    key: "}",
-    code: "BracketRight",
-    primary: true,
-    shift: true,
-  }),
-];
-
-// Keynote conventions where SciSlide has the corresponding feature. PDF
-// export moves away from Option+Command+P, which is Keynote's Play shortcut.
-const MAC_BINDINGS: Partial<Record<ShortcutAction, ShortcutBinding>> = {
-  saveAs: { key: "s", primary: true, alt: true, shift: true },
-  group: { key: "g", primary: true, alt: true },
-  ungroup: { key: "g", primary: true, alt: true, shift: true },
-  present: { key: "p", primary: true, alt: true },
-  exportPdf: { key: "p", primary: true, alt: true, shift: true },
-};
-
-// PowerPoint on Windows and Impress on Linux. Keep unavailable Keynote
-// commands out of the other profiles rather than inheriting their keys.
-const WINDOWS_BINDINGS: Partial<Record<ShortcutAction, ShortcutBinding>> = {
-  redo: { key: "y", primary: true },
-  addSlide: { key: "m", primary: true },
-  present: { key: "F5", primary: false, shift: true },
-  help: { key: "F1", primary: false },
-  insertEquation: { key: "=", code: "Equal", primary: false, alt: true },
-  bringForward: {
-    key: "]",
-    code: "BracketRight",
-    primary: true,
-    shift: true,
-  },
-  sendBackward: {
-    key: "[",
-    code: "BracketLeft",
-    primary: true,
-    shift: true,
-  },
-  zoomIn: { key: "+", code: "Equal", primary: true },
-  zoomOut: { key: "-", code: "Minus", primary: true },
-  fitSlide: { key: "o", primary: true, alt: true },
-  nextSlide: { key: "PageDown", primary: false },
-  previousSlide: { key: "PageUp", primary: false },
-  firstSlide: { key: "Home", primary: false },
-  lastSlide: { key: "End", primary: false },
-  bold: { key: "b", primary: true },
-  increaseFontSize: {
-    key: ">",
-    code: "Period",
-    primary: true,
-    shift: true,
-  },
-  decreaseFontSize: {
-    key: "<",
-    code: "Comma",
-    primary: true,
-    shift: true,
-  },
-  alignTextLeft: { key: "l", primary: true },
-  alignTextCenter: { key: "e", primary: true },
-  alignTextRight: { key: "r", primary: true },
-};
-
-const LINUX_BINDINGS: Partial<Record<ShortcutAction, ShortcutBinding>> = {
-  ...WINDOWS_BINDINGS,
-  duplicate: { key: "F3", primary: false, shift: true },
-  group: { key: "g", primary: true, shift: true },
-  ungroup: { key: "g", primary: true, alt: true, shift: true },
-  insertEquation: { key: "e", primary: false, alt: true, shift: true },
-  bringForward: { key: "+", code: "Equal", primary: true },
-  bringToFront: { key: "+", code: "Equal", primary: true, shift: true },
-  sendBackward: { key: "-", code: "Minus", primary: true },
-  sendToBack: { key: "-", code: "Minus", primary: true, shift: true },
-  zoomIn: { key: "+", primary: false },
-  zoomOut: { key: "-", code: "Minus", primary: false },
-  fitSlide: {
-    key: "*",
-    code: "NumpadMultiply",
-    codeOnly: true,
-    primary: false,
-  },
-  increaseFontSize: { key: "]", code: "BracketRight", primary: true },
-  decreaseFontSize: { key: "[", code: "BracketLeft", primary: true },
-  moveSlideUp: { key: "PageUp", primary: false, alt: true, shift: true },
-  moveSlideDown: { key: "PageDown", primary: false, alt: true, shift: true },
-  moveSlideFirst: { key: "Home", primary: false, alt: true, shift: true },
-  moveSlideLast: { key: "End", primary: false, alt: true, shift: true },
-};
-
-const PLATFORM_BINDINGS = {
-  mac: MAC_BINDINGS,
-  windows: WINDOWS_BINDINGS,
-  linux: LINUX_BINDINGS,
-};
+// This data also feeds Electron's menus. Native key spellings live alongside
+// renderer bindings so aliases and punctuation cannot silently drift apart.
+const DEFINITIONS = registry.commands as readonly ShortcutDefinition[];
 
 export function isShortcutAvailable(
   action: ShortcutAction,
   platform: KeyboardPlatform,
 ): boolean {
-  const definition = DEFINITIONS.find((entry) => entry.action === action)!;
-  return (
-    !!PLATFORM_BINDINGS[platform][action] ||
-    !definition.platforms ||
-    definition.platforms.includes(platform)
+  return Boolean(
+    DEFINITIONS.find((entry) => entry.action === action)?.platforms[platform],
   );
 }
 
 export const SHORTCUT_ACTIONS: readonly ShortcutAction[] = DEFINITIONS.map(
   ({ action }) => action,
 );
+
+/** One predicate is shared by renderer keyboard and native command routing. */
+export function isShortcutEnabled(
+  action: ShortcutAction,
+  platform: KeyboardPlatform,
+  state: ShortcutAvailabilityState,
+): boolean {
+  if (!isShortcutAvailable(action, platform)) return false;
+  const { availability } = getShortcut(action, platform);
+  if (availability === "always") return true;
+  if (state.busy) return false;
+  const enabled: Record<ShortcutAvailability, boolean> = {
+    always: true,
+    idle: true,
+    undo: Boolean(state.canUndo),
+    redo: Boolean(state.canRedo),
+    clipboard: Boolean(state.canPaste),
+    selection: Boolean(state.hasSelection),
+    unlockedSelection: Boolean(state.hasUnlockedSelection),
+    lockedSelection: Boolean(state.hasLockedSelection),
+    group: Boolean(state.canGroup),
+    ungroup: Boolean(state.canUngroup),
+    objects: Boolean(state.hasObjects),
+    textSelection: Boolean(state.hasTextSelection),
+    selectionOrSlide: Boolean(state.hasUnlockedSelection || state.hasSlide),
+    slide: Boolean(state.hasSlide),
+    focusedSlide: Boolean(state.hasFocusedSlide),
+  };
+  return enabled[availability];
+}
 
 function detectPlatform(value: string | undefined): KeyboardPlatform | null {
   if (!value) return null;
@@ -512,9 +245,11 @@ export function formatShortcut(
   parts.push(
     binding.code === "NumpadMultiply"
       ? "Num *"
-      : binding.key.length === 1
-        ? binding.key.toUpperCase()
-        : binding.key,
+      : binding.code === "NumpadAdd"
+        ? "Num +"
+        : binding.key.length === 1
+          ? binding.key.toUpperCase()
+          : binding.key,
   );
   return parts.join("+");
 }
@@ -535,37 +270,19 @@ export function getShortcut(
   platform: KeyboardPlatform,
 ): PlatformShortcut {
   const definition = DEFINITIONS.find((entry) => entry.action === action)!;
-  const binding = {
-    ...(PLATFORM_BINDINGS[platform][action] ?? definition.binding),
-  };
-  const aliases: ShortcutBinding[] = [];
-  if (
-    (platform === "mac" &&
-      ["saveAs", "group", "ungroup", "present"].includes(action)) ||
-    (platform !== "mac" && ["redo", "present", "help"].includes(action)) ||
-    (platform === "linux" && ["duplicate", "group"].includes(action))
-  )
-    aliases.push({ ...definition.binding });
-  if (
-    (platform === "mac" && action === "increaseFontSize") ||
-    (platform === "windows" && action === "zoomIn") ||
-    (platform === "linux" && action === "zoomIn")
-  )
-    aliases.push({ ...binding, shift: true });
-  if (platform === "linux") {
-    if (action === "insertEquation")
-      aliases.push({ key: "=", code: "Equal", primary: true, alt: true });
-    const legacyReorder: Partial<Record<ShortcutAction, string>> = {
-      moveSlideUp: "ArrowUp",
-      moveSlideDown: "ArrowDown",
-      moveSlideFirst: "Home",
-      moveSlideLast: "End",
-    };
-    const legacyKey = legacyReorder[action];
-    if (legacyKey) aliases.push({ key: legacyKey, primary: true, shift: true });
-  }
+  const profile = definition.platforms[platform];
+  if (!profile) throw new Error(`${action} is not available on ${platform}.`);
+  const binding = { ...profile.binding };
+  const aliases = profile.aliases.map((alias) => ({ ...alias }));
   return {
-    ...definition,
+    action: definition.action,
+    label: definition.label,
+    category: definition.category,
+    scope: definition.scope,
+    availability: definition.availability,
+    repeatPolicy: definition.repeatPolicy,
+    globalInText: definition.globalInText,
+    nativeCommand: definition.native?.command,
     binding,
     aliases,
     keys: formatShortcut(binding, platform),

@@ -41,10 +41,31 @@ const commands = new Set([
   "alignTextLeft",
   "alignTextCenter",
   "alignTextRight",
+  "toggleInspector",
+  "toggleObjectList",
 ]);
 
 contextBridge.exposeInMainWorld("scislideDesktop", {
   platform: process.platform,
+  setCommandAvailability: (states) => {
+    if (!states || typeof states !== "object" || Array.isArray(states))
+      throw new TypeError("Command availability must be an object.");
+    const entries = Object.entries(states);
+    if (
+      entries.length > commands.size ||
+      entries.some(
+        ([command, enabled]) =>
+          !commands.has(command) || typeof enabled !== "boolean",
+      )
+    )
+      throw new TypeError(
+        "Command availability accepts only fixed command IDs and booleans.",
+      );
+    return ipcRenderer.invoke(
+      "scislide:set-command-availability",
+      Object.fromEntries(entries),
+    );
+  },
   openDocument: () => ipcRenderer.invoke("scislide:open-document"),
   saveDocument: (request) =>
     ipcRenderer.invoke("scislide:save-document", request),

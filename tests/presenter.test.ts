@@ -330,8 +330,75 @@ describe("presenter window", () => {
       false,
     );
     expect(actions()).toEqual([]);
-    expect((await key("Q", { shiftKey: true })).defaultPrevented).toBe(true);
+    expect((await key("Q", { shiftKey: true })).defaultPrevented).toBe(false);
+    expect(actions()).toEqual([]);
+    expect((await key("q")).defaultPrevented).toBe(true);
     expect(actions()).toEqual([{ type: "action", action: "exit" }]);
+  });
+
+  it("gives Escape to editable and media controls while allowing buttons to end playback", async () => {
+    await render();
+    expect(
+      (await key("Escape", {}, host.querySelector("input")!)).defaultPrevented,
+    ).toBe(false);
+    for (const tag of ["textarea", "select", "video", "audio", "div"]) {
+      const element = document.createElement(tag);
+      if (tag === "div") element.setAttribute("contenteditable", "true");
+      host.append(element);
+      expect((await key("Escape", {}, element)).defaultPrevented).toBe(false);
+      element.remove();
+    }
+    const media = document.createElement("div");
+    media.className = "video-player";
+    const mediaButton = document.createElement("button");
+    media.append(mediaButton);
+    host.append(media);
+    expect((await key("Escape", {}, mediaButton)).defaultPrevented).toBe(false);
+    media.remove();
+    expect(actions()).toEqual([]);
+    expect(
+      (await key("Escape", {}, button("Pause timer"))).defaultPrevented,
+    ).toBe(true);
+    expect(actions()).toEqual([{ type: "action", action: "exit" }]);
+  });
+
+  it("ignores repeated playback actions after consuming their keys", async () => {
+    await render();
+    for (const value of [
+      "ArrowRight",
+      "ArrowLeft",
+      "Home",
+      "End",
+      "Escape",
+      "-",
+    ])
+      expect((await key(value, { repeat: true })).defaultPrevented).toBe(true);
+    expect(actions()).toEqual([]);
+    expect((await key("ArrowRight")).defaultPrevented).toBe(true);
+    expect(actions()).toEqual([{ type: "action", action: "next" }]);
+    expect((await key("ArrowRight", { repeat: true })).defaultPrevented).toBe(
+      true,
+    );
+    expect(actions()).toEqual([{ type: "action", action: "next" }]);
+  });
+
+  it("keeps Shift+arrow build navigation but rejects other modified playback keys", async () => {
+    await render();
+    for (const value of ["Escape", "-", "Enter", "Home", "End", "PageDown"])
+      expect((await key(value, { shiftKey: true })).defaultPrevented).toBe(
+        false,
+      );
+    expect(actions()).toEqual([]);
+    expect((await key("ArrowRight", { shiftKey: true })).defaultPrevented).toBe(
+      true,
+    );
+    expect((await key("ArrowLeft", { shiftKey: true })).defaultPrevented).toBe(
+      true,
+    );
+    expect(actions()).toEqual([
+      { type: "action", action: "next" },
+      { type: "action", action: "previous" },
+    ]);
   });
 
   it("keeps a paused or reset timer intact across repeated deck heartbeats", async () => {

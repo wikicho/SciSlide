@@ -1,0 +1,2107 @@
+{
+  "schemaVersion": 1,
+  "menus": [
+    {
+      "label": "File",
+      "items": [
+        "new",
+        "open",
+        "save",
+        "saveAs",
+        "separator",
+        "exportPdf",
+        "exportSvg",
+        "separator",
+        "closeOrQuit"
+      ]
+    },
+    {
+      "label": "Edit",
+      "items": [
+        "undo",
+        "redo",
+        "separator",
+        "cut",
+        "copy",
+        "paste",
+        "selectAll",
+        "deselectAll",
+        "separator",
+        "duplicate",
+        "duplicateSlide",
+        "group",
+        "ungroup",
+        "finishTextEditing"
+      ]
+    },
+    {
+      "label": "Insert",
+      "items": ["addSlide", "insertEquation", "insertFigure"]
+    },
+    {
+      "label": "Format",
+      "items": [
+        "bold",
+        "increaseFontSize",
+        "decreaseFontSize",
+        "separator",
+        "alignTextLeft",
+        "alignTextCenter",
+        "alignTextRight"
+      ]
+    },
+    {
+      "label": "Arrange",
+      "items": [
+        "bringToFront",
+        "bringForward",
+        "sendBackward",
+        "sendToBack",
+        "separator",
+        "lock",
+        "unlock"
+      ]
+    },
+    {
+      "label": "View",
+      "items": [
+        "presentFromStart",
+        "present",
+        "presenterView",
+        "separator",
+        "zoomIn",
+        "zoomOut",
+        "fitSlide",
+        "separator",
+        "toggleInspector",
+        "toggleObjectList",
+        "separator",
+        "togglefullscreen",
+        "development"
+      ]
+    },
+    {
+      "label": "Help",
+      "items": ["help", "about"]
+    }
+  ],
+  "commands": [
+    {
+      "action": "new",
+      "scope": "editor",
+      "availability": "idle",
+      "repeatPolicy": "once",
+      "globalInText": true,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "n",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "n",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "n",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "New presentation",
+      "category": "File",
+      "native": {
+        "command": "new",
+        "label": "New presentation"
+      }
+    },
+    {
+      "action": "open",
+      "scope": "editor",
+      "availability": "idle",
+      "repeatPolicy": "once",
+      "globalInText": true,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "o",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "o",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "o",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Open presentation",
+      "category": "File",
+      "native": {
+        "command": "open",
+        "label": "Open…"
+      }
+    },
+    {
+      "action": "save",
+      "scope": "editor",
+      "availability": "idle",
+      "repeatPolicy": "once",
+      "globalInText": true,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "s",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "s",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "s",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Save presentation",
+      "category": "File",
+      "native": {
+        "command": "save",
+        "label": "Save"
+      }
+    },
+    {
+      "action": "saveAs",
+      "scope": "editor",
+      "availability": "idle",
+      "repeatPolicy": "once",
+      "globalInText": true,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "s",
+            "primary": true,
+            "alt": true,
+            "shift": true
+          },
+          "aliases": [
+            {
+              "key": "s",
+              "primary": true,
+              "shift": true
+            }
+          ],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "s",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "s",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Save presentation as",
+      "category": "File",
+      "native": {
+        "command": "saveAs",
+        "label": "Save As…"
+      }
+    },
+    {
+      "action": "undo",
+      "scope": "editor",
+      "availability": "undo",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "z",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "z",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "z",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Undo",
+      "category": "Editing",
+      "native": {
+        "command": "undo",
+        "label": "Undo"
+      }
+    },
+    {
+      "action": "redo",
+      "scope": "editor",
+      "availability": "redo",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "z",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "y",
+            "primary": true
+          },
+          "aliases": [
+            {
+              "key": "z",
+              "primary": true,
+              "shift": true
+            }
+          ],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "y",
+            "primary": true
+          },
+          "aliases": [
+            {
+              "key": "z",
+              "primary": true,
+              "shift": true
+            }
+          ],
+          "nativeMenu": true
+        }
+      },
+      "label": "Redo",
+      "category": "Editing",
+      "native": {
+        "command": "redo",
+        "label": "Redo"
+      }
+    },
+    {
+      "action": "selectAll",
+      "scope": "editor",
+      "availability": "objects",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "a",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "a",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "a",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Select all objects",
+      "category": "Objects",
+      "native": {
+        "command": "selectAll",
+        "label": "Select all"
+      }
+    },
+    {
+      "action": "copy",
+      "scope": "editor",
+      "availability": "selection",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "c",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "c",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "c",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Copy objects",
+      "category": "Editing",
+      "native": {
+        "command": "copy",
+        "label": "Copy"
+      }
+    },
+    {
+      "action": "cut",
+      "scope": "editor",
+      "availability": "unlockedSelection",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "x",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "x",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "x",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Cut objects",
+      "category": "Editing",
+      "native": {
+        "command": "cut",
+        "label": "Cut"
+      }
+    },
+    {
+      "action": "paste",
+      "scope": "editor",
+      "availability": "clipboard",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "v",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "v",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "v",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Paste objects",
+      "category": "Editing",
+      "native": {
+        "command": "paste",
+        "label": "Paste"
+      }
+    },
+    {
+      "action": "duplicate",
+      "scope": "editor",
+      "availability": "selectionOrSlide",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "d",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "d",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "F3",
+            "primary": false,
+            "shift": true
+          },
+          "aliases": [
+            {
+              "key": "d",
+              "primary": true
+            }
+          ],
+          "nativeMenu": true
+        }
+      },
+      "label": "Duplicate selection or slide",
+      "category": "Objects",
+      "native": {
+        "command": "duplicate",
+        "label": "Duplicate selection or slide"
+      }
+    },
+    {
+      "action": "group",
+      "scope": "editor",
+      "availability": "group",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "g",
+            "primary": true,
+            "alt": true
+          },
+          "aliases": [
+            {
+              "key": "g",
+              "primary": true
+            }
+          ],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "g",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "g",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [
+            {
+              "key": "g",
+              "primary": true
+            }
+          ],
+          "nativeMenu": true
+        }
+      },
+      "label": "Group selected objects",
+      "category": "Objects",
+      "native": {
+        "command": "group",
+        "label": "Group"
+      }
+    },
+    {
+      "action": "ungroup",
+      "scope": "editor",
+      "availability": "ungroup",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "g",
+            "primary": true,
+            "alt": true,
+            "shift": true
+          },
+          "aliases": [
+            {
+              "key": "g",
+              "primary": true,
+              "shift": true
+            }
+          ],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "g",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "g",
+            "primary": true,
+            "alt": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Ungroup selected objects",
+      "category": "Objects",
+      "native": {
+        "command": "ungroup",
+        "label": "Ungroup"
+      }
+    },
+    {
+      "action": "present",
+      "scope": "editor",
+      "availability": "idle",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "p",
+            "primary": true,
+            "alt": true
+          },
+          "aliases": [
+            {
+              "key": "Enter",
+              "primary": true
+            }
+          ],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "F5",
+            "primary": false,
+            "shift": true
+          },
+          "aliases": [
+            {
+              "key": "Enter",
+              "primary": true
+            }
+          ],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "F5",
+            "primary": false,
+            "shift": true
+          },
+          "aliases": [
+            {
+              "key": "Enter",
+              "primary": true
+            }
+          ],
+          "nativeMenu": true
+        }
+      },
+      "label": "Present from current slide",
+      "category": "Presentation",
+      "native": {
+        "command": "present",
+        "label": "Present"
+      }
+    },
+    {
+      "action": "presentFromStart",
+      "scope": "editor",
+      "availability": "idle",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "windows": {
+          "binding": {
+            "key": "F5",
+            "primary": false
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "F5",
+            "primary": false
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Present from first slide",
+      "category": "Presentation",
+      "native": {
+        "command": "presentFromStart",
+        "label": "Present from start"
+      }
+    },
+    {
+      "action": "presenterView",
+      "scope": "editor",
+      "availability": "idle",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "windows": {
+          "binding": {
+            "key": "F5",
+            "primary": false,
+            "alt": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Open presenter display",
+      "category": "Presentation",
+      "native": {
+        "command": "presenterView",
+        "label": "Presenter view"
+      }
+    },
+    {
+      "action": "duplicateSlide",
+      "scope": "editor",
+      "availability": "slide",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "windows": {
+          "binding": {
+            "key": "d",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Duplicate current slide",
+      "category": "Slides",
+      "native": {
+        "command": "duplicateSlide",
+        "label": "Duplicate slide"
+      }
+    },
+    {
+      "action": "moveSlideUp",
+      "scope": "thumbnail",
+      "availability": "focusedSlide",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "windows": {
+          "binding": {
+            "key": "ArrowUp",
+            "primary": true,
+            "shift": false
+          },
+          "aliases": []
+        },
+        "linux": {
+          "binding": {
+            "key": "PageUp",
+            "primary": false,
+            "alt": true,
+            "shift": true
+          },
+          "aliases": [
+            {
+              "key": "ArrowUp",
+              "primary": true,
+              "shift": true
+            }
+          ]
+        },
+        "mac": {
+          "binding": {
+            "key": "ArrowUp",
+            "primary": true,
+            "alt": true,
+            "shift": false
+          },
+          "aliases": []
+        }
+      },
+      "label": "Move slide up",
+      "category": "Slides"
+    },
+    {
+      "action": "moveSlideDown",
+      "scope": "thumbnail",
+      "availability": "focusedSlide",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "windows": {
+          "binding": {
+            "key": "ArrowDown",
+            "primary": true,
+            "shift": false
+          },
+          "aliases": []
+        },
+        "linux": {
+          "binding": {
+            "key": "PageDown",
+            "primary": false,
+            "alt": true,
+            "shift": true
+          },
+          "aliases": [
+            {
+              "key": "ArrowDown",
+              "primary": true,
+              "shift": true
+            }
+          ]
+        },
+        "mac": {
+          "binding": {
+            "key": "ArrowDown",
+            "primary": true,
+            "alt": true,
+            "shift": false
+          },
+          "aliases": []
+        }
+      },
+      "label": "Move slide down",
+      "category": "Slides"
+    },
+    {
+      "action": "moveSlideFirst",
+      "scope": "thumbnail",
+      "availability": "focusedSlide",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "windows": {
+          "binding": {
+            "key": "ArrowUp",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": []
+        },
+        "linux": {
+          "binding": {
+            "key": "Home",
+            "primary": false,
+            "alt": true,
+            "shift": true
+          },
+          "aliases": [
+            {
+              "key": "Home",
+              "primary": true,
+              "shift": true
+            }
+          ]
+        },
+        "mac": {
+          "binding": {
+            "key": "ArrowUp",
+            "primary": true,
+            "alt": true,
+            "shift": true
+          },
+          "aliases": []
+        }
+      },
+      "label": "Move slide to start",
+      "category": "Slides"
+    },
+    {
+      "action": "moveSlideLast",
+      "scope": "thumbnail",
+      "availability": "focusedSlide",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "windows": {
+          "binding": {
+            "key": "ArrowDown",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": []
+        },
+        "linux": {
+          "binding": {
+            "key": "End",
+            "primary": false,
+            "alt": true,
+            "shift": true
+          },
+          "aliases": [
+            {
+              "key": "End",
+              "primary": true,
+              "shift": true
+            }
+          ]
+        },
+        "mac": {
+          "binding": {
+            "key": "ArrowDown",
+            "primary": true,
+            "alt": true,
+            "shift": true
+          },
+          "aliases": []
+        }
+      },
+      "label": "Move slide to end",
+      "category": "Slides"
+    },
+    {
+      "action": "exportPdf",
+      "scope": "editor",
+      "availability": "idle",
+      "repeatPolicy": "once",
+      "globalInText": true,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "p",
+            "primary": true,
+            "alt": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "p",
+            "primary": true,
+            "alt": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "p",
+            "primary": true,
+            "alt": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Export PDF",
+      "category": "File",
+      "native": {
+        "command": "exportPdf",
+        "label": "Export PDF…"
+      }
+    },
+    {
+      "action": "exportSvg",
+      "scope": "editor",
+      "availability": "idle",
+      "repeatPolicy": "once",
+      "globalInText": true,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "s",
+            "primary": true,
+            "alt": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "s",
+            "primary": true,
+            "alt": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "s",
+            "primary": true,
+            "alt": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Export current slide as SVG",
+      "category": "File",
+      "native": {
+        "command": "exportSvg",
+        "label": "Export slide SVG…"
+      }
+    },
+    {
+      "action": "help",
+      "scope": "editor",
+      "availability": "always",
+      "repeatPolicy": "once",
+      "globalInText": true,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "/",
+            "code": "Slash",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "F1",
+            "primary": false
+          },
+          "aliases": [
+            {
+              "key": "/",
+              "code": "Slash",
+              "primary": true,
+              "shift": true
+            }
+          ],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "F1",
+            "primary": false
+          },
+          "aliases": [
+            {
+              "key": "/",
+              "code": "Slash",
+              "primary": true,
+              "shift": true
+            }
+          ],
+          "nativeMenu": true
+        }
+      },
+      "label": "Keyboard shortcuts",
+      "category": "Help",
+      "native": {
+        "command": "showShortcuts",
+        "label": "Keyboard shortcuts"
+      }
+    },
+    {
+      "action": "finishTextEditing",
+      "scope": "textEditing",
+      "availability": "idle",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "Enter",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "Enter",
+            "primary": true
+          },
+          "aliases": []
+        },
+        "linux": {
+          "binding": {
+            "key": "Enter",
+            "primary": true
+          },
+          "aliases": []
+        }
+      },
+      "label": "Apply text editing",
+      "category": "Text",
+      "native": {
+        "command": "finishTextEditing",
+        "label": "Apply text / Present"
+      }
+    },
+    {
+      "action": "addSlide",
+      "scope": "editor",
+      "availability": "idle",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "n",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "m",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "m",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Add slide from a layout",
+      "category": "Slides",
+      "native": {
+        "command": "addSlide",
+        "label": "Slide"
+      }
+    },
+    {
+      "action": "insertEquation",
+      "scope": "editor",
+      "availability": "idle",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "e",
+            "primary": true,
+            "alt": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "=",
+            "code": "Equal",
+            "primary": false,
+            "alt": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "e",
+            "primary": false,
+            "alt": true,
+            "shift": true
+          },
+          "aliases": [
+            {
+              "key": "=",
+              "code": "Equal",
+              "primary": true,
+              "alt": true
+            }
+          ],
+          "nativeMenu": true
+        }
+      },
+      "label": "Insert equation",
+      "category": "Objects",
+      "native": {
+        "command": "insertEquation",
+        "label": "Equation"
+      }
+    },
+    {
+      "action": "insertFigure",
+      "scope": "editor",
+      "availability": "idle",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "v",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Insert image, SVG or PDF",
+      "category": "Objects",
+      "native": {
+        "command": "insertFigure",
+        "label": "Figure…"
+      }
+    },
+    {
+      "action": "deselectAll",
+      "scope": "editor",
+      "availability": "selection",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "a",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Deselect all objects",
+      "category": "Objects",
+      "native": {
+        "command": "deselectAll",
+        "label": "Deselect all"
+      }
+    },
+    {
+      "action": "lock",
+      "scope": "editor",
+      "availability": "unlockedSelection",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "l",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Lock selected objects",
+      "category": "Objects",
+      "native": {
+        "command": "lock",
+        "label": "Lock"
+      }
+    },
+    {
+      "action": "unlock",
+      "scope": "editor",
+      "availability": "lockedSelection",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "l",
+            "primary": true,
+            "alt": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Unlock selected objects",
+      "category": "Objects",
+      "native": {
+        "command": "unlock",
+        "label": "Unlock"
+      }
+    },
+    {
+      "action": "bringToFront",
+      "scope": "editor",
+      "availability": "unlockedSelection",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "f",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "+",
+            "code": "NumpadAdd",
+            "codeOnly": true,
+            "primary": true,
+            "shift": true,
+            "nativeKey": "numadd"
+          },
+          "aliases": [
+            {
+              "key": "+",
+              "code": "Equal",
+              "primary": true,
+              "shift": true
+            }
+          ],
+          "nativeMenu": true
+        }
+      },
+      "label": "Bring to front",
+      "category": "Objects",
+      "native": {
+        "command": "bringToFront",
+        "label": "Bring to front"
+      }
+    },
+    {
+      "action": "sendToBack",
+      "scope": "editor",
+      "availability": "unlockedSelection",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "b",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "-",
+            "code": "Minus",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Send to back",
+      "category": "Objects",
+      "native": {
+        "command": "sendToBack",
+        "label": "Send to back"
+      }
+    },
+    {
+      "action": "bringForward",
+      "scope": "editor",
+      "availability": "unlockedSelection",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "f",
+            "primary": true,
+            "alt": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "]",
+            "code": "BracketRight",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "+",
+            "code": "NumpadAdd",
+            "codeOnly": true,
+            "primary": true,
+            "nativeKey": "numadd"
+          },
+          "aliases": [
+            {
+              "key": "+",
+              "code": "Equal",
+              "primary": true
+            }
+          ],
+          "nativeMenu": true
+        }
+      },
+      "label": "Bring forward one layer",
+      "category": "Objects",
+      "native": {
+        "command": "bringForward",
+        "label": "Bring forward"
+      }
+    },
+    {
+      "action": "sendBackward",
+      "scope": "editor",
+      "availability": "unlockedSelection",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "b",
+            "primary": true,
+            "alt": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "[",
+            "code": "BracketLeft",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "-",
+            "code": "Minus",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Send backward one layer",
+      "category": "Objects",
+      "native": {
+        "command": "sendBackward",
+        "label": "Send backward"
+      }
+    },
+    {
+      "action": "zoomIn",
+      "scope": "editor",
+      "availability": "idle",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": ">",
+            "code": "Period",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "+",
+            "code": "Equal",
+            "primary": true,
+            "nativeKey": "Plus"
+          },
+          "aliases": [
+            {
+              "key": "+",
+              "code": "Equal",
+              "primary": true,
+              "shift": true
+            }
+          ],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "+",
+            "primary": false
+          },
+          "aliases": [
+            {
+              "key": "+",
+              "primary": false,
+              "shift": true
+            }
+          ],
+          "nativeMenu": true,
+          "nativeAccelerator": false
+        }
+      },
+      "label": "Zoom in",
+      "category": "Canvas",
+      "native": {
+        "command": "zoomIn",
+        "label": "Zoom in"
+      }
+    },
+    {
+      "action": "zoomOut",
+      "scope": "editor",
+      "availability": "idle",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "<",
+            "code": "Comma",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "-",
+            "code": "Minus",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "-",
+            "code": "Minus",
+            "primary": false
+          },
+          "aliases": [],
+          "nativeMenu": true,
+          "nativeAccelerator": false
+        }
+      },
+      "label": "Zoom out",
+      "category": "Canvas",
+      "native": {
+        "command": "zoomOut",
+        "label": "Zoom out"
+      }
+    },
+    {
+      "action": "fitSlide",
+      "scope": "editor",
+      "availability": "idle",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "0",
+            "code": "Digit0",
+            "primary": true,
+            "alt": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "o",
+            "primary": true,
+            "alt": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "*",
+            "code": "NumpadMultiply",
+            "codeOnly": true,
+            "primary": false
+          },
+          "aliases": [],
+          "nativeMenu": true,
+          "nativeAccelerator": false
+        }
+      },
+      "label": "Fit slide to window",
+      "category": "Canvas",
+      "native": {
+        "command": "fitSlide",
+        "label": "Fit slide"
+      }
+    },
+    {
+      "action": "nextSlide",
+      "scope": "slideNavigation",
+      "availability": "slide",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "PageDown",
+            "primary": false
+          },
+          "aliases": []
+        },
+        "windows": {
+          "binding": {
+            "key": "PageDown",
+            "primary": false
+          },
+          "aliases": []
+        },
+        "linux": {
+          "binding": {
+            "key": "PageDown",
+            "primary": false
+          },
+          "aliases": []
+        }
+      },
+      "label": "Next slide",
+      "category": "Slides"
+    },
+    {
+      "action": "previousSlide",
+      "scope": "slideNavigation",
+      "availability": "slide",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "PageUp",
+            "primary": false
+          },
+          "aliases": []
+        },
+        "windows": {
+          "binding": {
+            "key": "PageUp",
+            "primary": false
+          },
+          "aliases": []
+        },
+        "linux": {
+          "binding": {
+            "key": "PageUp",
+            "primary": false
+          },
+          "aliases": []
+        }
+      },
+      "label": "Previous slide",
+      "category": "Slides"
+    },
+    {
+      "action": "firstSlide",
+      "scope": "slideNavigation",
+      "availability": "slide",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "Home",
+            "primary": false
+          },
+          "aliases": []
+        },
+        "windows": {
+          "binding": {
+            "key": "Home",
+            "primary": false
+          },
+          "aliases": []
+        },
+        "linux": {
+          "binding": {
+            "key": "Home",
+            "primary": false
+          },
+          "aliases": []
+        }
+      },
+      "label": "First slide",
+      "category": "Slides"
+    },
+    {
+      "action": "lastSlide",
+      "scope": "slideNavigation",
+      "availability": "slide",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "End",
+            "primary": false
+          },
+          "aliases": []
+        },
+        "windows": {
+          "binding": {
+            "key": "End",
+            "primary": false
+          },
+          "aliases": []
+        },
+        "linux": {
+          "binding": {
+            "key": "End",
+            "primary": false
+          },
+          "aliases": []
+        }
+      },
+      "label": "Last slide",
+      "category": "Slides"
+    },
+    {
+      "action": "bold",
+      "scope": "editor",
+      "availability": "textSelection",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "b",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "b",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "b",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Toggle bold on selected text objects",
+      "category": "Text",
+      "native": {
+        "command": "bold",
+        "label": "Bold"
+      }
+    },
+    {
+      "action": "increaseFontSize",
+      "scope": "editor",
+      "availability": "textSelection",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "+",
+            "code": "Equal",
+            "primary": true,
+            "nativeKey": "Plus"
+          },
+          "aliases": [
+            {
+              "key": "+",
+              "code": "Equal",
+              "primary": true,
+              "shift": true
+            }
+          ],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": ">",
+            "code": "Period",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "]",
+            "code": "BracketRight",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Increase selected text size",
+      "category": "Text",
+      "native": {
+        "command": "increaseFontSize",
+        "label": "Increase font size"
+      }
+    },
+    {
+      "action": "decreaseFontSize",
+      "scope": "editor",
+      "availability": "textSelection",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "-",
+            "code": "Minus",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "<",
+            "code": "Comma",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "[",
+            "code": "BracketLeft",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Decrease selected text size",
+      "category": "Text",
+      "native": {
+        "command": "decreaseFontSize",
+        "label": "Decrease font size"
+      }
+    },
+    {
+      "action": "alignTextLeft",
+      "scope": "editor",
+      "availability": "textSelection",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "{",
+            "code": "BracketLeft",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "l",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "l",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Align selected text left",
+      "category": "Text",
+      "native": {
+        "command": "alignTextLeft",
+        "label": "Align text left"
+      }
+    },
+    {
+      "action": "alignTextCenter",
+      "scope": "editor",
+      "availability": "textSelection",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "|",
+            "code": "Backslash",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "e",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "e",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Center selected text",
+      "category": "Text",
+      "native": {
+        "command": "alignTextCenter",
+        "label": "Align text center"
+      }
+    },
+    {
+      "action": "alignTextRight",
+      "scope": "editor",
+      "availability": "textSelection",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "}",
+            "code": "BracketRight",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "r",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "r",
+            "primary": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Align selected text right",
+      "category": "Text",
+      "native": {
+        "command": "alignTextRight",
+        "label": "Align text right"
+      }
+    },
+    {
+      "action": "toggleInspector",
+      "label": "Show or hide Inspector",
+      "category": "Canvas",
+      "scope": "editor",
+      "availability": "idle",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "native": {
+        "command": "toggleInspector",
+        "label": "Inspector"
+      },
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "i",
+            "primary": true,
+            "alt": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "i",
+            "primary": true,
+            "alt": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "i",
+            "primary": true,
+            "alt": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      }
+    },
+    {
+      "action": "toggleObjectList",
+      "label": "Show or hide object list",
+      "category": "Canvas",
+      "scope": "editor",
+      "availability": "idle",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "native": {
+        "command": "toggleObjectList",
+        "label": "Object list"
+      },
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "l",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "windows": {
+          "binding": {
+            "key": "l",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        },
+        "linux": {
+          "binding": {
+            "key": "l",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      }
+    }
+  ]
+}

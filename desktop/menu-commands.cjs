@@ -1,4 +1,10 @@
-const { COMMANDS } = require("./host-utils.cjs");
+const { validateCommandAvailability } = require("./host-utils.cjs");
+const {
+  registry,
+  COMMANDS,
+  keyboardPlatform,
+  getNativeAccelerator,
+} = require("./shortcut-registry.cjs");
 
 // These fixed scripts inspect focus only; no renderer data is evaluated as code.
 const EDITABLE_FOCUS_SCRIPT = `(() => {
@@ -67,7 +73,10 @@ function protectTextComposition(contents) {
     if (input.key === "AltGraph") altGraph = input.type !== "keyUp";
     // Keep key events flowing to IME/text controls while suppressing native
     // menu accelerators, which otherwise consume them before the renderer.
-    contents.setIgnoreMenuShortcuts(Boolean(input.isComposing || altGraph));
+    // Repeated editor commands likewise reach the renderer repeat-policy guard.
+    contents.setIgnoreMenuShortcuts(
+      Boolean(input.isComposing || altGraph || input.isAutoRepeat),
+    );
   });
   contents.on("blur", () => {
     altGraph = false;
@@ -80,195 +89,69 @@ function buildMenuTemplate(
   sendCommand,
   { development = false, onAbout } = {},
 ) {
-  const mac = platform === "darwin";
-  const windows = platform === "win32";
-  const primary = mac ? "Command" : "Control";
-  const commandItem = (label, accelerator, command) => ({
-    label,
-    accelerator,
-    click: () => sendCommand(command),
-  });
-  const item = (label, keys, command) =>
-    commandItem(label, `${primary}+${keys}`, command);
-  return [
-    ...(platform === "darwin" ? [{ role: "appMenu" }] : []),
-    {
-      label: "File",
-      submenu: [
-        item("New presentation", "N", "new"),
-        item("Open…", "O", "open"),
-        item("Save", "S", "save"),
-        item("Save As…", mac ? "Alt+Shift+S" : "Shift+S", "saveAs"),
-        { type: "separator" },
-        item("Export PDF…", mac ? "Alt+Shift+P" : "Alt+P", "exportPdf"),
-        item("Export slide SVG…", "Alt+S", "exportSvg"),
-        { type: "separator" },
-        { role: platform === "darwin" ? "close" : "quit" },
-      ],
-    },
-    {
-      label: "Edit",
-      submenu: [
-        item("Undo", "Z", "undo"),
-        item("Redo", mac ? "Shift+Z" : "Y", "redo"),
-        { type: "separator" },
-        item("Cut", "X", "cut"),
-        item("Copy", "C", "copy"),
-        item("Paste", "V", "paste"),
-        item("Select all", "A", "selectAll"),
-        ...(mac ? [item("Deselect all", "Shift+A", "deselectAll")] : []),
-        { type: "separator" },
-        ...(mac || windows
-          ? [item("Duplicate selection or slide", "D", "duplicate")]
-          : [
-              commandItem(
-                "Duplicate selection or slide",
-                "Shift+F3",
-                "duplicate",
-              ),
-            ]),
-        ...(windows
-          ? [item("Duplicate slide", "Shift+D", "duplicateSlide")]
-          : []),
-        item("Group", mac ? "Alt+G" : windows ? "G" : "Shift+G", "group"),
-        item("Ungroup", mac || !windows ? "Alt+Shift+G" : "Shift+G", "ungroup"),
-        ...(mac
-          ? [
-              { type: "separator" },
-              item("Apply text / Present", "Enter", "finishTextEditing"),
-            ]
-          : []),
-      ],
-    },
-    {
-      label: "Insert",
-      submenu: [
-        item("Slide", mac ? "Shift+N" : "M", "addSlide"),
-        mac
-          ? item("Equation", "Alt+E", "insertEquation")
-          : commandItem(
-              "Equation",
-              windows ? "Alt+=" : "Alt+Shift+E",
-              "insertEquation",
-            ),
-        ...(mac ? [item("Figure…", "Shift+V", "insertFigure")] : []),
-      ],
-    },
-    {
-      label: "Format",
-      submenu: [
-        item("Bold", "B", "bold"),
-        item(
-          "Increase font size",
-          mac ? "Plus" : windows ? "Shift+." : "]",
-          "increaseFontSize",
-        ),
-        item(
-          "Decrease font size",
-          mac ? "-" : windows ? "Shift+," : "[",
-          "decreaseFontSize",
-        ),
-        { type: "separator" },
-        item("Align text left", mac ? "Shift+[" : "L", "alignTextLeft"),
-        item("Align text center", mac ? "Shift+\\" : "E", "alignTextCenter"),
-        item("Align text right", mac ? "Shift+]" : "R", "alignTextRight"),
-      ],
-    },
-    {
-      label: "Arrange",
-      submenu: [
-        ...(!windows
-          ? [
-              item(
-                "Bring to front",
-                mac ? "Shift+F" : "Shift+numadd",
-                "bringToFront",
-              ),
-            ]
-          : []),
-        item(
-          "Bring forward",
-          // Electron's Plus token implies Shift, so Plus/Shift+Plus would
-          // collide. Impress binds the keypad ADD key with distinct modifiers.
-          mac ? "Alt+Shift+F" : windows ? "Shift+]" : "numadd",
-          "bringForward",
-        ),
-        item(
-          "Send backward",
-          mac ? "Alt+Shift+B" : windows ? "Shift+[" : "-",
-          "sendBackward",
-        ),
-        ...(!windows
-          ? [item("Send to back", mac ? "Shift+B" : "Shift+-", "sendToBack")]
-          : []),
-        ...(mac
-          ? [
-              { type: "separator" },
-              item("Lock", "L", "lock"),
-              item("Unlock", "Alt+L", "unlock"),
-            ]
-          : []),
-      ],
-    },
-    {
-      label: "View",
-      submenu: [
-        ...(mac
-          ? []
-          : [commandItem("Present from start", "F5", "presentFromStart")]),
-        mac
-          ? item("Present", "Alt+P", "present")
-          : commandItem("Present", "Shift+F5", "present"),
-        ...(windows
-          ? [commandItem("Presenter view", "Alt+F5", "presenterView")]
-          : []),
-        ...(mac
-          ? [
-              { type: "separator" },
-              item("Zoom in", "Shift+.", "zoomIn"),
-              item("Zoom out", "Shift+,", "zoomOut"),
-              item("Fit slide", "Alt+0", "fitSlide"),
-            ]
-          : windows
+  const profile = keyboardPlatform(platform);
+  const definitions = new Map(
+    registry.commands.map((entry) => [entry.action, entry]),
+  );
+  const menus = registry.menus.map((menu) => ({
+    label: menu.label,
+    submenu: menu.items
+      .flatMap((action) => {
+        if (action === "separator") return [{ type: "separator" }];
+        if (action === "closeOrQuit")
+          return [{ role: platform === "darwin" ? "close" : "quit" }];
+        if (action === "togglefullscreen")
+          return [{ role: "togglefullscreen" }];
+        if (action === "development")
+          return development
             ? [
                 { type: "separator" },
-                item("Zoom in", "Plus", "zoomIn"),
-                item("Zoom out", "-", "zoomOut"),
-                item("Fit slide", "Alt+O", "fitSlide"),
+                { role: "reload" },
+                { role: "toggleDevTools" },
               ]
-            : [
-                { type: "separator" },
-                // Bare zoom keys and keypad fit are renderer-only so native
-                // menu accelerators cannot consume text input or media keys.
-                commandItem("Zoom in", undefined, "zoomIn"),
-                commandItem("Zoom out", undefined, "zoomOut"),
-                commandItem("Fit slide", undefined, "fitSlide"),
-              ]),
-        { type: "separator" },
-        { role: "togglefullscreen" },
-        ...(development
-          ? [
-              { type: "separator" },
-              { role: "reload" },
-              { role: "toggleDevTools" },
-            ]
-          : []),
-      ],
-    },
-    {
-      label: "Help",
-      submenu: [
-        mac
-          ? item("Keyboard shortcuts", "Shift+/", "showShortcuts")
-          : commandItem("Keyboard shortcuts", "F1", "showShortcuts"),
-        { label: "About SciSlide", click: onAbout },
-      ],
-    },
-  ];
+            : [];
+        if (action === "about")
+          return [{ label: "About SciSlide", click: onAbout }];
+        const definition = definitions.get(action);
+        if (!definition?.native || !definition.platforms[profile]?.nativeMenu)
+          return [];
+        return [
+          {
+            id: definition.native.command,
+            label: definition.native.label,
+            accelerator: getNativeAccelerator(definition, profile),
+            click: () => sendCommand(definition.native.command),
+          },
+        ];
+      })
+      .filter(
+        (item, index, items) =>
+          item.type !== "separator" ||
+          (index > 0 &&
+            index < items.length - 1 &&
+            items[index - 1].type !== "separator"),
+      ),
+  }));
+  return [...(platform === "darwin" ? [{ role: "appMenu" }] : []), ...menus];
+}
+
+function setMenuCommandAvailability(menu, states) {
+  const checked = validateCommandAvailability(states);
+  for (const [command, enabled] of Object.entries(checked)) {
+    const item = menu?.getMenuItemById(command);
+    if (item) item.enabled = enabled;
+  }
+}
+
+function isMenuCommandEnabled(menu, command) {
+  const item = menu?.getMenuItemById(command);
+  return COMMANDS.has(command) && Boolean(item && item.enabled !== false);
 }
 
 module.exports = {
   buildMenuTemplate,
+  setMenuCommandAvailability,
+  isMenuCommandEnabled,
   dispatchMenuCommand,
   protectTextComposition,
   EDITABLE_FOCUS_SCRIPT,

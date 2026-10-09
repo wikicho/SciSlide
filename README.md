@@ -8,6 +8,8 @@ A scientific presentation editor with editable equations, vector output, and an 
 
 v0.6.2 adds platform-specific keyboard shortcuts: Keynote conventions on macOS, PowerPoint on Windows and LibreOffice Impress on Ubuntu/Linux. Native menus, toolbar hints and shortcut help use the same bindings. Drag-and-drop slide ordering and Linux Debian output in `release/linux-deb/` remain available.
 
+**Unreleased source additions:** canvas Tab/Shift+Tab object selection, independent Inspector/Objects & Layers toggles, macOS thumbnail reorder keys, focused-thumbnail duplication, and consistent presentation key ownership/repeat behavior. The published v0.6.2 installers have not been rebuilt with these changes.
+
 Local v0.6.2 macOS installers are kept in `release/macos-pkg/`, and Windows x64 distributions in `release/windows-x64/`. Select these directories with the packaging scripts' `--out` option; their general defaults remain `release/`.
 
 ## Download desktop builds
@@ -124,60 +126,64 @@ The desktop menu provides New Presentation, Open, Save, Save As, object editing,
 
 ## Keyboard Shortcuts
 
-The [Keyboard Shortcut Specification](docs/specifications/keyboard-shortcuts.md) defines the Keynote mapping, current exceptions, context rules, planned additions and acceptance criteria. The tables below remain the implemented 0.6.2 user reference.
+The [Keyboard Shortcut Specification](docs/specifications/keyboard-shortcuts.md) defines the Keynote mapping, current exceptions, context rules, remaining additions and acceptance criteria. The tables below describe current source bindings; rows marked **unreleased** are additions after the published 0.6.2 installers.
 
 SciSlide detects the host operating system and uses **Command (⌘)** on macOS or **Ctrl** on Ubuntu/Linux and Windows. **Option (⌥)** is the macOS equivalent of **Alt**. Toolbar hints, native menus and **Keyboard shortcuts** show the current platform's bindings. The help dialog's platform tabs change only the reference being displayed.
 
 For supported actions, macOS follows [Keynote](https://support.apple.com/en-gb/guide/keynote/tanfde4a3e6d/mac), Windows follows [PowerPoint](https://support.microsoft.com/en-us/accessibility/powerpoint/use-keyboard-shortcuts-to-create-powerpoint-presentations), and Ubuntu/Linux follows [LibreOffice Impress](https://help.libreoffice.org/latest/en-US/text/simpress/04/01020000.html). SciSlide keeps its own export commands. Linux equation insertion uses **Alt+Shift+E**, following LibreOffice's [Formula Object shortcut](https://help.libreoffice.org/latest/en-US/text/shared/01/04160300.html).
 
-| Action                                 | macOS                         | Ubuntu / Linux                  | Windows               |
-| -------------------------------------- | ----------------------------- | ------------------------------- | --------------------- |
-| New presentation                       | ⌘+N                           | Ctrl+N                          | Ctrl+N                |
-| Open presentation                      | ⌘+O                           | Ctrl+O                          | Ctrl+O                |
-| Save                                   | ⌘+S                           | Ctrl+S                          | Ctrl+S                |
-| Save as                                | ⌘+Option+Shift+S              | Ctrl+Shift+S                    | Ctrl+Shift+S          |
-| Undo                                   | ⌘+Z                           | Ctrl+Z                          | Ctrl+Z                |
-| Redo                                   | ⌘+Shift+Z                     | Ctrl+Y                          | Ctrl+Y                |
-| Copy / Cut / Paste                     | ⌘+C / X / V                   | Ctrl+C / X / V                  | Ctrl+C / X / V        |
-| Select all objects                     | ⌘+A                           | Ctrl+A                          | Ctrl+A                |
-| Duplicate selection or slide           | ⌘+D                           | Shift+F3                        | Ctrl+D                |
-| Duplicate current slide                | —                             | —                               | Ctrl+Shift+D          |
-| Open the new-slide layout chooser      | ⌘+Shift+N                     | Ctrl+M                          | Ctrl+M                |
-| Insert equation                        | ⌘+Option+E                    | Alt+Shift+E                     | Alt+=                 |
-| Group / Ungroup                        | ⌘+Option+G / ⌘+Option+Shift+G | Ctrl+Shift+G / Ctrl+Alt+Shift+G | Ctrl+G / Ctrl+Shift+G |
-| Present from first slide               | —                             | F5                              | F5                    |
-| Present from current slide             | ⌘+Option+P                    | Shift+F5                        | Shift+F5              |
-| Open presenter display                 | —                             | —                               | Alt+F5                |
-| Export PDF                             | ⌘+Option+Shift+P              | Ctrl+Alt+P                      | Ctrl+Alt+P            |
-| Export current slide as SVG            | ⌘+Option+S                    | Ctrl+Alt+S                      | Ctrl+Alt+S            |
-| Keyboard shortcuts                     | ⌘+Shift+/                     | F1                              | F1                    |
-| Bypass alignment guides while dragging | Hold Option                   | Hold Alt                        | Hold Alt              |
+| Action                                     | macOS                         | Ubuntu / Linux                  | Windows               |
+| ------------------------------------------ | ----------------------------- | ------------------------------- | --------------------- |
+| New presentation                           | ⌘+N                           | Ctrl+N                          | Ctrl+N                |
+| Open presentation                          | ⌘+O                           | Ctrl+O                          | Ctrl+O                |
+| Save                                       | ⌘+S                           | Ctrl+S                          | Ctrl+S                |
+| Save as                                    | ⌘+Option+Shift+S              | Ctrl+Shift+S                    | Ctrl+Shift+S          |
+| Undo                                       | ⌘+Z                           | Ctrl+Z                          | Ctrl+Z                |
+| Redo                                       | ⌘+Shift+Z                     | Ctrl+Y                          | Ctrl+Y                |
+| Copy / Cut / Paste                         | ⌘+C / X / V                   | Ctrl+C / X / V                  | Ctrl+C / X / V        |
+| Select all objects                         | ⌘+A                           | Ctrl+A                          | Ctrl+A                |
+| Duplicate selection or slide               | ⌘+D                           | Shift+F3                        | Ctrl+D                |
+| Duplicate current slide                    | —                             | —                               | Ctrl+Shift+D          |
+| Open the new-slide layout chooser          | ⌘+Shift+N                     | Ctrl+M                          | Ctrl+M                |
+| Insert equation                            | ⌘+Option+E                    | Alt+Shift+E                     | Alt+=                 |
+| Group / Ungroup                            | ⌘+Option+G / ⌘+Option+Shift+G | Ctrl+Shift+G / Ctrl+Alt+Shift+G | Ctrl+G / Ctrl+Shift+G |
+| Present from first slide                   | —                             | F5                              | F5                    |
+| Present from current slide                 | ⌘+Option+P                    | Shift+F5                        | Shift+F5              |
+| Open presenter display                     | —                             | —                               | Alt+F5                |
+| Export PDF                                 | ⌘+Option+Shift+P              | Ctrl+Alt+P                      | Ctrl+Alt+P            |
+| Export current slide as SVG                | ⌘+Option+S                    | Ctrl+Alt+S                      | Ctrl+Alt+S            |
+| Keyboard shortcuts                         | ⌘+Shift+/                     | F1                              | F1                    |
+| Toggle/focus Inspector (unreleased)        | ⌘+Option+I                    | Ctrl+Alt+I                      | Ctrl+Alt+I            |
+| Toggle/focus Objects & Layers (unreleased) | ⌘+Shift+L                     | Ctrl+Shift+L                    | Ctrl+Shift+L          |
+| Bypass alignment guides while dragging     | Hold Option                   | Hold Alt                        | Hold Alt              |
 
 Additional macOS commands:
 
-| Action                                    | Shortcut                            |
-| ----------------------------------------- | ----------------------------------- |
-| Open the new-slide layout chooser         | ⌘+Shift+N                           |
-| Insert equation                           | ⌘+Option+E                          |
-| Insert image, SVG or PDF                  | ⌘+Shift+V                           |
-| Deselect all objects                      | ⌘+Shift+A                           |
-| Lock / Unlock selected objects            | ⌘+L / ⌘+Option+L                    |
-| Bring to front / Send to back             | ⌘+Shift+F / ⌘+Shift+B               |
-| Bring forward / Send backward one layer   | ⌘+Option+Shift+F / ⌘+Option+Shift+B |
-| Zoom in / out                             | ⌘+Shift+> / ⌘+Shift+<               |
-| Fit slide to window                       | ⌘+Option+0                          |
-| Next / Previous slide while editing       | Page Down / Page Up                 |
-| First / Last slide while editing          | Home / End                          |
-| Toggle bold on selected text objects      | ⌘+B                                 |
-| Increase / Decrease selected text size    | ⌘ and + / ⌘ and -                   |
-| Align selected text left / center / right | ⌘+{ / ⌘+\| / ⌘+}                    |
+| Action                                       | Shortcut                            |
+| -------------------------------------------- | ----------------------------------- |
+| Open the new-slide layout chooser            | ⌘+Shift+N                           |
+| Insert equation                              | ⌘+Option+E                          |
+| Insert image, SVG or PDF                     | ⌘+Shift+V                           |
+| Deselect all objects                         | ⌘+Shift+A                           |
+| Lock / Unlock selected objects               | ⌘+L / ⌘+Option+L                    |
+| Bring to front / Send to back                | ⌘+Shift+F / ⌘+Shift+B               |
+| Bring forward / Send backward one layer      | ⌘+Option+Shift+F / ⌘+Option+Shift+B |
+| Zoom in / out                                | ⌘+Shift+> / ⌘+Shift+<               |
+| Fit slide to window                          | ⌘+Option+0                          |
+| Next / Previous slide while editing          | Page Down / Page Up                 |
+| First / Last slide while editing             | Home / End                          |
+| Move focused slide up / down (unreleased)    | ⌘+Option+Up / Down                  |
+| Move focused slide first / last (unreleased) | ⌘+Option+Shift+Up / Down            |
+| Toggle bold on selected text objects         | ⌘+B                                 |
+| Increase / Decrease selected text size       | ⌘ and + / ⌘ and -                   |
+| Align selected text left / center / right    | ⌘+{ / ⌘+\| / ⌘+}                    |
 
 Additional Windows and Ubuntu/Linux commands:
 
 | Action                                    | Ubuntu / Linux                          | Windows                         |
 | ----------------------------------------- | --------------------------------------- | ------------------------------- |
-| Bring forward / Send backward one layer   | Ctrl++ / Ctrl+-                         | Ctrl+Shift+] / Ctrl+Shift+[     |
-| Bring to front / Send to back             | Ctrl+Shift++ / Ctrl+Shift+-             | Use Objects & Layers controls   |
+| Bring forward / Send backward one layer   | Ctrl+Num + / Ctrl+-                     | Ctrl+Shift+] / Ctrl+Shift+[     |
+| Bring to front / Send to back             | Ctrl+Shift+Num + / Ctrl+Shift+-         | Use Objects & Layers controls   |
 | Zoom in / out                             | + / -                                   | Ctrl++ / Ctrl+-                 |
 | Fit slide to window                       | Numeric keypad *                        | Ctrl+Alt+O                      |
 | Next / Previous slide while editing       | Page Down / Page Up                     | Page Down / Page Up             |
@@ -188,15 +194,19 @@ Additional Windows and Ubuntu/Linux commands:
 | Increase / Decrease selected text size    | Ctrl+] / Ctrl+[                         | Ctrl+Shift+> / Ctrl+Shift+<     |
 | Align selected text left / center / right | Ctrl+L / Ctrl+E / Ctrl+R                | Ctrl+L / Ctrl+E / Ctrl+R        |
 
-Linux **Ctrl++** advances an object by one layer; **Ctrl+Shift++** sends it to the front. Use numeric-keypad **+** to distinguish **Ctrl++** from **Ctrl+Shift++**. On a main keyboard, use **Ctrl+=** for one layer forward and **Ctrl+Shift+=** for the front. Bare **+ / -** zoom only outside text fields; the fit shortcut requires the numeric keypad. Linux **Shift+F3** immediately copies the selected objects or, if none are selected, the current slide. SciSlide does not open Impress's duplication options dialog.
+Linux **Ctrl+Num +** advances an object by one layer; **Ctrl+Shift+Num +** sends it to the front. **Num +** means numeric-keypad Add; shortcut help and native menus identify that canonical binding explicitly. On a main keyboard, use **Ctrl+=** for one layer forward and **Ctrl+Shift+=** for the front. Bare **+ / -** zoom only outside text fields; the fit shortcut requires the numeric keypad. Linux **Shift+F3** immediately copies the selected objects or, if none are selected, the current slide. SciSlide does not open Impress's duplication options dialog.
 
-On compact Mac keyboards, **Fn+↓ / Fn+↑** send Page Down / Page Up, and **Fn+← / Fn+→** send Home / End. On every platform, **Up / Down** selects slides and **Delete / Backspace** removes the focused slide when a thumbnail has focus. The Windows/Linux slide-move shortcuts also require thumbnail focus; canvas arrow keys continue moving objects. On the canvas, arrow keys move selected objects by 1 px; Shift+Arrow moves them by 10 px. **Shift+click** selects multiple objects, and macOS also accepts **Command+click** to add or remove an object from the selection. Zoom changes in 10% steps between 50% and 150%; Fit restores the existing 100% view, which fits the slide to the available canvas.
+On compact Mac keyboards, **Fn+↓ / Fn+↑** send Page Down / Page Up, and **Fn+← / Fn+→** send Home / End. On every platform, **Up / Down** selects slides and **Delete / Backspace** removes the focused slide when a thumbnail has focus. All slide-move shortcuts require thumbnail focus; canvas arrow keys continue moving objects. In the current source, duplication also targets the focused thumbnail, selects/focuses the new copy, and creates one undoable edit; thumbnail navigation and deletion ignore held-key repetition. On the canvas, arrow keys move selected objects by 1 logical document unit; Shift+Arrow moves them by 10. **Shift+click** selects multiple objects, and macOS also accepts **Command+click** to add or remove an object from the selection. Zoom changes in 10% steps between 50% and 150%; Fit restores the existing 100% view, which fits the slide to the available canvas.
+
+**Unreleased:** when the slide canvas has focus, **Tab / Shift+Tab** selects eligible objects in back-to-front stacking order. A group is one unit; hidden and locked content is skipped. At the first/last object, Tab follows ordinary UI focus order instead of wrapping. Inspector and Objects & Layers have independent visibility; their shortcuts focus the shown pane or return to the canvas when hiding it. These shortcuts leave text fields, dialogs, and playback in control of their input. A polite canvas status announces object selections; double-clicking an equation reveals Inspector and focuses its source.
+
+**Unreleased desktop menus:** enabled states follow current focus, selection, clipboard/history availability, dialogs and busy operations, using the renderer's shared availability rules. Native text clipboard/history commands remain with the focused field, including modal text controls; disabled application commands do not dispatch.
 
 Text-formatting commands act on whole selected text objects on the canvas. **Enter** edits selected text or inserts a new line while editing. **⌘/Ctrl+Enter** applies an inline text edit and **Esc** cancels it. Save captures the current text. Clipboard, selection, undo/redo and navigation retain their normal text-field behavior in the inline editor and Inspector; composing Korean or other IME text does not trigger canvas commands.
 
 For compatibility, macOS still accepts **⌘+Shift+S** for Save As, **⌘+G / ⌘+Shift+G** for Group/Ungroup and **⌘+Enter** to present from the canvas. PDF export uses **⌘+Option+Shift+P** because **⌘+Option+P** starts the presentation. Windows and Ubuntu/Linux also accept **Ctrl+Shift+Z** for Redo, **Ctrl+Enter** to present from the current slide, and **Ctrl+Shift+/** for shortcut help. Linux keeps **Ctrl+D** as a duplicate alias and accepts **Ctrl+Alt+=** for equation insertion from the [Impress guide](https://books.libreoffice.org/en/IG242/IG2413-KeyboardShortcuts.html). Its slide navigator also accepts **Ctrl+Shift+Up / Down / Home / End** to move the focused slide up, down, first or last. Existing Linux **Ctrl+G** grouping remains available; **Ctrl+Shift+G** now groups, matching Impress.
 
-During a slideshow, **Right / Down / Space / Page Down** advances a build or slide, **Left / Up / Page Up** goes back, **Home / End** selects the first or last slide, and **Esc** exits. Windows and Ubuntu/Linux also accept **Enter** to advance and **Backspace** to go back; Windows accepts **N / P**, and Linux accepts **-** to exit. **F5 / Shift+F5** start from the first / current slide, as in [PowerPoint](https://support.microsoft.com/en-us/accessibility/powerpoint/use-keyboard-shortcuts-to-deliver-powerpoint-presentations) and [Impress](https://books.libreoffice.org/en/IG242/IG2413-KeyboardShortcuts.html). macOS also accepts **Q** to exit when focus is outside text fields and media controls. Media controls retain their own keyboard behavior. Native desktop menus use the same platform bindings; in a browser, use the toolbar when a browser-reserved combination takes precedence.
+During a slideshow, **Right / Down / Space / Page Down** advances a build or slide, **Left / Up / Page Up** goes back, **Home / End** selects the first or last slide, and **Esc** exits. Windows and Ubuntu/Linux also accept **Enter** to advance and **Backspace** to go back; Windows accepts **N / P**, and Linux accepts **-** to exit. **F5 / Shift+F5** start from the first / current slide, as in [PowerPoint](https://support.microsoft.com/en-us/accessibility/powerpoint/use-keyboard-shortcuts-to-deliver-powerpoint-presentations) and [Impress](https://books.libreoffice.org/en/IG242/IG2413-KeyboardShortcuts.html). macOS also accepts **Q** to exit when focus is outside text fields and media controls. **Unreleased:** audience and presenter use the same routing: editable/media controls retain all keys, including Escape, and focused buttons retain Space/Enter. Plain Escape exits with presentation focus. Navigation, Home/End and exit ignore auto-repeat. Shift+arrow keeps the established build-navigation behavior; other shifted playback keys are ignored. Native desktop menus use the same platform bindings; in a browser, use the toolbar when a browser-reserved combination takes precedence.
 
 ## Inline Equations in Text
 

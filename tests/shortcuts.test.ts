@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { createRequire } from "node:module";
 import {
   getKeyboardPlatform,
   getPlatformShortcuts,
   getShortcut,
   isShortcutAvailable,
+  isShortcutEnabled,
+  type KeyboardPlatform,
   matchShortcut,
   matchesShortcut,
   modifierLabel,
@@ -492,5 +495,235 @@ describe("platform-aware keyboard shortcuts", () => {
         "windows",
       ),
     ).toBe(true);
+  });
+});
+
+const require = createRequire(import.meta.url);
+const {
+  registry,
+  getNativeAccelerator,
+} = require("../desktop/shortcut-registry.cjs");
+const { buildMenuTemplate } = require("../desktop/menu-commands.cjs");
+
+describe("shared shortcut command registry", () => {
+  it.each(["mac", "windows", "linux"] as const)(
+    "uses complete metadata and distinct scoped bindings on %s",
+    (platform) => {
+      const shortcuts = getPlatformShortcuts(platform);
+      for (const shortcut of shortcuts) {
+        expect(shortcut.label).not.toBe("");
+        expect(shortcut.scope).toBeTruthy();
+        expect(shortcut.availability).toBeTruthy();
+        expect(shortcut.repeatPolicy).toBe("once");
+        expect(shortcut.globalInText).toBe(
+          [
+            "new",
+            "open",
+            "save",
+            "saveAs",
+            "exportPdf",
+            "exportSvg",
+            "help",
+          ].includes(shortcut.action),
+        );
+        for (const binding of [shortcut.binding, ...shortcut.aliases]) {
+          const event = key(binding.key, {
+            code: binding.code,
+            metaKey: platform === "mac" && binding.primary,
+            ctrlKey: platform !== "mac" && binding.primary,
+            altKey: Boolean(binding.alt),
+            shiftKey: Boolean(binding.shift),
+          });
+          const matches = shortcuts.filter((candidate) =>
+            matchesShortcut(event, candidate.action, platform),
+          );
+          const applicable = matches.filter(
+            (candidate) => candidate.scope === shortcut.scope,
+          );
+          expect(
+            applicable.map((candidate) => candidate.action),
+            `${shortcut.action} ${JSON.stringify(binding)}`,
+          ).toEqual([shortcut.action]);
+        }
+      }
+    },
+  );
+
+  it.each(["mac", "windows", "linux"] as const)(
+    "derives native accelerators and routes from the same %s records",
+    (platform) => {
+      const host = { mac: "darwin", windows: "win32", linux: "linux" }[
+        platform
+      ];
+      const sent: string[] = [];
+      const items = buildMenuTemplate(host, (command: string) =>
+        sent.push(command),
+      ).flatMap(
+        (menu: {
+          submenu?: Array<{
+            id?: string;
+            accelerator?: string;
+            click?: () => void;
+          }>;
+        }) => menu.submenu ?? [],
+      );
+      for (const definition of registry.commands) {
+        const profile = definition.platforms[platform];
+        if (!definition.native || !profile?.nativeMenu) continue;
+        const item = items.find(
+          (candidate: { id?: string }) =>
+            candidate.id === definition.native.command,
+        );
+        expect(item).toBeDefined();
+        expect(item.accelerator).toBe(
+          getNativeAccelerator(definition, platform),
+        );
+        item.click();
+        expect(sent.at(-1)).toBe(definition.native.command);
+        if (!item.accelerator) continue;
+        const parts = item.accelerator.split("+");
+        const nativeKey = parts.pop();
+        const punctuation: Record<string, [string, string]> = {
+          "/": ["?", "Slash"],
+          ".": [".", "Period"],
+          ",": [",", "Comma"],
+          "[": ["[", "BracketLeft"],
+          "]": ["]", "BracketRight"],
+          "\\": ["\\", "Backslash"],
+          "=": ["=", "Equal"],
+          "-": ["-", "Minus"],
+          Plus: ["+", "Equal"],
+          numadd: ["+", "NumpadAdd"],
+        };
+        const [value, code] = punctuation[nativeKey] ?? [nativeKey, undefined];
+        expect(
+          matchesShortcut(
+            key(value, {
+              code,
+              metaKey: parts.includes("Command"),
+              ctrlKey: parts.includes("Control"),
+              altKey: parts.includes("Alt"),
+              shiftKey: parts.includes("Shift") || nativeKey === "Plus",
+            }),
+            definition.action,
+            platform,
+          ),
+        ).toBe(true);
+      }
+    },
+  );
+
+  it("exposes fixed native command IDs without adding renderer-only IPC routes", () => {
+    expect(getShortcut("help", "mac").nativeCommand).toBe("showShortcuts");
+    expect(getShortcut("toggleInspector", "windows").nativeCommand).toBe(
+      "toggleInspector",
+    );
+    expect(getShortcut("moveSlideUp", "mac").nativeCommand).toBeUndefined();
+    expect(getShortcut("nextSlide", "linux").nativeCommand).toBeUndefined();
+  });
+
+  it("keeps focused-thumbnail reorder renderer-only and supplies Mac panel commands", () => {
+    for (const [action, value, shift] of [
+      ["moveSlideUp", "ArrowUp", false],
+      ["moveSlideDown", "ArrowDown", false],
+      ["moveSlideFirst", "ArrowUp", true],
+      ["moveSlideLast", "ArrowDown", true],
+    ] as const) {
+      expect(
+        matchShortcut(
+          key(value, { metaKey: true, altKey: true, shiftKey: shift }),
+          "mac",
+        ),
+      ).toBe(action);
+      expect(getShortcut(action, "mac").scope).toBe("thumbnail");
+      expect(
+        getNativeAccelerator(
+          registry.commands.find(
+            (entry: { action: string }) => entry.action === action,
+          ),
+          "mac",
+        ),
+      ).toBeUndefined();
+    }
+    for (const platform of ["mac", "windows", "linux"] as const) {
+      const primary =
+        platform === "mac" ? { metaKey: true } : { ctrlKey: true };
+      expect(
+        matchShortcut(key("i", { ...primary, altKey: true }), platform),
+      ).toBe("toggleInspector");
+      expect(
+        matchShortcut(key("l", { ...primary, shiftKey: true }), platform),
+      ).toBe("toggleObjectList");
+    }
+  });
+
+  it("distinguishes the Linux keypad canonical layer shortcut from main-row aliases", () => {
+    expect(getShortcut("bringForward", "linux").binding.code).toBe("NumpadAdd");
+    expect(getShortcut("bringForward", "linux").keys).toBe("Ctrl+Num +");
+    expect(getShortcut("bringForward", "linux").aliases).toContainEqual({
+      key: "+",
+      code: "Equal",
+      primary: true,
+    });
+    expect(
+      matchShortcut(key("=", { ctrlKey: true, code: "Equal" }), "linux"),
+    ).toBe("bringForward");
+    expect(
+      matchShortcut(key("+", { ctrlKey: true, code: "NumpadAdd" }), "linux"),
+    ).toBe("bringForward");
+  });
+
+  it("applies availability predicates consistently without losing empty-slide duplication", () => {
+    const idle = { busy: false };
+    const platforms: KeyboardPlatform[] = ["mac", "windows", "linux"];
+    for (const platform of platforms) {
+      expect(isShortcutEnabled("new", platform, idle)).toBe(true);
+      expect(isShortcutEnabled("duplicate", platform, idle)).toBe(false);
+      expect(
+        isShortcutEnabled("duplicate", platform, { ...idle, hasSlide: true }),
+      ).toBe(true);
+      expect(
+        isShortcutEnabled("moveSlideUp", platform, { ...idle, hasSlide: true }),
+      ).toBe(false);
+      expect(
+        isShortcutEnabled("moveSlideUp", platform, {
+          ...idle,
+          hasFocusedSlide: true,
+        }),
+      ).toBe(true);
+      for (const [action, field] of [
+        ["undo", "canUndo"],
+        ["redo", "canRedo"],
+        ["paste", "canPaste"],
+        ["copy", "hasSelection"],
+        ["cut", "hasUnlockedSelection"],
+        ["group", "canGroup"],
+        ["ungroup", "canUngroup"],
+        ["bold", "hasTextSelection"],
+        ["selectAll", "hasObjects"],
+      ] as const) {
+        expect(isShortcutEnabled(action, platform, idle)).toBe(false);
+        expect(
+          isShortcutEnabled(action, platform, { ...idle, [field]: true }),
+        ).toBe(true);
+        expect(
+          isShortcutEnabled(action, platform, { busy: true, [field]: true }),
+        ).toBe(false);
+      }
+      expect(isShortcutEnabled("help", platform, { busy: true })).toBe(true);
+      expect(
+        isShortcutEnabled("toggleInspector", platform, { busy: true }),
+      ).toBe(false);
+    }
+    expect(
+      isShortcutEnabled("unlock", "mac", {
+        ...idle,
+        hasUnlockedSelection: true,
+      }),
+    ).toBe(false);
+    expect(
+      isShortcutEnabled("unlock", "mac", { ...idle, hasLockedSelection: true }),
+    ).toBe(true);
+    expect(isShortcutEnabled("presenterView", "linux", idle)).toBe(false);
   });
 });

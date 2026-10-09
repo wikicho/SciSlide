@@ -72,7 +72,9 @@ export type DesktopCommand =
   | "decreaseFontSize"
   | "alignTextLeft"
   | "alignTextCenter"
-  | "alignTextRight";
+  | "alignTextRight"
+  | "toggleInspector"
+  | "toggleObjectList";
 
 export type AiProvider = "codex" | "claude" | "gemini";
 
@@ -103,6 +105,9 @@ export interface AiResult {
 
 export interface DesktopApi {
   platform: string;
+  setCommandAvailability?(
+    states: Partial<Record<DesktopCommand, boolean>>,
+  ): Promise<void>;
   openDocument(): Promise<{
     bytes: Uint8Array;
     name: string;

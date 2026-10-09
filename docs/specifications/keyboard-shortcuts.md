@@ -2,9 +2,9 @@
 
 | Field                      | Value                                                                                                        |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Specification revision     | 0.1                                                                                                          |
+| Specification revision     | 0.2                                                                                                          |
 | Application baseline       | SciSlide 0.6.2                                                                                               |
-| Reviewed                   | 2026-10-08                                                                                                   |
+| Reviewed                   | 2026-10-09                                                                                                   |
 | Primary platform reference | [Apple Keynote keyboard shortcuts for Mac](https://support.apple.com/en-gb/guide/keynote/tanfde4a3e6d/mac)   |
 | Other platform profiles    | PowerPoint conventions on Windows; LibreOffice Impress conventions on Ubuntu/Linux                           |
 | Scope                      | Command bindings, focus ownership, compatibility exceptions, implementation targets, and acceptance criteria |
@@ -13,7 +13,7 @@
 
 SciSlide should feel familiar to a researcher moving from Keynote while preserving native text input, scientific authoring commands, and predictable document editing. This specification defines that behavior for the shared browser/Electron editor. It supplements [section 5.3 of the project specification](../../SciSlide-Project-Specification.md#53-user-interface).
 
-**This revision is documentation. It does not add shortcuts or change the 0.6.2 application.** “Baseline” describes audited source behavior. “Target” and “Planned” describe requirements for a later implementation; they are not release claims. The application version remains independent of native document format 0.5.0.
+**Revision 0.2 records the P1 implementation in the current source, after the 0.6.2 release. These additions are unreleased; published 0.6.2 installers are unchanged.** The inventory below combines retained 0.6.2 bindings with additions explicitly marked “unreleased.” “Target” and “Planned” describe later requirements, not functioning commands. The package version remains 0.6.2 and is independent of native document format 0.5.0.
 
 The Apple guide supplies the macOS reference, rather than a requirement to implement every Keynote feature. SciSlide's command inventory below is derived from its own source. A matching key combination does not establish identical feature semantics. Unsupported tables, charts, comments, master editing, rich text, and OS services must not appear as functioning SciSlide commands.
 
@@ -21,25 +21,25 @@ The Apple guide supplies the macOS reference, rather than a requirement to imple
 
 **Command** is Command/⌘; **Option** is Option/⌥/Alt; **Shift** is Shift/⇧; **Control** is Control/⌃. A plus between tokens means simultaneous keys. “Plus” names the `+` key; it is not an additional separator. Punctuation examples use US key positions where necessary; other layouts require the matching rules in section 6.
 
-| Owner              | Meaning                                                                                                          |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| Editor canvas      | Object selection, document history, arrangement, and slide-level commands                                        |
-| Slide navigator    | A focused thumbnail owns navigation/deletion; baseline duplication still uses the active slide (see section 3.2) |
-| Text control       | Inline textarea, equation source, Inspector field, notes, or another editable control                            |
-| Modal/chooser      | The active dialog owns its controls and dismissal                                                                |
-| Audience/presenter | Presentation navigation, separate from document editing                                                          |
-| Media/control      | Focused video/audio controls, buttons, sliders, and native controls                                              |
-| Desktop host       | Electron/macOS window and application roles; not renderer document commands                                      |
+| Owner              | Meaning                                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------------------------ |
+| Editor canvas      | Object selection, document history, arrangement, and slide-level commands                                    |
+| Slide navigator    | A focused thumbnail owns navigation, reordering, duplication, and deletion (current source; see section 3.2) |
+| Text control       | Inline textarea, equation source, Inspector field, notes, or another editable control                        |
+| Modal/chooser      | The active dialog owns its controls and dismissal                                                            |
+| Audience/presenter | Presentation navigation, separate from document editing                                                      |
+| Media/control      | Focused video/audio controls, buttons, sliders, and native controls                                          |
+| Desktop host       | Electron/macOS window and application roles; not renderer document commands                                  |
 
-“Baseline implemented” means a binding and handler exist. It does not certify every keyboard layout, OS-reserved shortcut, or physical Mac configuration.
+“Implemented” means a binding and handler exist in the current source. It does not certify every keyboard layout, OS-reserved shortcut, or physical Mac configuration. Unreleased behavior must not be attributed to published 0.6.2 packages.
 
-## 3. macOS baseline command inventory
+## 3. macOS command inventory
 
 The canonical shortcut is the one shown by menus and help. Aliases are compatibility paths and must remain separately identified.
 
 ### 3.1 Files and history
 
-| Command ID               | Canonical keys   | Required result / baseline scope                                                   |
+| Command ID               | Canonical keys   | Required result / current source scope                                             |
 | ------------------------ | ---------------- | ---------------------------------------------------------------------------------- |
 | `new`                    | ⌘+N              | Open the theme chooser; cancellation retains the current deck                      |
 | `open`                   | ⌘+O              | Open a `.scislide` file through the platform adapter                               |
@@ -53,23 +53,23 @@ The canonical shortcut is the one shown by menus and help. Aliases are compatibi
 
 ### 3.2 Slides, objects, and text
 
-| Command ID                                             | Canonical keys                      | Required result / baseline scope                                                                                               |
-| ------------------------------------------------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `addSlide`                                             | ⌘+Shift+N                           | Open the new-slide layout chooser; insert the selected layout after the current slide as one undoable edit                     |
-| `duplicate`                                            | ⌘+D                                 | With thumbnail focus, duplicate the active slide; otherwise selected objects, or the active slide when no objects are selected |
-| `nextSlide` / `previousSlide`                          | Page Down / Page Up                 | Navigate slides outside text and unrelated focused controls                                                                    |
-| `firstSlide` / `lastSlide`                             | Home / End                          | Select first/last slide in editing mode                                                                                        |
-| `insertEquation`                                       | ⌘+Option+E                          | Insert an editable scientific equation object; the chord aligns with Keynote                                                   |
-| `insertFigure`                                         | ⌘+Shift+V                           | Open the image/SVG/PDF figure picker                                                                                           |
-| `selectAll` / `deselectAll`                            | ⌘+A / ⌘+Shift+A                     | Select visible unlocked canvas objects / clear selection; editable controls retain their own text selection                    |
-| `group` / `ungroup`                                    | ⌘+Option+G / ⌘+Option+Shift+G       | Operate on flat object groups; legacy aliases ⌘+G / ⌘+Shift+G                                                                  |
-| `lock` / `unlock`                                      | ⌘+L / ⌘+Option+L                    | Change selection/group lock state according to existing object rules                                                           |
-| `bringToFront` / `sendToBack`                          | ⌘+Shift+F / ⌘+Shift+B               | Move the selection to the stacking extreme, preserving its relative order                                                      |
-| `bringForward` / `sendBackward`                        | ⌘+Option+Shift+F / ⌘+Option+Shift+B | Move the selection one layer                                                                                                   |
-| `bold`                                                 | ⌘+B                                 | Toggle bold on selected unlocked text objects                                                                                  |
-| `increaseFontSize` / `decreaseFontSize`                | ⌘+Plus / ⌘+Minus                    | Change selected text-object size by 1, bounded to 8–180; the Plus binding accepts Shift where needed                           |
-| `alignTextLeft` / `alignTextCenter` / `alignTextRight` | ⌘+{ / ⌘+\| / ⌘+}                    | Set whole text-object alignment; US positions use Shift+[ / Shift+Backslash / Shift+]                                          |
-| `finishTextEditing`                                    | ⌘+Return                            | Apply the inline text edit and return to object editing; never begin presenting from this context                              |
+| Command ID                                             | Canonical keys                      | Required result / current source scope                                                                                                            |
+| ------------------------------------------------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `addSlide`                                             | ⌘+Shift+N                           | Open the new-slide layout chooser; insert the selected layout after the current slide as one undoable edit                                        |
+| `duplicate`                                            | ⌘+D                                 | With thumbnail focus, duplicate that focused slide (unreleased fix); otherwise selected objects, or the active slide when no objects are selected |
+| `nextSlide` / `previousSlide`                          | Page Down / Page Up                 | Navigate slides outside text and unrelated focused controls                                                                                       |
+| `firstSlide` / `lastSlide`                             | Home / End                          | Select first/last slide in editing mode                                                                                                           |
+| `insertEquation`                                       | ⌘+Option+E                          | Insert an editable scientific equation object; the chord aligns with Keynote                                                                      |
+| `insertFigure`                                         | ⌘+Shift+V                           | Open the image/SVG/PDF figure picker                                                                                                              |
+| `selectAll` / `deselectAll`                            | ⌘+A / ⌘+Shift+A                     | Select visible unlocked canvas objects / clear selection; editable controls retain their own text selection                                       |
+| `group` / `ungroup`                                    | ⌘+Option+G / ⌘+Option+Shift+G       | Operate on flat object groups; legacy aliases ⌘+G / ⌘+Shift+G                                                                                     |
+| `lock` / `unlock`                                      | ⌘+L / ⌘+Option+L                    | Change selection/group lock state according to existing object rules                                                                              |
+| `bringToFront` / `sendToBack`                          | ⌘+Shift+F / ⌘+Shift+B               | Move the selection to the stacking extreme, preserving its relative order                                                                         |
+| `bringForward` / `sendBackward`                        | ⌘+Option+Shift+F / ⌘+Option+Shift+B | Move the selection one layer                                                                                                                      |
+| `bold`                                                 | ⌘+B                                 | Toggle bold on selected unlocked text objects                                                                                                     |
+| `increaseFontSize` / `decreaseFontSize`                | ⌘+Plus / ⌘+Minus                    | Change selected text-object size by 1, bounded to 8–180; the Plus binding accepts Shift where needed                                              |
+| `alignTextLeft` / `alignTextCenter` / `alignTextRight` | ⌘+{ / ⌘+\| / ⌘+}                    | Set whole text-object alignment; US positions use Shift+[ / Shift+Backslash / Shift+]                                                             |
+| `finishTextEditing`                                    | ⌘+Return                            | Apply the inline text edit and return to object editing; never begin presenting from this context                                                 |
 
 These formatting commands affect entire selected text objects. Character-range styling, italic, underline, paragraph styles, and rich-text superscript/subscript are not implemented by these bindings.
 
@@ -77,17 +77,23 @@ Additional context handlers exist outside the typed command inventory:
 
 - Canvas arrows move unlocked selected objects by **1 document unit**; Shift+arrow moves them by **10**. These are logical slide coordinates, not physical display pixels.
 - Enter begins editing a selected text object. Inline Enter inserts a newline, and Escape discards the unfinished inline edit.
-- A focused thumbnail uses Up/Down to navigate and Delete/Backspace to remove that slide. Deletion preserves at least one slide. Mac keyboard slide reordering and Return-to-add from a thumbnail are not implemented.
+- A focused thumbnail uses Up/Down to navigate and Delete/Backspace to remove that slide. Deletion preserves at least one slide. Navigation and deletion ignore auto-repeat in the current source. Return-to-add from a thumbnail remains unimplemented.
 - Canvas Delete/Backspace removes the unlocked object selection. Option-drag bypasses smart guides in SciSlide; it does not duplicate an object or resize it from its center.
 
-**Known focus gap:** Tab can focus an inactive thumbnail without selecting it. In 0.6.2, duplication switches to slide mode but still clones the active slide. Targeting the independently focused thumbnail is a pending KS-07/AT-05 requirement; click or navigate to select the intended slide before duplicating.
+**Unreleased thumbnail fix:** Tab can focus an inactive thumbnail without selecting it. Duplicate now clones the independently focused slide, selects and focuses its copy, and creates one undoable edit, even if canvas objects remain selected. The published 0.6.2 application still duplicates the active slide in this situation.
+
+**Unreleased traversal:** With focus on the slide canvas, Tab/Shift+Tab selects the next/previous eligible object in back-to-front document stacking order. A flat group is one selection unit; groups containing a locked member are skipped. Hidden and locked objects are skipped, and hidden group members are excluded from the selected unit. At either boundary, the key follows ordinary browser focus order into surrounding controls rather than wrapping. A polite canvas status announces selected object names/counts. Traversal changes selection, not document history.
+
+**Unreleased macOS reordering:** With a thumbnail focused, ⌘+Option+Up/Down moves that slide one position; ⌘+Option+Shift+Up/Down moves it first/last. These are renderer-only bindings with no native accelerators, so editable controls retain their caret commands. Windows/Linux bindings and compatibility aliases remain unchanged.
 
 ### 3.3 View and presentation
 
-| Command / context            | Canonical keys                   | Baseline result                                                                      |
+| Command / context            | Canonical keys                   | Current source result                                                                |
 | ---------------------------- | -------------------------------- | ------------------------------------------------------------------------------------ |
 | `zoomIn` / `zoomOut`         | ⌘+Shift+Period / ⌘+Shift+Comma   | Increase/decrease fit-relative zoom by 10 percentage points, within 50–150%          |
 | `fitSlide`                   | ⌘+Option+0                       | Restore fit-relative zoom to 100%; this is not an actual-size command                |
+| `toggleInspector`            | ⌘+Option+I                       | Show/hide Inspector independently of Objects & Layers; focus when shown (unreleased) |
+| `toggleObjectList`           | ⌘+Shift+L                        | Show/hide Objects & Layers independently of Inspector; focus when shown (unreleased) |
 | `present`                    | ⌘+Option+P                       | Begin at the current slide's initial build state; canvas alias ⌘+Return              |
 | Audience/presenter next      | Right / Down / Space / Page Down | Reveal the next populated build, then advance to the next slide                      |
 | Audience/presenter previous  | Left / Up / Page Up              | Reverse a build; from the initial state, open the preceding slide at its final build |
@@ -98,7 +104,9 @@ Additional context handlers exist outside the typed command inventory:
 
 The desktop application menu also supplies native Hide/Quit roles. Minimize, close-all, and minimize-all must not be advertised merely because they are familiar macOS conventions: the current menu template does not define them.
 
-Presentation keys currently do not distinguish shifted arrows from ordinary arrows. Audience Escape currently exits before its text/media focus guard; the separate presenter applies that guard first. Aligning their dismissal rules is explicit pending work, not an existing parity guarantee.
+**Unreleased playback routing:** Audience and presenter share one key resolver. Editable and media controls retain all keys, including Escape; focused buttons retain Space/Enter. Plain Escape exits from presentation focus. Existing Q (macOS) and Minus (Ubuntu/Linux) exit aliases remain. Shift+arrow preserves ordinary build navigation; other Shift-modified playback keys are ignored. Navigation, endpoints, and exit ignore auto-repeat. Separating slide navigation from build navigation remains P2 work.
+
+Pane toggles focus the shown pane and return focus to the canvas when hiding it. Editing an equation explicitly reveals Inspector before focusing its source. Windows and Ubuntu/Linux use **Ctrl+Alt+I** for Inspector and **Ctrl+Shift+L** for Objects & Layers. Text controls, active dialogs, and playback retain ownership; pane commands do not interrupt them.
 
 ## 4. Compatibility decisions and collision register
 
@@ -134,7 +142,7 @@ The following are normative requirements for implementation and review. Existing
 | KS-11 | Canonical keys, aliases, availability, and context must agree across renderer, native menus, hints, help, README, and wiki. Browser/OS-reserved keys retain a visible menu or toolbar route.                                                                                                                        |
 | KS-12 | Native IPC uses fixed validated command IDs. A shortcut must not introduce arbitrary shell execution, path access, or a broader renderer bridge. Native window-role behavior requires macOS validation.                                                                                                             |
 
-Current renderer/menu definitions are maintained in separate modules. Consolidating them into one shared declarative registry is a target, rather than an existing implementation claim. That registry should describe command ID, per-platform keys, aliases, focus scope, availability predicate, repeat policy, and accessible label. Preserve existing typed action IDs where their semantics remain unchanged.
+**Unreleased registry:** A shared declarative JSON registry supplies command IDs, per-platform keys and aliases, focus scope, availability, repeat policy, accessible labels, and native accelerators. The typed renderer matcher and native menu adapter consume it. Existing command IDs and compatibility aliases are preserved. Focused-thumbnail-only chords have no native accelerators. Context and capability checks still run before renderer keyboard or native-menu dispatch executes commands; registry metadata does not authorize arbitrary IPC or override native text ownership. The main editor publishes live focus/selection/busy availability through the optional `desktop.setCommandAvailability` bridge, using the same predicate as renderer dispatch. Native menu items update their enabled state, and disabled commands are rejected before dispatch. Focused text retains native clipboard, selection and history commands, including inside modal text controls. Both preload and host validate a bounded map of fixed command IDs to booleans; only the trusted main editor frame may update it. Native application/window roles still need physical macOS validation. Pane buttons provide a visible toolbar fallback.
 
 ## 6. Keyboard layout and accessibility requirements
 
@@ -142,55 +150,59 @@ Current renderer/menu definitions are maintained in separate modules. Consolidat
 - Prefer logical Latin letter keys on Latin layouts. Use documented physical-key fallback for non-Latin input or Option-generated symbols; do not globally reinterpret AZERTY/QWERTZ letters as US letters.
 - Define punctuation by logical symbol and an explicit fallback position where appropriate. Test Plus/Equal, braces, vertical bar, comma/period, and slash with the native menu enabled. Do not confuse main-row Plus with numeric-keypad Add in the Linux layer profile.
 - Accept Page/Home/End events emitted by compact Mac Fn combinations. Fn is not an application-level modifier to guess from JavaScript.
-- Preserve native Tab focus order until a scoped object-traversal feature exists. Any future canvas Tab mode must provide an exit to the surrounding UI and must not trap focus in dialogs.
+- Canvas Tab/Shift+Tab traversal is scoped to the focused canvas, uses the selection rules in section 3.2, and exits through native focus order at either boundary. Elsewhere, preserve native Tab focus order; dialogs and text fields must not enter object traversal.
 - Help must identify primary keys, aliases, context, and feature status using readable names as well as symbols. It must open on the host profile and restore focus after dismissal.
 
-## 7. Planned extensions
+## 7. Implementation priorities and remaining extensions
 
-These are proposed requirements, not bindings added by this document. Proposed keys require a conflict and accessibility review before activation.
+P1 is implemented in the current source and remains unreleased. P2/P3 are proposed requirements; their candidate keys are not active and require conflict and accessibility review before activation.
 
-| Priority | Feature / proposed approach                                                   | Dependency and acceptance boundary                                                                                   |
-| -------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| P1       | Shared registry, context routing, audience/presenter Escape and repeat parity | Preserve current aliases and text/IME/media ownership; prove menu/key parity                                         |
-| P1       | Canvas object traversal with Tab/Shift+Tab                                    | Define stacking order, hidden/locked objects, group selection, and a route out of the canvas                         |
-| P1       | Keyboard focus/toggles for Inspector and object list                          | Candidate macOS chords Option+⌘+I and Shift+⌘+L; existing panes need explicit visibility/focus state                 |
-| P1       | Keyboard slide reordering on macOS                                            | Scope to focused thumbnails; final keys pending. Preserve existing Windows/Linux profiles                            |
-| P2       | Separate next/previous slide from next/previous build                         | Evaluate Shift-arrow conventions; specify animation suppression and entry build state before changing playback       |
-| P2       | Playback pause/blank-screen state (candidate F/B/W) and numeric slide chooser | Presentation-only state; Enter confirms and Escape cancels chooser input; exports/deck content unchanged             |
-| P2       | Presenter notes/timer/display controls (candidate ⌘+Shift+P / R / X)          | Scope to presenter window and existing capabilities; define multi-monitor behavior before promising display swapping |
-| P3       | Actual-size/selection/content zoom; keyboard crop/resize/rotation             | Distinguish document scale from fit-relative zoom; preserve numeric editing and history                              |
-| P3       | Rich text, Find, style clipboard, and customizable bindings                   | Implement the underlying model/UI first; migrate conflicting aliases explicitly and version saved preferences        |
+| Priority        | Feature / proposed approach                                                   | Dependency and acceptance boundary                                                                                                                     |
+| --------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| P1 — unreleased | Shared registry, context routing, audience/presenter Escape and repeat parity | Shared metadata, live native menu availability, and playback resolver preserve aliases and text/IME/media ownership; regression fixtures cover routing |
+| P1 — unreleased | Canvas object traversal with Tab/Shift+Tab                                    | Back-to-front eligible units, flat groups, hidden/locked filtering, and native Tab exit at boundaries                                                  |
+| P1 — unreleased | Independent visibility/focus for Inspector and Objects & Layers               | macOS ⌘+Option+I / ⌘+Shift+L; Windows/Linux Ctrl+Alt+I / Ctrl+Shift+L; text, dialogs, and playback retain ownership                                    |
+| P1 — unreleased | macOS thumbnail reordering and focused-slide duplication                      | ⌘+Option+Up/Down and ⌘+Option+Shift+Up/Down; retain focused target, one undo action, and Windows/Linux profiles                                        |
+| P2              | Separate next/previous slide from next/previous build                         | Evaluate Shift-arrow conventions; specify animation suppression and entry build state before changing playback                                         |
+| P2              | Playback pause/blank-screen state (candidate F/B/W) and numeric slide chooser | Presentation-only state; Enter confirms and Escape cancels chooser input; exports/deck content unchanged                                               |
+| P2              | Presenter notes/timer/display controls (candidate ⌘+Shift+P / R / X)          | Scope to presenter window and existing capabilities; define multi-monitor behavior before promising display swapping                                   |
+| P3              | Actual-size/selection/content zoom; keyboard crop/resize/rotation             | Distinguish document scale from fit-relative zoom; preserve numeric editing and history                                                                |
+| P3              | Rich text, Find, style clipboard, and customizable bindings                   | Implement the underlying model/UI first; migrate conflicting aliases explicitly and version saved preferences                                          |
 
 Table/chart editing, comments, linked-master editing, recording, advanced video transport, and freehand point editing remain feature-dependent future work. OS dictation and system character services remain OS-owned. This specification does not assign shortcuts for features that do not exist.
 
 ## 8. Acceptance and validation
 
-These scenarios are acceptance criteria, not a report that this documentation update ran new application tests. Existing shortcut/editor/presenter/native-menu fixtures provide the starting coverage.
+These scenarios are acceptance criteria. The P1 implementation adds regression coverage to shortcut/editor/presenter/native-menu fixtures; successful automated checks do not substitute for physical macOS, Windows, or Ubuntu validation. Release packages remain at the 0.6.2 baseline until rebuilt and published.
 
-| ID    | Scenario                                                                                               | Expected result                                                                                                                                            |
-| ----- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AT-01 | Trigger a supported action by menu, keyboard, and toolbar                                              | Same availability, target, mutation, and history; one dispatch per event                                                                                   |
-| AT-02 | Edit Korean IME text and use AltGraph/Option symbols on US/UK and representative non-US layouts        | No premature command, lost character, or composition cancellation; letter and punctuation matching follow section 6                                        |
-| AT-03 | Use clipboard, Select All, Undo/Redo, and arrows in inline text, equation source, Inspector, and notes | Only the focused text editor changes; deck history/objects remain untouched                                                                                |
-| AT-04 | Edit inline text, press Command+Return, then Save; separately cancel with Escape                       | Apply once without entering fullscreen/playback; saved text is current; cancellation restores the previous source                                          |
-| AT-05 | Focus a thumbnail while canvas objects remain selected; duplicate, navigate, and delete                | Target the focused slide, retain usable focus, preserve the final-slide invariant; canvas arrows still nudge objects                                       |
-| AT-06 | Use Plus, braces, bar, and zoom keys with native menus and extra modifiers                             | Exactly the documented command/alias fires; unintended modifier combinations do nothing                                                                    |
-| AT-07 | Use a chooser/modal or start a conflicting native operation, then invoke object or Present keys        | No background mutation or unexpected slideshow-triggered fullscreen; native window fullscreen remains separate and allowed global exceptions stay explicit |
-| AT-08 | Focus video controls and buttons during playback; compare audience and presenter Escape handling       | Media/control keys remain local; planned common dismissal policy is tested separately from the current difference                                          |
-| AT-09 | Navigate sparse build steps forward/backward and use Home/End                                          | Baseline build/slide transitions and endpoint entry states match section 3.3; proposed shifted-arrow semantics have separate fixtures                      |
-| AT-10 | Hold New, Duplicate, Paste, Present, and nudge keys                                                    | One-shot editor actions do not repeat; movement follows its declared repeat/history policy; pending thumbnail/playback policies receive dedicated checks   |
-| AT-11 | Switch help reference tabs, close help, and use a browser-reserved shortcut                            | Active OS profile is unchanged, focus is restored, and a visible alternate action remains available                                                        |
-| AT-12 | Use native Close, Quit, and Fullscreen on macOS                                                        | Desktop-role behavior is verified on a native Mac; browser tests are not presented as equivalent evidence                                                  |
+| ID    | Scenario                                                                                                       | Expected result                                                                                                                                            |
+| ----- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AT-01 | Trigger a supported action by menu, keyboard, and toolbar                                                      | Same availability, target, mutation, and history; one dispatch per event                                                                                   |
+| AT-02 | Edit Korean IME text and use AltGraph/Option symbols on US/UK and representative non-US layouts                | No premature command, lost character, or composition cancellation; letter and punctuation matching follow section 6                                        |
+| AT-03 | Use clipboard, Select All, Undo/Redo, and arrows in inline text, equation source, Inspector, and notes         | Only the focused text editor changes; deck history/objects remain untouched                                                                                |
+| AT-04 | Edit inline text, press Command+Return, then Save; separately cancel with Escape                               | Apply once without entering fullscreen/playback; saved text is current; cancellation restores the previous source                                          |
+| AT-05 | Focus a thumbnail while canvas objects remain selected; duplicate, navigate, and delete                        | Target the focused slide, retain usable focus, preserve the final-slide invariant; canvas arrows still nudge objects                                       |
+| AT-06 | Use Plus, braces, bar, and zoom keys with native menus and extra modifiers                                     | Exactly the documented command/alias fires; unintended modifier combinations do nothing                                                                    |
+| AT-07 | Use a chooser/modal or start a conflicting native operation, then invoke object or Present keys                | No background mutation or unexpected slideshow-triggered fullscreen; native window fullscreen remains separate and allowed global exceptions stay explicit |
+| AT-08 | Focus video controls and buttons during playback; compare audience and presenter Escape handling               | Media/controls retain all keys including Escape; buttons retain Space/Enter; plain Escape exits from playback focus in both surfaces                       |
+| AT-09 | Navigate sparse build steps forward/backward and use Home/End                                                  | Baseline build/slide transitions and endpoint entry states match section 3.3; proposed shifted-arrow semantics have separate fixtures                      |
+| AT-10 | Hold New, Duplicate, Paste, Present, and nudge keys                                                            | One-shot editor actions, thumbnail navigation/deletion, and playback commands do not repeat; object nudge may repeat with coherent history                 |
+| AT-11 | Switch help reference tabs, close help, and use a browser-reserved shortcut                                    | Active OS profile is unchanged, focus is restored, and a visible alternate action remains available                                                        |
+| AT-12 | Use native Close, Quit, and Fullscreen on macOS                                                                | Desktop-role behavior is verified on a native Mac; browser tests are not presented as equivalent evidence                                                  |
+| AT-13 | Traverse the canvas forward/backward with hidden objects, locked groups, and several selected units            | One eligible stacking-order unit is selected; hidden members stay excluded; boundary Tab reaches surrounding UI; selection creates no document history     |
+| AT-14 | Show/hide Inspector and Objects & Layers by shortcuts and toolbar, then repeat from text/dialog/playback focus | Panes stay independently visible; shown pane receives focus, hidden pane returns to canvas; input-owning contexts remain in control                        |
 
-Planned object traversal, slide chooser, playback pause/blank state, rich text, and customization need their own feature fixtures before they can be promoted into the baseline inventory. A future shortcut change must update this document and user-facing references in the same change.
+P1 traversal, pane focus, focused-slide operations, and playback ownership require dedicated fixtures as well as the scenarios above. Planned numeric slide chooser, playback pause/blank state, rich text, and customization need their own feature fixtures before entering the implemented inventory. Future shortcut changes must update this document and user-facing references in the same change.
 
 ## 9. Implementation references
 
-- [Typed bindings and matcher](../../src/lib/shortcuts.ts)
+- [Shared command registry](../../desktop/keyboard-shortcuts.json) and [typed matcher](../../src/lib/shortcuts.ts)
+- [Canvas object traversal](../../src/lib/object-traversal.ts)
 - [Editor dispatch and focus routing](../../src/App.tsx)
 - [Native menu commands and composition protection](../../desktop/menu-commands.cjs)
+- [Availability IPC validation and trusted-editor routing](../../desktop/main.cjs) and [preload bridge](../../desktop/preload.cjs)
 - [Inline text editing](../../src/components/InlineTextEditor.tsx)
-- [Presenter key routing](../../src/components/PresenterApp.tsx)
+- [Shared playback key resolver](../../src/lib/playback-shortcuts.ts) and [presenter routing](../../src/components/PresenterApp.tsx)
 - [Shortcut tests](../../tests/shortcuts.test.ts) and [editor keyboard tests](../../tests/keyboard-editor.test.ts)
 - [Current user shortcut reference](../wiki/Keyboard-Shortcuts.md)
 - [Apple Keynote reference](https://support.apple.com/en-gb/guide/keynote/tanfde4a3e6d/mac), reviewed 2026-10-08

@@ -1,6 +1,6 @@
 # Architecture and roadmap
 
-SciSlide **v0.6.2** uses one React/TypeScript editor for the browser and Electron desktop application. The application is a development prototype; the sections below distinguish its current behavior from planned work.
+SciSlide **v0.6.2** uses one React/TypeScript editor for the browser and Electron desktop application. The application is a development prototype; the sections below distinguish released behavior, explicitly marked unreleased source additions, and planned work.
 
 ## Application structure
 
@@ -63,6 +63,9 @@ Workspace recovery, unfinished equation drafts, and the personal equation librar
 - Embedded MP4/WebM video, click-triggered appear/fade builds, notes, and a separate presenter display.
 - Native save/open, PDF/SVG export, workspace recovery, and installed AI CLI drafts.
 - Platform-specific shortcuts using Keynote, PowerPoint, and Impress conventions where the corresponding action exists.
+- **Unreleased P1 shortcuts:** shared renderer/native command metadata and live native menu availability; canvas object traversal; independent Inspector/Objects & Layers focus; macOS thumbnail reordering; focused-slide duplication; and consistent presentation key ownership/repeat policy. Published 0.6.2 installers are unchanged.
+
+See [Shortcut specification](Shortcut-Specification) for remaining P2/P3 requirements. Physical-platform validation of native application/window roles remains required.
 
 ## Planned work
 
