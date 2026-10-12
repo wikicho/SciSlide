@@ -56,6 +56,7 @@ export type DesktopCommand =
   | "finishTextEditing"
   | "addSlide"
   | "insertEquation"
+  | "compileEquation"
   | "insertFigure"
   | "deselectAll"
   | "lock"

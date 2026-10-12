@@ -524,6 +524,7 @@ describe("shared shortcut command registry", () => {
             "exportPdf",
             "exportSvg",
             "help",
+            "compileEquation",
           ].includes(shortcut.action),
         );
         for (const binding of [shortcut.binding, ...shortcut.aliases]) {
@@ -725,5 +726,78 @@ describe("shared shortcut command registry", () => {
       isShortcutEnabled("unlock", "mac", { ...idle, hasLockedSelection: true }),
     ).toBe(true);
     expect(isShortcutEnabled("presenterView", "linux", idle)).toBe(false);
+  });
+
+  it("keeps Linux equation insertion and compilation distinct with exact modifiers", () => {
+    expect(
+      matchShortcut(key("E", { altKey: true, shiftKey: true }), "linux"),
+    ).toBe("insertEquation");
+    expect(
+      matchShortcut(key("=", { ctrlKey: true, altKey: true }), "linux"),
+    ).toBe("insertEquation");
+    expect(
+      matchShortcut(key("Enter", { ctrlKey: true, shiftKey: true }), "linux"),
+    ).toBe("compileEquation");
+    expect(matchShortcut(key("Enter", { ctrlKey: true }), "linux")).toBe(
+      "present",
+    );
+    for (const modifiers of [
+      {},
+      { shiftKey: true },
+      { metaKey: true, shiftKey: true },
+      { ctrlKey: true, shiftKey: true, altKey: true },
+      { ctrlKey: true, shiftKey: true, metaKey: true },
+      { ctrlKey: true, shiftKey: true, isComposing: true },
+      { ctrlKey: true, shiftKey: true, keyCode: 229 },
+      {
+        ctrlKey: true,
+        shiftKey: true,
+        getModifierState: (modifier: string) => modifier === "AltGraph",
+      },
+    ])
+      expect(
+        matchesShortcut(key("Enter", modifiers), "compileEquation", "linux"),
+      ).toBe(false);
+    for (const platform of ["mac", "windows"] as const) {
+      expect(isShortcutAvailable("compileEquation", platform)).toBe(false);
+      expect(
+        matchesShortcut(
+          key("Enter", { ctrlKey: true, shiftKey: true }),
+          "compileEquation",
+          platform,
+        ),
+      ).toBe(false);
+    }
+    const compile = getShortcut("compileEquation", "linux");
+    expect(compile.keys).toBe("Ctrl+Shift+Enter");
+    expect(compile.scope).toBe("equationEditing");
+    expect(compile.nativeCommand).toBe("compileEquation");
+    expect(compile.repeatPolicy).toBe("once");
+    expect(compile.globalInText).toBe(true);
+  });
+
+  it("requires a compilable equation and idle state for Linux compilation", () => {
+    expect(isShortcutEnabled("compileEquation", "linux", { busy: false })).toBe(
+      false,
+    );
+    expect(
+      isShortcutEnabled("compileEquation", "linux", {
+        busy: false,
+        canCompileEquation: true,
+      }),
+    ).toBe(true);
+    expect(
+      isShortcutEnabled("compileEquation", "linux", {
+        busy: true,
+        canCompileEquation: true,
+      }),
+    ).toBe(false);
+    for (const platform of ["mac", "windows"] as const)
+      expect(
+        isShortcutEnabled("compileEquation", platform, {
+          busy: false,
+          canCompileEquation: true,
+        }),
+      ).toBe(false);
   });
 });

@@ -31,6 +31,7 @@ export type ShortcutAction =
   | "finishTextEditing"
   | "addSlide"
   | "insertEquation"
+  | "compileEquation"
   | "insertFigure"
   | "deselectAll"
   | "lock"
@@ -83,7 +84,11 @@ export interface ShortcutBinding {
 }
 
 export type ShortcutScope =
-  "editor" | "thumbnail" | "slideNavigation" | "textEditing";
+  | "editor"
+  | "thumbnail"
+  | "slideNavigation"
+  | "textEditing"
+  | "equationEditing";
 export type ShortcutAvailability =
   | "always"
   | "idle"
@@ -99,7 +104,8 @@ export type ShortcutAvailability =
   | "textSelection"
   | "selectionOrSlide"
   | "slide"
-  | "focusedSlide";
+  | "focusedSlide"
+  | "compileEquation";
 export type ShortcutRepeatPolicy = "once" | "repeat";
 
 /** Availability flags are derived from the active editor target, never DOM data. */
@@ -117,6 +123,7 @@ export interface ShortcutAvailabilityState {
   hasObjects?: boolean;
   hasSlide?: boolean;
   hasFocusedSlide?: boolean;
+  canCompileEquation?: boolean;
 }
 
 export interface PlatformShortcut {
@@ -205,6 +212,7 @@ export function isShortcutEnabled(
     selectionOrSlide: Boolean(state.hasUnlockedSelection || state.hasSlide),
     slide: Boolean(state.hasSlide),
     focusedSlide: Boolean(state.hasFocusedSlide),
+    compileEquation: Boolean(state.canCompileEquation),
   };
   return enabled[availability];
 }

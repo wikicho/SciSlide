@@ -9,6 +9,8 @@ SciSlide **0.6.2** offers bundled **MathJax** rendering and explicit compilation
 3. Edit the source and settings; review the preview or compilation result.
 4. Click **Apply equation** to commit it to the slide.
 
+**Unreleased Linux source:** **Alt+Shift+E** (legacy **Ctrl+Alt+=**) inserts an equation, reveals Inspector and focuses **LATEX SOURCE**.
+
 Selecting another equation preserves the unfinished Inspector draft locally. A draft is not part of the saved slide until applied. See [[Editing-Slides]] for recovery and [[Keyboard-Shortcuts]] for equation insertion.
 
 ## MathJax notation and fonts
@@ -54,6 +56,10 @@ Use `\$` for a literal dollar sign. Empty/unmatched delimiters and standalone `$
 Local compilation requires system-installed `latex` or `xelatex`, `dvisvgm`, `kpsewhich`, **bubblewrap 0.9.0 or later** and `prlimit`, plus functioning isolation. See [[Installation]] for dependencies and [[Troubleshooting]] if the controls are disabled. macOS/Windows local compilation is not implemented; MathJax remains available there.
 
 Choose **Local LaTeX · Installed packages**, select the **TeX engine**, enter **PREAMBLE** and **LATEX SOURCE** separately, then choose **Compile with LaTeX → Apply equation**. Do not paste a complete document containing `\documentclass` or `\begin{document}`.
+
+**Unreleased Linux desktop shortcut:** press **Ctrl+Shift+Enter** from the canvas or equation Inspector controls, including **LATEX SOURCE** and **PREAMBLE**, to run **Compile with LaTeX**. One visible, unlocked equation must be selected in Local LaTeX mode, installed TeX must be ready, and the editor must be idle. The shortcut updates the draft preview; it does not apply the result or add a document undo step. **Apply equation** remains a separate action.
+
+This shortcut is disabled in the browser and MathJax mode, which already provides live preview. Notes, inline text, media, thumbnails, dialogs and playback retain their input. IME composition and held-key repetition do not trigger compilation. Published 0.6.2 installers do not yet include this shortcut.
 
 LaTeX preamble example:
 

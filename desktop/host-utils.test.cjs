@@ -141,6 +141,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
           ? [
               ["Duplicate selection or slide", "Shift+F3", "duplicate"],
               ["Equation", "Alt+Shift+E", "insertEquation"],
+              ["Compile with LaTeX", "Control+Shift+Enter", "compileEquation"],
               ["Bring forward", "Control+numadd", "bringForward"],
               ["Bring to front", "Control+Shift+numadd", "bringToFront"],
               ["Send backward", "Control+-", "sendBackward"],
@@ -244,6 +245,39 @@ test("native Edit commands preserve text editing and use the internal clipboard 
       ["send", "scislide:command", command],
     ]);
   }
+});
+
+test("Linux compilation stays in Format and dispatches without a fullscreen gesture", async () => {
+  const sent = [];
+  const template = buildMenuTemplate("linux", (command) => sent.push(command));
+  const format = template.find((menu) => menu.label === "Format");
+  const compile = format.submenu.find((item) => item.id === "compileEquation");
+  assert.ok(compile);
+  assert.equal(compile.label, "Compile with LaTeX");
+  assert.equal(compile.accelerator, "Control+Shift+Enter");
+  compile.click();
+  assert.deepEqual(sent, ["compileEquation"]);
+  const menu = {
+    getMenuItemById: (command) =>
+      template
+        .flatMap((item) => item.submenu ?? [])
+        .find((item) => item.id === command),
+  };
+  assert.equal(isMenuCommandEnabled(menu, "compileEquation"), true);
+  setMenuCommandAvailability(menu, { compileEquation: false });
+  assert.equal(isMenuCommandEnabled(menu, "compileEquation"), false);
+  setMenuCommandAvailability(menu, { compileEquation: true });
+  assert.equal(isMenuCommandEnabled(menu, "compileEquation"), true);
+  for (const platform of ["darwin", "win32"])
+    assert.equal(
+      buildMenuTemplate(platform, () => {})
+        .flatMap((menu) => menu.submenu ?? [])
+        .some((item) => item.id === "compileEquation"),
+      false,
+    );
+  const { contents, calls } = menuWindow({ editing: true });
+  await dispatchMenuCommand(contents, "compileEquation");
+  assert.deepEqual(calls, [["send", "scislide:command", "compileEquation"]]);
 });
 
 test("macOS accelerators reserve Keynote presentation without PDF, text or navigation collisions", () => {
@@ -549,7 +583,7 @@ test("the sandbox preload and host allowlists forward all platform menu actions 
       if (typeof item.click === "function") item.click();
   }
   const expectedCommands = new Set(received);
-  assert.equal(expectedCommands.size, 42);
+  assert.equal(expectedCommands.size, 43);
   assert.deepEqual(expectedCommands, COMMANDS);
   const types = await fs.readFile(
     path.join(__dirname, "../src/lib/desktop.ts"),
@@ -584,6 +618,7 @@ test("the sandbox preload and host allowlists forward all platform menu actions 
     "exportSvg",
     "showShortcuts",
     "insertEquation",
+    "compileEquation",
     "bringToFront",
     "finishTextEditing",
     "presentFromStart",

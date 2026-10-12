@@ -215,6 +215,20 @@ function isTextInput(target: EventTarget | null): boolean {
     ].includes(field.type);
   return !!field;
 }
+function isEquationShortcutTarget(target: EventTarget | null): boolean {
+  const element = target instanceof Element ? target : null;
+  if (
+    element?.closest("[data-equation-editor]") &&
+    !element.closest("[hidden]")
+  )
+    return true;
+  return (
+    !isTextInput(target) &&
+    !element?.closest(
+      "button,a[href],input,select,textarea,.slide-list,video,audio,.video-player,[role='slider'],[role='textbox'],[role='combobox']",
+    )
+  );
+}
 function IconButton({
   title,
   onClick,
@@ -669,6 +683,18 @@ export default function App() {
     setHistoryTick((t) => t + 1);
   };
   const activeEquation = object?.type === "equation" ? object : undefined;
+  const canCompileEquation = Boolean(
+    desktop &&
+    activeEquation &&
+    selected.length === 1 &&
+    activeEquation.visible &&
+    !isObjectLocked(activeEquation, slide.objects) &&
+    draft.renderer === "local-latex" &&
+    texCapabilities?.available &&
+    texCapabilities.engines.some((engine) => engine.id === draft.engine) &&
+    !busy &&
+    !compileBusy,
+  );
   const setDraft = (next: EquationDraft) => {
     draftRef.current = next;
     setEquationDraft(next);
@@ -795,7 +821,16 @@ export default function App() {
     }
   }, [draft, activeEquation?.id, activeEquation?.displayMode]);
   const compileEquation = async () => {
-    if (!desktop || !activeEquation) return;
+    if (
+      !desktop ||
+      !activeEquation ||
+      !canCompileEquation ||
+      compileJob.current ||
+      hasEditorDialog ||
+      showThemeChooser ||
+      presenting
+    )
+      return;
     try {
       assertEquationDocumentLimits(draft.latex, draft.preamble);
     } catch (error) {
@@ -804,6 +839,7 @@ export default function App() {
       return;
     }
     const jobId = newId();
+    setInspectorVisible(true);
     compileJob.current = jobId;
     setCompileBusy(true);
     const snapshot = {
@@ -1780,6 +1816,7 @@ export default function App() {
         (o) => o.visible && !isObjectLocked(o, slide.objects),
       ),
       hasSlide: !!slide,
+      canCompileEquation,
       hasFocusedSlide: !!document.activeElement?.closest(
         ".slide-list [data-slide-id]",
       ),
@@ -1856,7 +1893,16 @@ export default function App() {
         addSlide();
         break;
       case "insertEquation":
-        void insert("equation");
+        void insert("equation")
+          .then(() => {
+            if (keyboardPlatform !== "linux") return;
+            setInspectorVisible(true);
+            setTimeout(() => sourceRef.current?.focus(), 0);
+          })
+          .catch((error: Error) => notify(error.message));
+        break;
+      case "compileEquation":
+        void compileEquation();
         break;
       case "insertFigure":
         imageInput.current?.click();
@@ -1991,6 +2037,8 @@ export default function App() {
         if (!shortcut.nativeCommand) continue;
         const action = shortcut.action;
         let enabled = isShortcutEnabled(action, keyboardPlatform, state);
+        if (shortcut.scope === "equationEditing")
+          enabled = enabled && isEquationShortcutTarget(document.activeElement);
         if (
           editing &&
           ["cut", "copy", "paste", "selectAll", "undo", "redo"].includes(action)
@@ -2019,6 +2067,11 @@ export default function App() {
       if (hasEditorDialog || presenting) return;
       const action = command === "showShortcuts" ? "help" : command;
       if (!isShortcutAvailable(action, keyboardPlatform)) return;
+      if (
+        getShortcut(action, keyboardPlatform).scope === "equationEditing" &&
+        !isEquationShortcutTarget(document.activeElement)
+      )
+        return;
       if (showThemeChooser && !["new", "open", "help"].includes(action)) return;
       const editing = isTextInput(document.activeElement);
       if (
@@ -2444,6 +2497,12 @@ export default function App() {
       )
         return;
       const action = matchShortcut(e, keyboardPlatform);
+      if (
+        action &&
+        getShortcut(action, keyboardPlatform).scope === "equationEditing" &&
+        !isEquationShortcutTarget(e.target)
+      )
+        return;
       const slideNavigation =
         action &&
         ["nextSlide", "previousSlide", "firstSlide", "lastSlide"].includes(
@@ -2921,7 +2980,8 @@ export default function App() {
         </button>
         <button
           className="tool equation-tool"
-          onClick={() => void insert("equation")}
+          title={shortcutTitle("Insert equation", "insertEquation")}
+          onClick={() => executeShortcut("insertEquation")}
         >
           <Sigma size={20} /> Equation
         </button>
@@ -3372,6 +3432,7 @@ export default function App() {
           </div>
           <div
             ref={inspectorRef}
+            data-equation-editor={activeEquation ? "true" : undefined}
             tabIndex={-1}
             role="region"
             aria-label="Inspector panel"
@@ -3555,14 +3616,15 @@ export default function App() {
                           )}
                           <button
                             className="button compile-button"
-                            disabled={
-                              !desktop ||
-                              !texCapabilities?.available ||
-                              !texCapabilities.engines.some(
-                                (e) => e.id === draft.engine,
-                              ) ||
-                              compileBusy
+                            title={
+                              keyboardPlatform === "linux"
+                                ? shortcutTitle(
+                                    "Compile with LaTeX",
+                                    "compileEquation",
+                                  )
+                                : "Compile with LaTeX"
                             }
+                            disabled={!canCompileEquation}
                             onClick={() => void compileEquation()}
                           >
                             <Sigma size={14} />

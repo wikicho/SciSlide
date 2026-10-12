@@ -47,7 +47,9 @@
         "separator",
         "alignTextLeft",
         "alignTextCenter",
-        "alignTextRight"
+        "alignTextRight",
+        "separator",
+        "compileEquation"
       ]
     },
     {
@@ -1219,6 +1221,30 @@
       "native": {
         "command": "insertEquation",
         "label": "Equation"
+      }
+    },
+    {
+      "action": "compileEquation",
+      "scope": "equationEditing",
+      "availability": "compileEquation",
+      "repeatPolicy": "once",
+      "globalInText": true,
+      "platforms": {
+        "linux": {
+          "binding": {
+            "key": "Enter",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": [],
+          "nativeMenu": true
+        }
+      },
+      "label": "Compile equation with LaTeX",
+      "category": "Objects",
+      "native": {
+        "command": "compileEquation",
+        "label": "Compile with LaTeX"
       }
     },
     {

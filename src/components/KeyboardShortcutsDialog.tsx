@@ -53,6 +53,10 @@ const groups: { title: string; rows: ShortcutRow[] }[] = [
     rows: [
       { label: "Add slide from a layout", action: "addSlide" },
       { label: "Insert equation", action: "insertEquation" },
+      {
+        label: "Compile selected Local LaTeX equation",
+        action: "compileEquation",
+      },
       { label: "Insert image, SVG or PDF", action: "insertFigure" },
     ],
   },
@@ -397,6 +401,16 @@ export function KeyboardShortcutsDialog({
             including Escape. Navigation and slide deletion do not repeat while
             a key is held.
           </p>
+          {previewPlatform === "linux" && (
+            <p className="keyboard-shortcuts-note">
+              Alt+Shift+E inserts an equation and focuses its source. On the
+              Linux desktop, Ctrl+Shift+Enter compiles a selected Local LaTeX
+              equation from the canvas or its Inspector, including source and
+              preamble. Installed LaTeX must be ready. Compilation updates the
+              preview; Apply equation commits it separately. MathJax has live
+              preview.
+            </p>
+          )}
           {previewPlatform === "mac" && (
             <p className="keyboard-shortcuts-note">
               On compact Mac keyboards, Fn + ↓ / ↑ gives Page Down / Page Up; Fn

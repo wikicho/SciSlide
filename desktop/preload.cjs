@@ -24,6 +24,7 @@ const commands = new Set([
   "finishTextEditing",
   "addSlide",
   "insertEquation",
+  "compileEquation",
   "insertFigure",
   "deselectAll",
   "lock",

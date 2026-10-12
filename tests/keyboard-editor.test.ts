@@ -3,7 +3,13 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
-import type { DesktopApi, DesktopCommand } from "../src/lib/desktop";
+import type {
+  DesktopApi,
+  DesktopCommand,
+  TexCapabilities,
+  TexRequest,
+  TexResult,
+} from "../src/lib/desktop";
 import { shapeFromDrag } from "../src/lib/drawing";
 import { exportDeckPdf, exportSlideSvg } from "../src/lib/export";
 import { createBlankSlide, createDemoDeck } from "../src/lib/model";
@@ -66,6 +72,20 @@ function existingDeck(): Deck {
     pageNumbers: undefined,
   };
 }
+
+const compiledEquation: TexResult = {
+  svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 80"><path d="M0 0H160V80" /></svg>',
+  width: 160,
+  height: 80,
+  fingerprint: "compiled-equation",
+  profile: {
+    engine: "latex",
+    engineVersion: "test",
+    converterVersion: "test",
+    dependencies: [],
+  },
+  warnings: [],
+};
 
 describe("OS-specific keyboard commands in the editor", () => {
   let host: HTMLDivElement;
@@ -180,11 +200,15 @@ describe("OS-specific keyboard commands in the editor", () => {
     const bridge = {
       platform,
       setCommandAvailability: vi.fn().mockResolvedValue(undefined),
-      detectTex: vi.fn().mockResolvedValue({
+      detectTex: vi.fn<() => Promise<TexCapabilities>>().mockResolvedValue({
         available: false,
         engines: [],
         sandbox: { available: false },
       }),
+      compileTex: vi
+        .fn<(request: TexRequest) => Promise<TexResult>>()
+        .mockResolvedValue(compiledEquation),
+      cancelCompile: vi.fn().mockResolvedValue(undefined),
       openDocument: vi.fn().mockResolvedValue(null),
       saveDocument: vi.fn().mockResolvedValue(null),
       onCommand: (callback: (command: DesktopCommand) => void) => {
@@ -196,6 +220,64 @@ describe("OS-specific keyboard commands in the editor", () => {
     };
     nativeBridge.api = bridge as unknown as DesktopApi;
     return bridge;
+  }
+
+  function enableLocalLatex() {
+    const bridge = enableDesktop("linux");
+    bridge.detectTex.mockResolvedValue({
+      available: true,
+      engines: [{ id: "latex", label: "LaTeX", version: "test" }],
+      sandbox: { available: true },
+    });
+    return bridge;
+  }
+
+  function addEquation(renderer: "mathjax" | "local-latex" = "local-latex") {
+    const equation = structuredClone(
+      createDemoDeck().slides[0].objects.find(
+        (object) => object.type === "equation",
+      )!,
+    );
+    if (equation.type !== "equation")
+      throw new Error("Expected equation fixture");
+    equation.name = "Local equation";
+    equation.renderer = renderer;
+    equation.latex = String.raw`\chi = 1`;
+    equation.localTex = {
+      engine: "latex",
+      preamble: String.raw`\usepackage{amsmath,amsfonts,amssymb}`,
+    };
+    deck.slides[0].objects.push(equation);
+    return equation;
+  }
+
+  function equationField(label = "LaTeX source") {
+    const field = host.querySelector<HTMLTextAreaElement>(
+      `textarea[aria-label="${label}"]`,
+    );
+    if (!field) throw new Error(`Missing equation field: ${label}`);
+    return field;
+  }
+
+  async function changeField(
+    field: HTMLTextAreaElement | HTMLSelectElement,
+    value: string,
+  ) {
+    await act(async () => {
+      const prototype =
+        field instanceof HTMLSelectElement
+          ? HTMLSelectElement.prototype
+          : HTMLTextAreaElement.prototype;
+      Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(
+        field,
+        value,
+      );
+      field.dispatchEvent(
+        new Event(field instanceof HTMLSelectElement ? "change" : "input", {
+          bubbles: true,
+        }),
+      );
+    });
   }
 
   async function command(value: DesktopCommand) {
@@ -1684,4 +1766,414 @@ describe("OS-specific keyboard commands in the editor", () => {
     });
     expect(await persist()).toEqual(deck);
   });
+
+  it.each([
+    ["Alt+Shift+E", "E", { altKey: true, shiftKey: true, code: "KeyE" }],
+    ["Ctrl+Alt+=", "=", { ctrlKey: true, altKey: true, code: "Equal" }],
+  ] as const)(
+    "reveals the Inspector and focuses LaTeX source after Linux equation insertion with %s",
+    async (_label, value, options) => {
+      enableLocalLatex();
+      const equations = await import("../src/lib/equations");
+      vi.spyOn(equations, "renderEquation").mockResolvedValue({
+        svg: "<svg></svg>",
+        width: 160,
+        height: 80,
+      });
+      // The desktop Linux profile overrides misleading browser metadata.
+      await render("MacIntel");
+      await click("Toggle Inspector");
+      const inspector = host.querySelector<HTMLElement>(
+        '[aria-label="Inspector panel"]',
+      )!;
+      const canvas = host.querySelector<HTMLElement>(
+        '[aria-label="Slide canvas"]',
+      )!;
+      expect(inspector.hidden).toBe(true);
+      await act(async () => canvas.focus());
+      expect((await key(value, options, canvas)).defaultPrevented).toBe(true);
+      await act(async () => vi.advanceTimersByTimeAsync(0));
+      expect(inspector.hidden).toBe(false);
+      expect(document.activeElement).toBe(equationField());
+      expect(equationField().value).toBe("E = mc^2");
+      expect((await persist()).slides[0].objects.at(-1)).toMatchObject({
+        type: "equation",
+        latex: "E = mc^2",
+      });
+      await act(async () => canvas.focus());
+      await key("z", { ctrlKey: true }, canvas);
+      expect(await persist()).toEqual(deck);
+    },
+  );
+
+  it("compiles the Linux equation draft with Ctrl+Shift+Enter and changes the deck only after Apply", async () => {
+    const bridge = enableLocalLatex();
+    const equation = addEquation();
+    await render("MacIntel");
+    await click("Select Local equation");
+    const source = equationField();
+    const preamble = equationField("LaTeX preamble");
+    const nextSource = String.raw`\chi = \mathbb{R}`;
+    const nextPreamble = String.raw`\usepackage{amsmath,amsfonts,amssymb}
+\newcommand{\field}{\mathbb{R}}`;
+    await changeField(source, nextSource);
+    await changeField(preamble, nextPreamble);
+    await act(async () => source.focus());
+    expect(button("Undo").disabled).toBe(true);
+    expect(button("Apply equation").disabled).toBe(true);
+    expect(
+      (await key("Enter", { ctrlKey: true, shiftKey: true }, source))
+        .defaultPrevented,
+    ).toBe(true);
+    expect(bridge.compileTex).toHaveBeenCalledOnce();
+    expect(bridge.compileTex.mock.calls[0][0]).toMatchObject({
+      jobId: expect.any(String),
+      source: nextSource,
+      preamble: nextPreamble,
+      engine: "latex",
+      displayMode: equation.displayMode,
+      fontSize: equation.style.fontSize ?? deck.theme.equation.fontSize,
+      color: equation.style.color ?? deck.theme.equation.color,
+    });
+    expect(host.querySelector(".equation-preview path")).toBeTruthy();
+    expect(button("Apply equation").disabled).toBe(false);
+    expect(button("Undo").disabled).toBe(true);
+    expect(await persist()).toEqual(deck);
+    await click("Apply equation");
+    const applied = await persist();
+    expect(applied.slides[0].objects.at(-1)).toMatchObject({
+      latex: nextSource,
+      renderer: "local-latex",
+      localTex: {
+        preamble: nextPreamble,
+        render: { width: 160, height: 80 },
+      },
+      transform: { width: 160, height: 80 },
+    });
+    expect(button("Undo").disabled).toBe(false);
+    const canvas = host.querySelector<HTMLElement>(
+      '[aria-label="Slide canvas"]',
+    )!;
+    await act(async () => canvas.focus());
+    await key("z", { ctrlKey: true }, canvas);
+    expect(await persist()).toEqual(deck);
+    expect(button("Undo").disabled).toBe(true);
+  });
+
+  it("shares Linux native compile availability with the equation source and preamble", async () => {
+    const bridge = enableLocalLatex();
+    addEquation();
+    await render("Linux x86_64");
+    await click("Select Local equation");
+    const states = (): Partial<Record<DesktopCommand, boolean>> =>
+      bridge.setCommandAvailability.mock.calls.at(-1)?.[0] ?? {};
+    const source = equationField();
+    await act(async () => source.focus());
+    expect(states()).toMatchObject({ compileEquation: true });
+    await command("compileEquation");
+    expect(bridge.compileTex).toHaveBeenCalledOnce();
+    const preamble = equationField("LaTeX preamble");
+    await changeField(
+      preamble,
+      String.raw`\usepackage{amsmath}\newcommand{\x}{x}`,
+    );
+    await act(async () => preamble.focus());
+    expect(states()).toMatchObject({ compileEquation: true });
+    await key("Enter", { ctrlKey: true, shiftKey: true }, preamble);
+    expect(bridge.compileTex).toHaveBeenCalledTimes(2);
+    expect(bridge.compileTex.mock.calls[1][0]).toMatchObject({
+      preamble: preamble.value,
+      source: source.value,
+    });
+    const notes = host.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Speaker notes"]',
+    )!;
+    await act(async () => notes.focus());
+    expect(states()).toMatchObject({ compileEquation: false });
+    await command("compileEquation");
+    expect(bridge.compileTex).toHaveBeenCalledTimes(2);
+    expect(button("Undo").disabled).toBe(true);
+    expect(await persist()).toEqual(deck);
+  });
+
+  it("compiles the selected Linux equation from the canvas and reveals a hidden Inspector through keyboard or native menu", async () => {
+    const bridge = enableLocalLatex();
+    addEquation();
+    await render("Linux x86_64");
+    await click("Select Local equation");
+    const inspector = host.querySelector<HTMLElement>(
+      '[aria-label="Inspector panel"]',
+    )!;
+    const canvas = host.querySelector<HTMLElement>(
+      '[aria-label="Slide canvas"]',
+    )!;
+    await click("Toggle Inspector");
+    expect(inspector.hidden).toBe(true);
+    expect(document.activeElement).toBe(canvas);
+    await key("Enter", { ctrlKey: true, shiftKey: true }, canvas);
+    expect(bridge.compileTex).toHaveBeenCalledOnce();
+    expect(inspector.hidden).toBe(false);
+    await click("Toggle Inspector");
+    expect(inspector.hidden).toBe(true);
+    await command("compileEquation");
+    expect(bridge.compileTex).toHaveBeenCalledTimes(2);
+    expect(inspector.hidden).toBe(false);
+    expect(button("Undo").disabled).toBe(true);
+    expect(await persist()).toEqual(deck);
+  });
+
+  it("keeps failed or unsafe Linux compile results out of the preview and deck", async () => {
+    const bridge = enableLocalLatex();
+    addEquation();
+    bridge.compileTex.mockRejectedValueOnce(
+      new Error("LaTeX exited with code 1"),
+    );
+    bridge.compileTex.mockResolvedValueOnce({
+      ...compiledEquation,
+      svg: '<svg xmlns="http://www.w3.org/2000/svg"><script>window.injected = true</script></svg>',
+    });
+    await render("Linux x86_64");
+    await click("Select Local equation");
+    const source = equationField();
+    await act(async () => source.focus());
+    await key("Enter", { ctrlKey: true, shiftKey: true }, source);
+    expect(host.querySelector(".equation-preview")?.textContent).toContain(
+      "LaTeX exited with code 1",
+    );
+    expect(button("Apply equation").disabled).toBe(true);
+    await key("Enter", { ctrlKey: true, shiftKey: true }, source);
+    expect(bridge.compileTex).toHaveBeenCalledTimes(2);
+    expect(host.querySelector(".equation-preview script")).toBeNull();
+    expect(host.querySelector(".equation-preview svg")).toBeNull();
+    expect(button("Apply equation").disabled).toBe(true);
+    expect(button("Undo").disabled).toBe(true);
+    expect(await persist()).toEqual(deck);
+  });
+
+  it("does not compile on repeated, composing, legacy IME, AltGraph or consumed Linux events", async () => {
+    const bridge = enableLocalLatex();
+    addEquation();
+    await render("Linux x86_64");
+    await click("Select Local equation");
+    const source = equationField();
+    await act(async () => source.focus());
+    for (const options of [
+      { repeat: true },
+      { isComposing: true },
+      { keyCode: 229 },
+    ])
+      await key("Enter", { ctrlKey: true, shiftKey: true, ...options }, source);
+    const altGraph = new KeyboardEvent("keydown", {
+      key: "Enter",
+      ctrlKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(altGraph, "getModifierState", {
+      value: (name: string) => name === "AltGraph",
+    });
+    await act(async () => source.dispatchEvent(altGraph));
+    expect(altGraph.defaultPrevented).toBe(false);
+    const consumed = new KeyboardEvent("keydown", {
+      key: "Enter",
+      ctrlKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    consumed.preventDefault();
+    await act(async () => source.dispatchEvent(consumed));
+    expect(bridge.compileTex).not.toHaveBeenCalled();
+    await key("Enter", { ctrlKey: true, shiftKey: true }, source);
+    expect(bridge.compileTex).toHaveBeenCalledOnce();
+    expect(await persist()).toEqual(deck);
+  });
+
+  it.each([
+    "browser",
+    "unavailable TeX",
+    "unavailable engine",
+    "MathJax",
+    "no selection",
+    "locked equation",
+    "locked group",
+    "multiple selected objects",
+  ] as const)(
+    "disables Linux compile for %s without starting a job or adding history",
+    async (condition) => {
+      const bridge = condition === "browser" ? undefined : enableLocalLatex();
+      const equation = addEquation(
+        condition === "MathJax" ? "mathjax" : "local-latex",
+      );
+      if (condition === "unavailable TeX")
+        bridge!.detectTex.mockResolvedValue({
+          available: false,
+          engines: [],
+          sandbox: { available: false },
+        });
+      if (condition === "unavailable engine")
+        equation.localTex!.engine = "xelatex";
+      if (condition === "locked equation") equation.locked = true;
+      if (condition === "locked group") {
+        equation.groupId = "locked-equation-group";
+        deck.slides[0].objects[0].groupId = equation.groupId;
+        deck.slides[0].objects[0].locked = true;
+      }
+      await render("Linux x86_64");
+      if (condition !== "no selection") await click("Select Local equation");
+      if (condition === "multiple selected objects")
+        await key("a", { ctrlKey: true });
+      const source = host.querySelector<HTMLTextAreaElement>(
+        'textarea[aria-label="LaTeX source"]',
+      );
+      if (source) await act(async () => source.focus());
+      await key("Enter", { ctrlKey: true, shiftKey: true }, source ?? window);
+      if (bridge) {
+        await command("compileEquation");
+        expect(bridge.compileTex).not.toHaveBeenCalled();
+        expect(
+          bridge.setCommandAvailability.mock.calls.at(-1)?.[0],
+        ).toMatchObject({
+          compileEquation: false,
+        });
+      }
+      expect(host.querySelector(".presentation-view")).toBeNull();
+      expect(button("Undo").disabled).toBe(true);
+      expect(await persist()).toEqual(deck);
+    },
+  );
+
+  it("blocks additional Linux compile jobs while a compile or save is pending", async () => {
+    const bridge = enableLocalLatex();
+    addEquation();
+    let finishCompile!: (result: TexResult) => void;
+    bridge.compileTex.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishCompile = resolve;
+        }),
+    );
+    await render("Linux x86_64");
+    await click("Select Local equation");
+    const source = equationField();
+    await act(async () => source.focus());
+    // Both dispatches arrive before React updates compileBusy. The active job
+    // guard must still start one process when native and renderer routes race.
+    await act(async () => {
+      source.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          ctrlKey: true,
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      nativeBridge.command!("compileEquation");
+    });
+    expect(bridge.compileTex).toHaveBeenCalledOnce();
+    expect(button("Compiling…").disabled).toBe(true);
+    expect(bridge.setCommandAvailability.mock.calls.at(-1)?.[0]).toMatchObject({
+      compileEquation: false,
+    });
+    await key("Enter", { ctrlKey: true, shiftKey: true }, source);
+    await command("compileEquation");
+    expect(bridge.compileTex).toHaveBeenCalledOnce();
+    await act(async () => finishCompile(compiledEquation));
+    let finishSave!: (value: Blob) => void;
+    vi.mocked(buildDeckArchive).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishSave = resolve;
+        }),
+    );
+    await key("s", { ctrlKey: true }, source);
+    expect(host.querySelector(".app-shell")?.getAttribute("aria-busy")).toBe(
+      "true",
+    );
+    await key("Enter", { ctrlKey: true, shiftKey: true }, source);
+    await command("compileEquation");
+    expect(bridge.compileTex).toHaveBeenCalledOnce();
+    expect(bridge.setCommandAvailability.mock.calls.at(-1)?.[0]).toMatchObject({
+      compileEquation: false,
+    });
+    const archive = new Blob(["archive"]);
+    Object.defineProperty(archive, "arrayBuffer", {
+      value: async () => new Uint8Array([1]).buffer,
+    });
+    await act(async () => finishSave(archive));
+    expect(button("Undo").disabled).toBe(true);
+    expect(await persist()).toEqual(deck);
+  });
+
+  it("leaves Linux notes, thumbnails, dialogs, inline text and playback in charge of Ctrl+Shift+Enter", async () => {
+    const bridge = enableLocalLatex();
+    addEquation();
+    await render("Linux x86_64");
+    await click("Select Local equation");
+    const notes = host.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Speaker notes"]',
+    )!;
+    await act(async () => notes.focus());
+    expect(
+      (await key("Enter", { ctrlKey: true, shiftKey: true }, notes))
+        .defaultPrevented,
+    ).toBe(false);
+    await command("compileEquation");
+    const thumbnail = button("Slide 1: First slide");
+    await act(async () => thumbnail.focus());
+    await key("Enter", { ctrlKey: true, shiftKey: true }, thumbnail);
+    await command("compileEquation");
+    await key("m", { ctrlKey: true }, thumbnail);
+    const dialog = host.querySelector('[role="dialog"]')!;
+    expect(dialog).toBeTruthy();
+    await key("Enter", { ctrlKey: true, shiftKey: true }, dialog);
+    await command("compileEquation");
+    await click("Close slide templates");
+    const canvas = host.querySelector<HTMLElement>(
+      '[aria-label="Slide canvas"]',
+    )!;
+    await act(async () => canvas.focus());
+    // Ctrl+Enter keeps its existing presentation alias outside equation editing.
+    await key("Enter", { ctrlKey: true }, canvas);
+    const view = host.querySelector<HTMLElement>(".presentation-view")!;
+    expect(view).toBeTruthy();
+    await key("Enter", { ctrlKey: true, shiftKey: true }, view);
+    await command("compileEquation");
+    expect(host.querySelector(".presentation-view")).toBeTruthy();
+    await key("Escape", {}, view);
+    await click("Text");
+    const inline = host.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Edit text on slide"]',
+    )!;
+    expect(document.activeElement).toBe(inline);
+    expect(
+      (await key("Enter", { ctrlKey: true, shiftKey: true }, inline))
+        .defaultPrevented,
+    ).toBe(false);
+    await command("compileEquation");
+    expect(document.activeElement).toBe(inline);
+    expect(bridge.compileTex).not.toHaveBeenCalled();
+  });
+
+  it.each(["darwin", "win32"])(
+    "does not activate the Linux compile binding on the %s desktop host",
+    async (platform) => {
+      const bridge = enableLocalLatex();
+      bridge.platform = platform;
+      addEquation();
+      await render("Linux x86_64");
+      await click("Select Local equation");
+      const source = equationField();
+      await act(async () => source.focus());
+      expect(
+        (await key("Enter", { ctrlKey: true, shiftKey: true }, source))
+          .defaultPrevented,
+      ).toBe(false);
+      await command("compileEquation");
+      expect(bridge.compileTex).not.toHaveBeenCalled();
+      expect(await persist()).toEqual(deck);
+    },
+  );
 });

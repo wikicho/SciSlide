@@ -21,6 +21,7 @@ For the Keynote reference mapping, compatibility exceptions, focus-routing requi
 | Duplicate current slide                        | Use duplicate with no object selected | Ctrl+Shift+D          | Use duplicate with no object selected |
 | New-slide layout chooser                       | ⌘+Shift+N                             | Ctrl+M                | Ctrl+M                                |
 | Insert equation                                | ⌘+Option+E                            | Alt+=                 | Alt+Shift+E                           |
+| Compile with LaTeX (unreleased, desktop)       | —                                     | —                     | Ctrl+Shift+Enter                      |
 | Insert image/SVG/PDF                           | ⌘+Shift+V                             | Figure toolbar        | Figure toolbar                        |
 | Group / Ungroup                                | ⌘+Option+G / ⌘+Option+Shift+G         | Ctrl+G / Ctrl+Shift+G | Ctrl+Shift+G / Ctrl+Alt+Shift+G       |
 | Shortcut help                                  | ⌘+Shift+/                             | F1                    | F1                                    |
@@ -28,6 +29,12 @@ For the Keynote reference mapping, compatibility exceptions, focus-routing requi
 | Toggle/focus Objects & Layers (unreleased)     | ⌘+Shift+L                             | Ctrl+Shift+L          | Ctrl+Shift+L                          |
 
 Linux **Shift+F3** duplicates immediately; it does not open Impress's duplication-options dialog.
+
+## Linux equation workflow (unreleased)
+
+**Alt+Shift+E**, or legacy **Ctrl+Alt+=**, inserts an equation, reveals Inspector and focuses **LATEX SOURCE**. In the Linux desktop app, **Ctrl+Shift+Enter** runs **Compile with LaTeX** for one selected visible, unlocked equation in **Local LaTeX** mode when installed TeX is ready and the editor is idle. It works from the canvas or equation Inspector controls, including **LATEX SOURCE** and **PREAMBLE**.
+
+Compilation updates the draft preview and creates no document undo step. Review the result, then use **Apply equation** to commit it. The shortcut is disabled in the browser and MathJax mode; MathJax already previews live. Notes, inline text, media, thumbnails, dialogs and playback retain ownership. IME composition and held-key repetition do not compile. See [[Equations-and-Fonts]] for dependencies and the Compile → Apply workflow.
 
 ## Layout and text objects
 
