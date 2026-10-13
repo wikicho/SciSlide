@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { TextObject } from "../lib/model";
+import { wrapText } from "../lib/layout";
 import { exportTextFontFamily, exportTextFontWeight } from "../lib/text-fonts";
 import {
   getKeyboardPlatform,
@@ -16,15 +17,19 @@ export interface CanvasTextEditing {
   onChange: (value: string) => void;
   onFinish: (apply: boolean) => void;
   platform?: KeyboardPlatform;
+  suspended?: boolean;
+  onEditEquation?: (field: HTMLTextAreaElement) => void;
 }
 
 /** A native plain-text field in slide coordinates preserves zoom and rotation. */
 export function InlineTextEditor({
   object,
   editing,
+  onHeightChange,
 }: {
   object: TextObject;
   editing: CanvasTextEditing;
+  onHeightChange?: (height: number) => void;
 }) {
   const platform = editing.platform ?? getKeyboardPlatform(desktop?.platform);
   const field = useRef<HTMLTextAreaElement>(null);
@@ -40,6 +45,56 @@ export function InlineTextEditor({
     field.current?.select();
   }, []);
   const { x, y, width, height, rotation } = object.transform;
+  const minimumHeight = Math.max(height, object.fontSize * 1.6);
+  const [editorHeight, setEditorHeight] = useState(minimumHeight);
+  const heightCallback = useRef(onHeightChange);
+  heightCallback.current = onHeightChange;
+
+  useLayoutEffect(() => {
+    const textarea = field.current;
+    if (!textarea) return;
+    const measure = () => {
+      // Reset before reading so deleting text can shrink back to the stored box.
+      textarea.style.height = "0px";
+      const contentHeight =
+        textarea.scrollHeight ||
+        wrapText(
+          editing.value,
+          width,
+          object.fontSize,
+          object.fontFamily,
+          object.fontWeight,
+        ).length *
+          object.fontSize *
+          1.3;
+      textarea.style.height = "100%";
+      const nextHeight = Math.max(minimumHeight, Math.ceil(contentHeight));
+      setEditorHeight(nextHeight);
+      heightCallback.current?.(nextHeight);
+    };
+    measure();
+
+    const fonts = document.fonts;
+    if (!fonts) return;
+    let active = true;
+    const fontLoaded = () => {
+      if (active) measure();
+    };
+    fonts.addEventListener?.("loadingdone", fontLoaded);
+    void fonts.ready?.then(fontLoaded);
+    return () => {
+      active = false;
+      fonts.removeEventListener?.("loadingdone", fontLoaded);
+    };
+  }, [
+    editing.value,
+    width,
+    minimumHeight,
+    object.fontSize,
+    object.fontFamily,
+    object.fontWeight,
+  ]);
+
   return (
     <g
       data-inline-text-editor={object.id}
@@ -47,14 +102,11 @@ export function InlineTextEditor({
       onPointerDown={(event) => event.stopPropagation()}
       onDoubleClick={(event) => event.stopPropagation()}
     >
-      <foreignObject
-        width={width}
-        height={Math.max(height, object.fontSize * 1.6)}
-      >
+      <foreignObject width={width} height={editorHeight}>
         <textarea
           ref={field}
           aria-label="Edit text on slide"
-          aria-description={`Inline math uses $...$ or \\(...\\). Enter for a new line. ${shortcutLabel("finishTextEditing", platform)} to finish. Escape to cancel.`}
+          aria-description={`Inline math uses $...$ or \\(...\\). ${shortcutLabel("insertInlineEquation", platform)} to insert or edit an equation. Enter for a new line. ${shortcutLabel("finishTextEditing", platform)} to finish. Escape to cancel.`}
           className="inline-text-editor"
           value={editing.value}
           maxLength={100_000}
@@ -78,17 +130,32 @@ export function InlineTextEditor({
           onCompositionEnd={() => {
             composing.current = false;
           }}
-          onBlur={() => finish(true)}
+          onBlur={() => {
+            if (!editing.suspended) finish(true);
+          }}
           onKeyDown={(event) => {
             if (
-              event.defaultPrevented ||
               composing.current ||
               event.nativeEvent.isComposing ||
-              event.keyCode === 229 ||
-              event.getModifierState("AltGraph")
-            )
+              event.keyCode === 229
+            ) {
+              event.stopPropagation();
               return;
-            if (event.key === "Escape") {
+            }
+            if (event.defaultPrevented || event.getModifierState("AltGraph"))
+              return;
+            if (
+              editing.onEditEquation &&
+              matchesShortcut(
+                event.nativeEvent,
+                "insertInlineEquation",
+                platform,
+              )
+            ) {
+              event.preventDefault();
+              event.stopPropagation();
+              if (!event.repeat) editing.onEditEquation(event.currentTarget);
+            } else if (event.key === "Escape") {
               event.preventDefault();
               event.stopPropagation();
               if (!event.repeat) finish(false);

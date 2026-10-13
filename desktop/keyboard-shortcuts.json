@@ -1133,6 +1133,41 @@
       }
     },
     {
+      "action": "insertInlineEquation",
+      "scope": "textEditing",
+      "availability": "idle",
+      "repeatPolicy": "once",
+      "globalInText": false,
+      "platforms": {
+        "mac": {
+          "binding": {
+            "key": "m",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": []
+        },
+        "windows": {
+          "binding": {
+            "key": "m",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": []
+        },
+        "linux": {
+          "binding": {
+            "key": "m",
+            "primary": true,
+            "shift": true
+          },
+          "aliases": []
+        }
+      },
+      "label": "Insert or edit inline equation",
+      "category": "Text"
+    },
+    {
       "action": "addSlide",
       "scope": "editor",
       "availability": "idle",

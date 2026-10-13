@@ -2,6 +2,7 @@
   display: block;
   width: 100%;
   height: 100%;
+  box-sizing: border-box;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -11,6 +12,7 @@
   resize: none;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  overflow: hidden;
   caret-color: currentColor;
   outline: 2px solid #0f9f87;
   outline-offset: -2px;

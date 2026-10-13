@@ -3,6 +3,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -87,11 +88,9 @@ import {
 } from "./lib/presentation";
 import { cloneDeck, pruneUnusedAssets } from "./lib/deck-editing";
 import {
-  alignSelection,
   distributeSelection,
   selectionLayoutUnits,
 } from "./lib/selection-layout";
-import type { SelectionAlignment } from "./lib/selection-layout";
 import {
   captureObjectClipboard,
   pasteObjectClipboard,
@@ -133,6 +132,12 @@ import {
 } from "./lib/drawing";
 import { snapMove, snapResize, type SmartGuide } from "./lib/smart-guides";
 import { SlideScene } from "./components/SlideScene";
+import { CommitNumberInput } from "./components/CommitNumberInput";
+import { InlineEquationDialog } from "./components/InlineEquationDialog";
+import {
+  applyInlineEquationEdit,
+  getInlineEquationEdit,
+} from "./lib/inline-math-editing";
 import { SlideList } from "./components/SlideList";
 import { MathSupportDialog } from "./components/MathSupportDialog";
 import { SlideTemplateDialog } from "./components/SlideTemplateDialog";
@@ -145,6 +150,7 @@ import {
   isShortcutEnabled,
   isShortcutAvailable,
   matchShortcut,
+  matchesShortcut,
   shortcutLabel,
 } from "./lib/shortcuts";
 import type { ShortcutAction } from "./lib/shortcuts";
@@ -288,10 +294,29 @@ export default function App() {
     value: string;
   };
   const [textEditing, setTextEditing] = useState<TextEdit | null>(null);
+  type InlineEquationEdit = {
+    deckId: string;
+    slideId: string;
+    objectId: string;
+    source: string;
+    range: ReturnType<typeof getInlineEquationEdit>;
+    selectionStart: number;
+    selectionEnd: number;
+    target: "canvas" | "inspector";
+  };
+  const [inlineEquationEdit, setInlineEquationEdit] =
+    useState<InlineEquationEdit | null>(null);
+  const inlineEquationEditRef = useRef<InlineEquationEdit | null>(null);
+  const pendingTextSelection = useRef<{
+    target: "canvas" | "inspector";
+    start: number;
+    end: number;
+  } | null>(null);
   const [inspectorVisible, setInspectorVisible] = useState(true);
   const [objectListVisible, setObjectListVisible] = useState(true);
   const paneFocus = useRef<"inspector" | "objects" | null>(null);
   const textEditingRef = useRef<TextEdit | null>(null);
+  const textContentComposing = useRef(false);
   const [recoveryLoaded, setRecoveryLoaded] = useState(false);
   const [showEquationLibrary, setShowEquationLibrary] = useState(false);
   const [pdfFigure, setPdfFigure] = useState<PdfFigureRequest | null>(null);
@@ -437,6 +462,23 @@ export default function App() {
   const slide = deck.slides.find((s) => s.id === slideId) ?? deck.slides[0];
   const slideIndex = deck.slides.indexOf(slide),
     object = slide.objects.find((o) => o.id === selected[0]);
+  const inlineEquationObject =
+    inlineEquationEdit?.deckId === deck.id
+      ? deck.slides
+          .find((s) => s.id === inlineEquationEdit.slideId)
+          ?.objects.find((o) => o.id === inlineEquationEdit.objectId)
+      : undefined;
+  useEffect(() => {
+    if (
+      !inlineEquationEdit ||
+      (inlineEquationObject?.type === "text" &&
+        inlineEquationObject.visible &&
+        inlineEquationEdit.slideId === slide.id)
+    )
+      return;
+    inlineEquationEditRef.current = null;
+    setInlineEquationEdit(null);
+  }, [inlineEquationEdit, inlineEquationObject, slide.id]);
   presenterState.current = { slideId: slide.id, step: presentationStep };
   const pageNumbers = {
     ...DEFAULT_PAGE_NUMBERS,
@@ -451,6 +493,7 @@ export default function App() {
     deckId: string;
     start: { x: number; y: number };
     objects: SlideObject[];
+    metrics?: Record<string, { width: number; height: number }>;
     current: Record<string, SlideObject>;
     svg: SVGSVGElement;
     pointerId: number;
@@ -545,6 +588,15 @@ export default function App() {
   );
   const finishTextEditing = useCallback(
     (apply = true) => {
+      inlineEquationEditRef.current = null;
+      setInlineEquationEdit(null);
+      const activeField = document.activeElement;
+      if (
+        apply &&
+        activeField instanceof HTMLInputElement &&
+        activeField.hasAttribute("data-commit-number-input")
+      )
+        activeField.blur();
       const session = textEditingRef.current;
       textEditingRef.current = null;
       setTextEditing(null);
@@ -596,6 +648,118 @@ export default function App() {
     textEditingRef.current = next;
     setTextEditing(next);
   };
+  const showInlineEquationEditor = (
+    target: TextObject,
+    source: string,
+    selectionStart: number,
+    selectionEnd: number,
+    field: "canvas" | "inspector",
+  ) => {
+    if (
+      inlineEquationEditRef.current ||
+      isObjectLocked(target, slide.objects) ||
+      !target.visible
+    )
+      return;
+    let range: ReturnType<typeof getInlineEquationEdit>;
+    try {
+      range = getInlineEquationEdit(source, selectionStart, selectionEnd);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    const request: InlineEquationEdit = {
+      deckId: deck.id,
+      slideId: slide.id,
+      objectId: target.id,
+      source,
+      range,
+      selectionStart,
+      selectionEnd,
+      target: field,
+    };
+    inlineEquationEditRef.current = request;
+    setInlineEquationEdit(request);
+  };
+  const editInlineEquationAtField = (field: HTMLTextAreaElement) => {
+    const canvas = field.classList.contains("inline-text-editor");
+    const id = canvas ? textEditingRef.current?.objectId : object?.id;
+    const target = slide.objects.find((candidate) => candidate.id === id);
+    if (target?.type !== "text") return;
+    showInlineEquationEditor(
+      target,
+      field.value,
+      field.selectionStart,
+      field.selectionEnd,
+      canvas ? "canvas" : "inspector",
+    );
+  };
+  const closeInlineEquationEditor = (latex?: string) => {
+    const request = inlineEquationEditRef.current;
+    if (!request) return;
+    const current = deckRef.current;
+    const targetSlide = current.slides.find((s) => s.id === request.slideId);
+    const target = targetSlide?.objects.find((o) => o.id === request.objectId);
+    const session = textEditingRef.current;
+    const source =
+      request.target === "canvas"
+        ? session?.value
+        : target?.type === "text"
+          ? target.text
+          : undefined;
+    const valid =
+      current.id === request.deckId &&
+      target?.type === "text" &&
+      targetSlide &&
+      !isObjectLocked(target, targetSlide.objects) &&
+      (request.target !== "canvas" || session?.objectId === request.objectId) &&
+      source === request.source;
+    let start = request.selectionStart,
+      end = request.selectionEnd;
+    if (latex !== undefined && valid) {
+      try {
+        const inserted = applyInlineEquationEdit(
+          request.source,
+          request.range,
+          latex,
+        );
+        if (request.target === "canvas") changeInlineText(inserted.value);
+        else if (target.text !== inserted.value)
+          change((next) => {
+            const object = next.slides
+              .find((s) => s.id === request.slideId)!
+              .objects.find((o) => o.id === request.objectId)! as TextObject;
+            object.text = inserted.value;
+          });
+        start = inserted.selectionStart;
+        end = inserted.selectionEnd;
+      } catch (error) {
+        notify(error instanceof Error ? error.message : String(error));
+        return false;
+      }
+    }
+    inlineEquationEditRef.current = null;
+    setInlineEquationEdit(null);
+    if (valid) {
+      setSelected([request.objectId]);
+      pendingTextSelection.current = { target: request.target, start, end };
+    }
+    return true;
+  };
+  useLayoutEffect(() => {
+    const selection = pendingTextSelection.current;
+    if (!selection || inlineEquationEdit) return;
+    pendingTextSelection.current = null;
+    const field =
+      selection.target === "canvas"
+        ? canvasRef.current?.querySelector<HTMLTextAreaElement>(
+            ".inline-text-editor",
+          )
+        : document.getElementById("text-content");
+    if (!(field instanceof HTMLTextAreaElement)) return;
+    field.focus({ preventScroll: true });
+    field.setSelectionRange(selection.start, selection.end);
+  }, [inlineEquationEdit, textEditing, deck]);
   const applyAiDraft = (application: AIDraftApplication) => {
     const current = deckRef.current;
     const anchor = current.slides.find((s) => s.id === application.anchorId);
@@ -1196,19 +1360,6 @@ export default function App() {
     } catch (e) {
       notify((e as Error).message);
     }
-  };
-  const align = (where: SelectionAlignment) => {
-    const next = cloneDeck(deckRef.current);
-    if (
-      alignSelection(
-        next.slides.find((s) => s.id === slide.id)!.objects,
-        selected,
-        where,
-        next.slideSize,
-        metrics,
-      )
-    )
-      commit(next);
   };
   const distribute = (axis: "x" | "y") => {
     const next = cloneDeck(deckRef.current);
@@ -1893,6 +2044,13 @@ export default function App() {
         addSlide();
         break;
       case "insertEquation":
+        if (
+          document.activeElement instanceof HTMLTextAreaElement &&
+          document.activeElement.matches(".inline-text-editor,#text-content")
+        ) {
+          editInlineEquationAtField(document.activeElement);
+          break;
+        }
         void insert("equation")
           .then(() => {
             if (keyboardPlatform !== "linux") return;
@@ -1900,6 +2058,26 @@ export default function App() {
             setTimeout(() => sourceRef.current?.focus(), 0);
           })
           .catch((error: Error) => notify(error.message));
+        break;
+      case "insertInlineEquation":
+        if (
+          document.activeElement instanceof HTMLTextAreaElement &&
+          document.activeElement.matches(".inline-text-editor,#text-content")
+        )
+          editInlineEquationAtField(document.activeElement);
+        else if (
+          object?.type === "text" &&
+          !isTextInput(document.activeElement)
+        ) {
+          beginTextEditing(object);
+          showInlineEquationEditor(
+            object,
+            object.text,
+            object.text.length,
+            object.text.length,
+            "canvas",
+          );
+        }
         break;
       case "compileEquation":
         void compileEquation();
@@ -2025,7 +2203,8 @@ export default function App() {
     !!pdfFigure ||
     showSlideTemplates ||
     showMathLibrary ||
-    showEquationLibrary;
+    showEquationLibrary ||
+    !!inlineEquationEdit;
   useEffect(() => {
     if (!desktop?.setCommandAvailability) return;
     const syncMenu = () => {
@@ -2051,8 +2230,15 @@ export default function App() {
         } else if (editing && !shortcut.globalInText) {
           enabled =
             inline &&
-            ["present", "finishTextEditing"].includes(action) &&
+            ["present", "finishTextEditing", "insertEquation"].includes(
+              action,
+            ) &&
             enabled;
+          if (
+            action === "insertEquation" &&
+            document.activeElement?.matches("#text-content")
+          )
+            enabled = isShortcutEnabled(action, keyboardPlatform, state);
         }
         states[shortcut.nativeCommand] = enabled;
       }
@@ -2082,6 +2268,14 @@ export default function App() {
         return;
       }
       if (editing && !getShortcut(action, keyboardPlatform).globalInText) {
+        if (
+          action === "insertEquation" &&
+          document.activeElement instanceof HTMLTextAreaElement &&
+          document.activeElement.matches(".inline-text-editor,#text-content")
+        ) {
+          editInlineEquationAtField(document.activeElement);
+          return;
+        }
         if (
           textEditingRef.current &&
           ["present", "finishTextEditing"].includes(action)
@@ -2197,7 +2391,7 @@ export default function App() {
       .map((v) => {
         const c = clone(v),
           m = metrics[v.id];
-        if (m) {
+        if (m && v.type === "equation") {
           c.transform.width = m.width;
           c.transform.height = m.height;
         }
@@ -2210,6 +2404,7 @@ export default function App() {
       deckId: deck.id,
       start: position(e, svg),
       objects,
+      metrics,
       current: {},
       svg,
       pointerId: e.pointerId,
@@ -2295,12 +2490,14 @@ export default function App() {
         setPreview(g.current);
         return;
       }
+      const initialMetrics = g.metrics ?? metrics;
       if (g.mode === "drag") {
         if (grid) {
           // Snap the selection as a unit so grouped members keep their offsets.
           const origin = selectionBounds(
             g.objects,
             g.objects.map((o) => o.id),
+            initialMetrics,
           );
           if (origin) {
             dx = Math.round((origin.x + dx) / 20) * 20 - origin.x;
@@ -2311,6 +2508,7 @@ export default function App() {
           const origin = selectionBounds(
             g.objects.filter((o) => o.visible),
             g.objects.map((o) => o.id),
+            initialMetrics,
           );
           if (origin) {
             const ids = new Set(g.objects.map((o) => o.id));
@@ -2327,7 +2525,7 @@ export default function App() {
               selectionBounds(
                 objects,
                 objects.map((o) => o.id),
-                metrics,
+                initialMetrics,
               )!,
             );
             const snap = snapMove(
@@ -2350,7 +2548,13 @@ export default function App() {
           n.transform.y = o.transform.y + dy;
         } else {
           const w = o.transform.width,
-            h = o.transform.height,
+            h =
+              o.type === "text"
+                ? Math.max(
+                    o.transform.height,
+                    initialMetrics[o.id]?.height ?? 0,
+                  )
+                : o.transform.height,
             ratio = Math.max(0.1, (w + dx) / w);
           if (o.type === "equation" && n.type === "equation")
             n.style.fontSize = Math.max(
@@ -2361,6 +2565,13 @@ export default function App() {
               ),
             );
           else {
+            if (o.type === "text") {
+              // Materializing an automatic frame must keep rotated text in place.
+              const extraCenter = (h - o.transform.height) / 2;
+              const angle = (o.transform.rotation * Math.PI) / 180;
+              n.transform.x -= Math.sin(angle) * extraCenter;
+              n.transform.y += (Math.cos(angle) - 1) * extraCenter;
+            }
             const preserveRatio =
               o.type === "figure" || o.type === "video" || e.shiftKey;
             const minWidth = preserveRatio ? Math.max(24, (24 * w) / h) : 24;
@@ -2385,9 +2596,11 @@ export default function App() {
                     target.type !== "equation" &&
                     !isLineShape(target),
                 )
-                .map((target) => objectBounds(target));
+                .map((target) =>
+                  objectBounds(target, initialMetrics[target.id]),
+                );
               const snap = snapResize(
-                objectBounds(o),
+                objectBounds(o, initialMetrics[o.id]),
                 proposed,
                 targets,
                 deck.slideSize,
@@ -2568,6 +2781,15 @@ export default function App() {
         return;
       }
       if (action) {
+        if (
+          ["insertEquation", "insertInlineEquation"].includes(action) &&
+          e.target instanceof HTMLTextAreaElement &&
+          e.target.matches(".inline-text-editor,#text-content")
+        ) {
+          e.preventDefault();
+          if (!e.repeat) editInlineEquationAtField(e.target);
+          return;
+        }
         if (input && !getShortcut(action, keyboardPlatform).globalInText) {
           // F5 must not reload the browser while a text field owns focus.
           if (e.key === "F5") e.preventDefault();
@@ -2981,6 +3203,14 @@ export default function App() {
         <button
           className="tool equation-tool"
           title={shortcutTitle("Insert equation", "insertEquation")}
+          onPointerDown={(event) => {
+            if (
+              document.activeElement?.matches(
+                ".inline-text-editor,#text-content",
+              )
+            )
+              event.preventDefault();
+          }}
           onClick={() => executeShortcut("insertEquation")}
         >
           <Sigma size={20} /> Equation
@@ -3080,50 +3310,6 @@ export default function App() {
         </IconButton>
         <span className="toolbar-divider" />
         <div className="toolbar-group">
-          <IconButton
-            title="Align left"
-            onClick={() => align("left")}
-            disabled={!editableSelection(slide.objects, selected).length}
-          >
-            <AlignLeft size={18} />
-          </IconButton>
-          <IconButton
-            title="Align center"
-            onClick={() => align("center")}
-            disabled={!editableSelection(slide.objects, selected).length}
-          >
-            <AlignCenter size={18} />
-          </IconButton>
-          <IconButton
-            title="Align right"
-            onClick={() => align("right")}
-            disabled={!editableSelection(slide.objects, selected).length}
-          >
-            <AlignRight size={18} />
-          </IconButton>
-        </div>
-        <div className="toolbar-group alignment-extra">
-          <IconButton
-            title="Align top"
-            disabled={!editableSelection(slide.objects, selected).length}
-            onClick={() => align("top")}
-          >
-            <AlignLeft size={18} style={{ transform: "rotate(90deg)" }} />
-          </IconButton>
-          <IconButton
-            title="Align middle"
-            disabled={!editableSelection(slide.objects, selected).length}
-            onClick={() => align("middle")}
-          >
-            <AlignCenter size={18} style={{ transform: "rotate(90deg)" }} />
-          </IconButton>
-          <IconButton
-            title="Align bottom"
-            disabled={!editableSelection(slide.objects, selected).length}
-            onClick={() => align("bottom")}
-          >
-            <AlignRight size={18} style={{ transform: "rotate(90deg)" }} />
-          </IconButton>
           <IconButton
             title="Distribute horizontally"
             disabled={
@@ -3309,6 +3495,11 @@ export default function App() {
                     else document.getElementById("text-content")?.focus();
                   }, 0);
                 }}
+                onEditInlineEquation={(o, start, end) => {
+                  if (isObjectLocked(o, slide.objects)) return;
+                  beginTextEditing(o);
+                  showInlineEquationEditor(o, o.text, start, end, "canvas");
+                }}
                 textEditing={
                   textEditing &&
                   textEditing.deckId === deck.id &&
@@ -3317,6 +3508,8 @@ export default function App() {
                         objectId: textEditing.objectId,
                         value: textEditing.value,
                         platform: keyboardPlatform,
+                        suspended: !!inlineEquationEdit,
+                        onEditEquation: editInlineEquationAtField,
                         onChange: changeInlineText,
                         onFinish: finishTextEditing,
                       }
@@ -3766,6 +3959,35 @@ export default function App() {
                       aria-describedby="inline-math-hint"
                       className="text-input"
                       value={object.text}
+                      onCompositionStart={() => {
+                        textContentComposing.current = true;
+                      }}
+                      onCompositionEnd={() => {
+                        textContentComposing.current = false;
+                      }}
+                      onKeyDown={(event) => {
+                        if (
+                          textContentComposing.current ||
+                          event.nativeEvent.isComposing ||
+                          event.keyCode === 229 ||
+                          event.getModifierState("AltGraph")
+                        ) {
+                          event.stopPropagation();
+                          return;
+                        }
+                        if (
+                          matchesShortcut(
+                            event.nativeEvent,
+                            "insertInlineEquation",
+                            keyboardPlatform,
+                          )
+                        ) {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          if (!event.repeat)
+                            editInlineEquationAtField(event.currentTarget);
+                        }
+                      }}
                       onChange={(e) =>
                         updateObject(
                           object.id,
@@ -3777,27 +3999,30 @@ export default function App() {
                       }
                     />
                     <p id="inline-math-hint" className="field-hint">
-                      Inline math: <code>{"$\\chi$"}</code> or{" "}
-                      <code>{"\\(\\chi\\)"}</code>.{" Use "}
-                      <code>{"\\$"}</code> for a dollar sign.
+                      Press{" "}
+                      <kbd>
+                        {shortcutLabel(
+                          "insertInlineEquation",
+                          keyboardPlatform,
+                        )}
+                      </kbd>{" "}
+                      to insert or edit an inline equation. Double-click an
+                      equation to edit it. Use <code>{"\\$"}</code> for a dollar
+                      sign.
                     </p>
                     <div className="field-row">
                       <Field label="Size">
-                        <input
+                        <CommitNumberInput
+                          resetKey={object.id}
                           aria-label="Text size"
-                          type="number"
-                          min="8"
-                          max="180"
+                          min={8}
+                          max={180}
                           value={object.fontSize}
-                          onChange={(e) =>
+                          onCommit={(value) =>
                             updateObject(
                               object.id,
                               (o) => {
-                                if (o.type === "text")
-                                  o.fontSize = Math.max(
-                                    8,
-                                    Math.min(180, Number(e.target.value)),
-                                  );
+                                if (o.type === "text") o.fontSize = value;
                               },
                               "textsize",
                             )
@@ -3834,21 +4059,39 @@ export default function App() {
                           }
                         />
                       </Field>
-                      <Field label="Alignment">
-                        <select
-                          value={object.align}
-                          onChange={(e) =>
-                            updateObject(object.id, (o) => {
-                              if (o.type === "text")
-                                o.align = e.target.value as TextObject["align"];
-                            })
-                          }
+                      <div className="field">
+                        <span>Alignment</span>
+                        <div
+                          className="text-alignment-controls"
+                          role="group"
+                          aria-label="Text alignment"
                         >
-                          <option value="left">Left</option>
-                          <option value="center">Center</option>
-                          <option value="right">Right</option>
-                        </select>
-                      </Field>
+                          {(
+                            [
+                              ["left", "Align text left", AlignLeft],
+                              ["center", "Align text center", AlignCenter],
+                              ["right", "Align text right", AlignRight],
+                            ] as const
+                          ).map(([alignment, label, Icon]) => (
+                            <button
+                              key={alignment}
+                              type="button"
+                              aria-label={label}
+                              title={label}
+                              aria-pressed={object.align === alignment}
+                              disabled={isObjectLocked(object, slide.objects)}
+                              onClick={() => {
+                                if (object.align === alignment) return;
+                                updateObject(object.id, (o) => {
+                                  if (o.type === "text") o.align = alignment;
+                                });
+                              }}
+                            >
+                              <Icon size={18} aria-hidden="true" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -4258,39 +4501,65 @@ export default function App() {
                   <div className="field-row">
                     {(["width", "height"] as const).map((k) => (
                       <Field key={k} label={k === "width" ? "W" : "H"}>
-                        <input
-                          aria-label={`Object ${k}`}
-                          type="number"
-                          min={isLineShape(object) ? 0.01 : 1}
-                          step={isLineShape(object) ? 0.01 : 1}
-                          disabled={
-                            object.type === "equation" ||
-                            !!object.groupId ||
-                            isObjectLocked(object, slide.objects)
-                          }
-                          value={
-                            isLineShape(object)
-                              ? Number(object.transform[k].toFixed(4))
-                              : numeric(
-                                  object.type === "equation"
-                                    ? (metrics[object.id]?.[k] ??
-                                        object.transform[k])
-                                    : object.transform[k],
-                                )
-                          }
-                          onChange={(e) =>
-                            updateObject(
-                              object.id,
-                              (o) => {
-                                o.transform[k] = Math.max(
-                                  isLineShape(o) ? 0.01 : 1,
-                                  Number(e.target.value),
-                                );
-                              },
-                              k,
-                            )
-                          }
-                        />
+                        {object.type === "text" ? (
+                          <CommitNumberInput
+                            resetKey={object.id}
+                            syncKey={object.transform[k]}
+                            aria-label={`Object ${k}`}
+                            min={1}
+                            max={1_000_000}
+                            disabled={
+                              !!object.groupId ||
+                              isObjectLocked(object, slide.objects)
+                            }
+                            value={numeric(
+                              metrics[object.id]?.[k] ?? object.transform[k],
+                            )}
+                            onCommit={(value) =>
+                              updateObject(
+                                object.id,
+                                (o) => {
+                                  o.transform[k] = value;
+                                },
+                                k,
+                              )
+                            }
+                          />
+                        ) : (
+                          <input
+                            aria-label={`Object ${k}`}
+                            type="number"
+                            min={isLineShape(object) ? 0.01 : 1}
+                            step={isLineShape(object) ? 0.01 : 1}
+                            disabled={
+                              object.type === "equation" ||
+                              !!object.groupId ||
+                              isObjectLocked(object, slide.objects)
+                            }
+                            value={
+                              isLineShape(object)
+                                ? Number(object.transform[k].toFixed(4))
+                                : numeric(
+                                    object.type === "equation"
+                                      ? (metrics[object.id]?.[k] ??
+                                          object.transform[k])
+                                      : object.transform[k],
+                                  )
+                            }
+                            onChange={(e) =>
+                              updateObject(
+                                object.id,
+                                (o) => {
+                                  o.transform[k] = Math.max(
+                                    isLineShape(o) ? 0.01 : 1,
+                                    Number(e.target.value),
+                                  );
+                                },
+                                k,
+                              )
+                            }
+                          />
+                        )}
                       </Field>
                     ))}
                   </div>
@@ -4341,28 +4610,6 @@ export default function App() {
                 </div>
                 <div className="inspector-section">
                   <div className="section-label">ARRANGE</div>
-                  <div className="selection-arrange-grid">
-                    {(
-                      [
-                        "left",
-                        "center",
-                        "right",
-                        "top",
-                        "middle",
-                        "bottom",
-                      ] as SelectionAlignment[]
-                    ).map((where) => (
-                      <button
-                        key={where}
-                        disabled={
-                          !editableSelection(slide.objects, selected).length
-                        }
-                        onClick={() => align(where)}
-                      >
-                        {where[0].toUpperCase() + where.slice(1)}
-                      </button>
-                    ))}
-                  </div>
                   <div className="arrange-buttons">
                     <button
                       disabled={
@@ -4706,6 +4953,27 @@ export default function App() {
         <KeyboardShortcutsDialog
           platform={keyboardPlatform}
           onClose={() => setShowHelp(false)}
+        />
+      )}
+      {inlineEquationEdit && inlineEquationObject?.type === "text" && (
+        <InlineEquationDialog
+          initialLatex={inlineEquationEdit.range.latex}
+          font={deck.theme.equation.fontSetId}
+          fontSize={inlineEquationObject.fontSize}
+          color={inlineEquationObject.color}
+          platform={keyboardPlatform}
+          editing={
+            inlineEquationEdit.source.slice(
+              inlineEquationEdit.range.start,
+              inlineEquationEdit.range.end,
+            ) ===
+              inlineEquationEdit.range.opening +
+                inlineEquationEdit.range.latex +
+                inlineEquationEdit.range.closing &&
+            !!inlineEquationEdit.range.latex.trim()
+          }
+          onApply={(latex) => closeInlineEquationEditor(latex)}
+          onCancel={() => closeInlineEquationEditor()}
         />
       )}
       {showEquationLibrary && (

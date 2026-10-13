@@ -239,30 +239,65 @@ describe("editor convenience flows", () => {
     expect(current.slides[1].objects[0].id).not.toBe(locked.id);
   });
 
-  it.each<[string, "x" | "y", number]>([
-    ["Align left", "x", 80],
-    ["Align center", "x", 750],
-    ["Align right", "x", 1420],
-    ["Align top", "y", 80],
-    ["Align middle", "y", 410],
-    ["Align bottom", "y", 740],
-  ])(
-    "applies %s through the toolbar as one undoable operation",
-    async (label, axis, value) => {
-      const shape = rectangle("Shape");
-      const deck = deckWith([shape]);
-      await render(deck);
-      await click("Select Shape");
-      await click(label);
-      expect((await persist()).slides[0].objects[0].transform[axis]).toBe(
-        value,
+  it("omits object-position alignment buttons while retaining text alignment and spacing controls", async () => {
+    const source = createDemoDeck().slides[0].objects.find(
+      (object) => object.type === "text",
+    );
+    if (!source) throw new Error("Missing demo text fixture");
+    const text = {
+      ...source,
+      name: "Text",
+      text: "Text alignment remains",
+      align: "left" as const,
+    };
+    const deck = deckWith([text]);
+    await render(deck);
+    await click("Select Text");
+    const labels = [...host.querySelectorAll<HTMLButtonElement>("button")].map(
+      (element) =>
+        element.getAttribute("aria-label") ?? element.textContent?.trim(),
+    );
+    for (const direction of [
+      "left",
+      "center",
+      "right",
+      "top",
+      "middle",
+      "bottom",
+    ]) {
+      expect(labels).not.toContain(`Align ${direction}`);
+      expect(labels).not.toContain(
+        direction[0].toUpperCase() + direction.slice(1),
       );
-      await click(label);
-      await key("z", { ctrlKey: true });
-      expect(await persist()).toEqual(deck);
-      expect(button("Undo · Ctrl+Z").disabled).toBe(true);
-    },
-  );
+    }
+    for (const label of [
+      "Distribute horizontally",
+      "Distribute vertically",
+      "Equal horizontal gaps",
+      "Equal vertical gaps",
+      "Group",
+      "Ungroup",
+      "Send back",
+      "Bring front",
+    ]) {
+      expect(button(label)).toBeDefined();
+    }
+    expect(button("Align text left").getAttribute("aria-pressed")).toBe("true");
+    expect(button("Align text right")).toBeDefined();
+    await click("Align text center");
+    expect((await persist()).slides[0].objects[0]).toEqual({
+      ...text,
+      align: "center",
+    });
+    expect(button("Align text center").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(button("Align text left").getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    await key("z", { ctrlKey: true });
+    expect(await persist()).toEqual(deck);
+  });
 
   it.each(["x", "y"] as const)(
     "distributes %s gaps with the toolbar while preserving its anchors",

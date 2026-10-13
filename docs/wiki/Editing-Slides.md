@@ -16,6 +16,8 @@ In **Keynote White**, select a single Photo placeholder frame, icon or label bef
 
 Double-click text or select it and press **Enter** to edit on the canvas. **Enter** creates a new line; **⌘/Ctrl+Enter** or clicking outside applies one undoable edit; **Escape** cancels. The Inspector also offers text and formatting controls. Inline LaTeX syntax is described in [[Equations-and-Fonts]].
 
+**Unreleased:** press **Ctrl+Shift+M** (**⌘+Shift+M** on macOS) in a text field to open the inline equation popup. Enter LaTeX such as `U(1)`, check its live preview and apply to insert `$U(1)$` at the caret. Place the caret inside an existing equation and use the shortcut to edit it, or double-click its rendered formula. Cancel returns to the previous text and selection. Typing dollar delimiters does not open the popup. Use `\$` for a literal dollar sign. A selected text box can also open the popup directly with the shortcut.
+
 Click an object to select it; **Shift+click** selects several. macOS also supports **Command+click**. Drag to move, use the lower-right handle to resize, or enter geometry in the Inspector. Canvas arrow keys move selected objects by **1 logical document unit**; **Shift+Arrow** moves them by **10**.
 
 **Unreleased:** with the canvas focused, Tab/Shift+Tab selects eligible objects in back-to-front stacking order, treating a flat group as one unit and skipping hidden/locked content. At either end, Tab follows normal UI focus order into surrounding controls. A polite canvas status announces selected object names/counts.
@@ -28,7 +30,7 @@ Use **OBJECTS & LAYERS** to select covered or hidden objects, rename them, chang
 
 **Unreleased:** Inspector and Objects & Layers have independent visibility. Their toolbar buttons and [shortcuts](Keyboard-Shortcuts) focus the pane when shown and return to the canvas when hidden. Text fields, dialogs and playback retain input ownership. Double-clicking an equation reveals Inspector before focusing its source.
 
-The toolbar and **ARRANGE** controls align objects left/center/right/top/middle/bottom. A single object or group aligns to slide margins; several align within their combined bounds. **Distribute horizontally / vertically** equalizes edge gaps between at least three unlocked objects/groups, keeping the first and last in place.
+**Distribute horizontally / vertically** in the toolbar and **Equal horizontal / vertical gaps** in **ARRANGE** equalize edge gaps between at least three unlocked objects/groups, keeping the first and last in place. The Inspector's **Alignment** icons align text within its box.
 
 **Group objects** keeps a selection together for moving and duplication. **Ungroup objects** preserves member positions. Groups are flat and saved with the deck. Ungroup before resizing, rotating or editing an individual member's endpoints; nested groups and whole-group scaling/rotation are not supported.
 

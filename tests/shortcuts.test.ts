@@ -82,6 +82,37 @@ describe("platform-aware keyboard shortcuts", () => {
     expect(modifierLabel("linux", "primary")).toBe("Ctrl");
   });
 
+  it.each([
+    ["mac", "⌘+⇧+M"],
+    ["windows", "Ctrl+Shift+M"],
+    ["linux", "Ctrl+Shift+M"],
+  ] as const)(
+    "registers the inline equation shortcut on %s",
+    (platform, label) => {
+      const shortcut = getShortcut("insertInlineEquation", platform);
+      expect(shortcut.keys).toBe(label);
+      expect(shortcut.scope).toBe("textEditing");
+      expect(shortcut.category).toBe("Text");
+      expect(shortcut.repeatPolicy).toBe("once");
+      expect(shortcut.globalInText).toBe(false);
+      expect(shortcut.nativeCommand).toBeUndefined();
+      const primary =
+        platform === "mac" ? { metaKey: true } : { ctrlKey: true };
+      expect(
+        matchShortcut(key("M", { ...primary, shiftKey: true }), platform),
+      ).toBe("insertInlineEquation");
+      expect(
+        matchesShortcut(key("m", primary), "insertInlineEquation", platform),
+      ).toBe(false);
+      expect(
+        isShortcutEnabled("insertInlineEquation", platform, { busy: false }),
+      ).toBe(true);
+      expect(
+        isShortcutEnabled("insertInlineEquation", platform, { busy: true }),
+      ).toBe(false);
+    },
+  );
+
   it.each(["mac", "windows", "linux"] as const)(
     "makes every documented %s shortcut executable",
     (platform) => {

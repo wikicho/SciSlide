@@ -777,6 +777,34 @@ button .lucide {
 .field-row .field {
   flex: 1;
 }
+.text-alignment-controls {
+  display: flex;
+  height: 32px;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #fff;
+}
+.text-alignment-controls button {
+  display: grid;
+  place-items: center;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #758497;
+}
+.text-alignment-controls button:hover {
+  background: #f0f7f5;
+  color: var(--teal);
+}
+.text-alignment-controls button[aria-pressed="true"] {
+  background: #e4f4ee;
+  color: var(--teal);
+}
 .field input[type="color"] {
   padding: 4px;
   width: 100%;
@@ -2348,18 +2376,6 @@ button .lucide {
   .equation-library-toolbar {
     flex-wrap: wrap;
   }
-}
-.selection-arrange-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 5px;
-  margin-bottom: 8px;
-}
-.selection-arrange-grid button {
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  padding: 6px;
-  font-size: 11px;
 }
 .presenter-link {
   color: inherit;

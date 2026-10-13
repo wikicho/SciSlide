@@ -481,7 +481,7 @@ describe("inline mathematics inside editable slide text", () => {
         'textarea[aria-label="Text content"]',
       )?.value,
     ).toBe(raw);
-    expect(host.textContent).toContain(String.raw`Inline math: $\chi$`);
+    expect(host.textContent).toContain("to insert or edit an inline equation");
     await click("Undo · Ctrl+Z");
     expect(
       (await persist()).slides[0].objects.find(({ id }) => id === object.id),

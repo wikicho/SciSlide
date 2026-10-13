@@ -1,0 +1,232 @@
+.modal-backdrop.inline-equation-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1410;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgb(13 35 48 / 38%);
+  backdrop-filter: blur(2px);
+}
+
+.inline-equation-dialog {
+  width: 560px;
+  max-width: 100%;
+  max-height: calc(100dvh - 44px);
+  overflow: auto;
+  color: #203447;
+  background: #fff;
+  border: 1px solid #d8e3e9;
+  border-radius: 15px;
+  box-shadow: 0 18px 70px rgb(22 52 71 / 24%);
+}
+
+.inline-equation-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px 26px 19px;
+  border-bottom: 1px solid #e5ecef;
+}
+
+.inline-equation-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 8px;
+  color: #42776d;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+}
+
+.inline-equation-header h2 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.6px;
+}
+
+.inline-equation-close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: #718493;
+  background: transparent;
+}
+
+.inline-equation-close:hover {
+  color: #203447;
+  background: #f0f4f6;
+}
+
+.inline-equation-body {
+  padding: 22px 26px 24px;
+}
+
+.inline-equation-body label,
+.inline-equation-preview-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #3c5d70;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.inline-equation-body textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 88px;
+  max-height: 220px;
+  padding: 11px 12px;
+  resize: vertical;
+  color: #243b4c;
+  background: #fafcfd;
+  border: 1px solid #cedbe2;
+  border-radius: 8px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.inline-equation-hint {
+  margin: 9px 0 22px;
+  color: #718493;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.inline-equation-hint code {
+  color: #526b79;
+  font-size: 11px;
+}
+
+.inline-equation-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 132px;
+  padding: 18px;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #e0e8ed;
+  border-radius: 8px;
+}
+
+.inline-equation-preview > div {
+  max-width: 100%;
+}
+
+.inline-equation-preview.is-dark {
+  background: #1b2934;
+  border-color: #304451;
+}
+
+.inline-equation-preview.is-dark .inline-equation-status {
+  color: #c2d0d9;
+}
+
+.inline-equation-preview.is-dark .inline-equation-error {
+  color: #f4a1a7;
+}
+
+.inline-equation-preview svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.inline-equation-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: #80919d;
+  font-size: 12px;
+}
+
+.inline-equation-status svg {
+  animation: inline-equation-spin 1s linear infinite;
+}
+
+.inline-equation-error {
+  margin: 0;
+  color: #b34750;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.inline-equation-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 15px 26px;
+  border-top: 1px solid #e5ecef;
+  background: #f8fafb;
+}
+
+.inline-equation-footer > span {
+  color: #718493;
+  font-size: 10px;
+}
+
+.inline-equation-footer kbd {
+  font-family: inherit;
+  font-weight: 500;
+}
+
+.inline-equation-footer > div {
+  display: flex;
+  gap: 8px;
+}
+
+.inline-equation-dialog button:focus-visible,
+.inline-equation-dialog textarea:focus-visible {
+  outline: 2px solid #3d8a78;
+  outline-offset: 2px;
+}
+
+@keyframes inline-equation-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 520px) {
+  .modal-backdrop.inline-equation-backdrop {
+    padding: 12px;
+  }
+
+  .inline-equation-dialog {
+    max-height: calc(100dvh - 24px);
+  }
+
+  .inline-equation-header,
+  .inline-equation-body {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .inline-equation-footer {
+    flex-wrap: wrap;
+    padding: 14px 20px;
+  }
+
+  .inline-equation-footer > div {
+    margin-left: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inline-equation-status svg {
+    animation: none;
+  }
+}

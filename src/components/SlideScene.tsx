@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, PointerEvent } from "react";
 import type {
   Deck,
@@ -6,11 +6,16 @@ import type {
   SlideObject,
   EquationObject,
   ShapeObject,
+  TextObject,
 } from "../lib/model";
 import { renderObjectEquation } from "../lib/equation-renderer";
 import type { RenderedEquation } from "../lib/equations";
 import { wrapText } from "../lib/layout";
-import { hasInlineMath, inlinePlainText } from "../lib/inline-math";
+import {
+  hasInlineMath,
+  inlinePlainText,
+  inlineTextLayoutKey,
+} from "../lib/inline-math";
 import { InlineMathText } from "./InlineMathText";
 import { resolvePageNumber } from "../lib/model";
 import { isVisibleAtStep } from "../lib/presentation";
@@ -116,6 +121,7 @@ export function SlideScene({
   onPointer,
   onResize,
   onEdit,
+  onEditInlineEquation,
   onBackground,
   onEndpoint,
   onDrawStart,
@@ -138,6 +144,7 @@ export function SlideScene({
   onPointer?: (e: PointerEvent<SVGGElement>, o: SlideObject) => void;
   onResize?: (e: PointerEvent<SVGRectElement>, o: SlideObject) => void;
   onEdit?: (o: SlideObject) => void;
+  onEditInlineEquation?: (o: TextObject, start: number, end: number) => void;
   onBackground?: () => void;
   onEndpoint?: (
     e: PointerEvent<SVGCircleElement>,
@@ -171,7 +178,28 @@ export function SlideScene({
   const [localMetrics, setLocalMetrics] = useState<
     Record<string, { width: number; height: number }>
   >({});
-  const [, refreshTextMetrics] = useState(0);
+  const [textFontRevision, refreshTextMetrics] = useState(0);
+  const [inlineMetrics, setInlineMetrics] = useState<
+    Record<string, { key: string; height: number }>
+  >({});
+  const [editingMetrics, setEditingMetrics] = useState<{
+    key: string;
+    height: number;
+  }>();
+  useEffect(() => {
+    const fonts = document.fonts;
+    if (!fonts) return;
+    let active = true;
+    const fontsLoaded = () => {
+      if (active) refreshTextMetrics((revision) => revision + 1);
+    };
+    fonts.addEventListener?.("loadingdone", fontsLoaded);
+    void fonts.ready?.then(fontsLoaded).catch(() => undefined);
+    return () => {
+      active = false;
+      fonts.removeEventListener?.("loadingdone", fontsLoaded);
+    };
+  }, []);
   const koreanWeights = new Set<number>();
   for (const original of slide.objects) {
     const object = preview[original.id] ?? original;
@@ -217,6 +245,76 @@ export function SlideScene({
     },
     [onMetrics],
   );
+  const reportInlineMetrics = useCallback(
+    (id: string, key: string, height: number) => {
+      setInlineMetrics((current) =>
+        current[id]?.key === key && current[id]?.height === height
+          ? current
+          : { ...current, [id]: { key, height } },
+      );
+    },
+    [],
+  );
+  const textFrames = useMemo(() => {
+    const frames: Record<
+      string,
+      { width: number; height: number; lines: string[] }
+    > = {};
+    for (const original of slide.objects) {
+      const object = preview[original.id] ?? original;
+      if (object.type !== "text" || !object.visible) continue;
+      const inline = hasInlineMath(object.text);
+      const lines = wrapText(
+        inline ? object.text : inlinePlainText(object.text),
+        object.transform.width,
+        object.fontSize,
+        object.fontFamily,
+        object.fontWeight,
+      );
+      const measured = inlineMetrics[object.id];
+      const contentHeight =
+        inline && measured?.key === inlineTextLayoutKey(object, deck)
+          ? measured.height
+          : lines.length * object.fontSize * 1.3;
+      frames[object.id] = {
+        width: object.transform.width,
+        height: Math.max(object.transform.height, contentHeight),
+        lines,
+      };
+    }
+    return frames;
+  }, [
+    slide.objects,
+    preview,
+    inlineMetrics,
+    deck.theme.equation.fontSetId,
+    textFontRevision,
+  ]);
+  useEffect(() => {
+    for (const [id, frame] of Object.entries(textFrames))
+      onMetrics?.(id, frame.width, frame.height);
+  }, [textFrames, onMetrics]);
+  const editingKey =
+    editingObject?.type === "text" && textEditing
+      ? JSON.stringify([
+          editingObject.id,
+          textEditing.value,
+          editingObject.transform.width,
+          editingObject.transform.height,
+          editingObject.fontSize,
+          editingObject.fontFamily,
+          editingObject.fontWeight,
+        ])
+      : "";
+  const reportEditingHeight = useCallback(
+    (height: number) =>
+      setEditingMetrics((current) =>
+        current?.key === editingKey && current.height === height
+          ? current
+          : { key: editingKey, height },
+      ),
+    [editingKey],
+  );
   return (
     <svg
       className={drawing && !playback ? "slide-scene drawing" : "slide-scene"}
@@ -254,11 +352,14 @@ export function SlideScene({
                 ? (localMetrics[o.id] ?? metrics[o.id])
                 : undefined,
             w = m?.width ?? t.width,
-            h = m?.height ?? t.height;
+            h =
+              editingObject?.id === o.id && editingMetrics?.key === editingKey
+                ? editingMetrics.height
+                : (textFrames[o.id]?.height ?? m?.height ?? t.height);
           return (
             <g
               key={`${slide.id}:${o.id}`}
-              transform={`translate(${t.x} ${t.y}) rotate(${t.rotation} ${w / 2} ${h / 2})`}
+              transform={`translate(${t.x} ${t.y}) rotate(${t.rotation} ${w / 2} ${(o.type === "text" ? t.height : h) / 2})`}
               opacity={o.opacity}
               className={[
                 onPointer && !o.locked ? "canvas-object" : "",
@@ -282,7 +383,16 @@ export function SlideScene({
               {o.type === "text" &&
                 editingObject?.id !== o.id &&
                 (hasInlineMath(o.text) ? (
-                  <InlineMathText object={o} deck={deck} />
+                  <InlineMathText
+                    object={o}
+                    deck={deck}
+                    onMetrics={reportInlineMetrics}
+                    onEditEquation={
+                      !playback && onEditInlineEquation
+                        ? (start, end) => onEditInlineEquation(o, start, end)
+                        : undefined
+                    }
+                  />
                 ) : (
                   <text
                     fill={o.color}
@@ -304,13 +414,7 @@ export function SlideScene({
                           : "start"
                     }
                   >
-                    {wrapText(
-                      inlinePlainText(o.text),
-                      t.width,
-                      o.fontSize,
-                      o.fontFamily,
-                      o.fontWeight,
-                    ).map((line, i) => (
+                    {textFrames[o.id].lines.map((line, i) => (
                       <tspan
                         key={i}
                         x={
@@ -492,6 +596,7 @@ export function SlideScene({
           key={editingObject.id}
           object={editingObject}
           editing={textEditing}
+          onHeightChange={reportEditingHeight}
         />
       )}
     </svg>

@@ -115,6 +115,8 @@ SciSlide starts with **Choose your theme**. Select **Scientific**, **Minimal Whi
 
 Double-click a text box to edit directly on the slide, or select it and press **Enter**. New text boxes open ready for typing. **Enter** inserts a new line; **Ctrl / ⌘ + Enter** or clicking outside finishes the edit, and **Escape** cancels it. Each completed edit is one undo step. Korean IME input, plain-text paste, alignment, font size, rotation and canvas zoom are supported. The Inspector remains available for text and formatting; equations continue to use the LaTeX source editor.
 
+**Unreleased inline equation editor:** while typing in a text box, press **Ctrl+Shift+M** (**⌘+Shift+M** on macOS) to open a LaTeX popup with a live preview. Enter `U(1)` and apply to insert `$U(1)$` at the caret, keeping the surrounding prose. The same shortcut edits the equation containing the caret; double-clicking a rendered inline equation also opens its popup. **Escape** cancels the popup and returns to the original text selection. Typing `$U(1)$` directly stays in the text field without opening a popup. Type `\$` for a literal dollar sign. The Inspector's text field supports the same workflow.
+
 1. Select a slide from the thumbnails on the left. On narrow screens, use the slide selector above the canvas.
 2. Add objects with **Text / Equation / Figure / Video**. Figures support SVG, PNG, JPEG and PDF pages; videos support local MP4 and WebM files.
 3. Click and drag an object to move it. Resize it with the lower-right handle, or enter its position, rotation, and color in the Inspector.

@@ -129,6 +129,7 @@ describe("platform keyboard shortcut reference", () => {
     expect(keys("Start presentation")).toBe("⌘+⌥+P");
     expect(keys("Export PDF")).toBe("⌘+⌥+⇧+P");
     expect(keys("Apply text changes")).toBe("⌘+Enter");
+    expect(keys("Insert or edit inline equation")).toBe("⌘+⇧+M");
     expect(keys("End presentation")).toBe("Esc / Q");
     expect(keys("Add slide from a layout")).toBe("⌘+⇧+N");
     expect(keys("Insert equation")).toBe("⌘+⌥+E");
@@ -192,6 +193,7 @@ describe("platform keyboard shortcut reference", () => {
       expect(keys("Start from first slide")).toBe("F5");
       expect(keys("Start from current slide")).toBe("Shift+F5");
       expect(keys("Add slide from a layout")).toBe("Ctrl+M");
+      expect(keys("Insert or edit inline equation")).toBe("Ctrl+Shift+M");
       expect(keys("Export PDF")).toBe("Ctrl+Alt+P");
       expect(keys("Keyboard shortcuts")).toBe("F1");
       expect(keys("Next slide")).toBe("PageDown");

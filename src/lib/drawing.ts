@@ -278,9 +278,17 @@ export function objectBounds(
     return boundsOfPoints([endpoints.start, endpoints.end]);
   }
   const t = object.transform;
-  const width = dimensions?.width ?? t.width;
-  const height = dimensions?.height ?? t.height;
-  const center = { x: t.x + width / 2, y: t.y + height / 2 };
+  const width =
+    object.type === "text" ? t.width : (dimensions?.width ?? t.width);
+  const height =
+    object.type === "text"
+      ? Math.max(t.height, dimensions?.height ?? t.height)
+      : (dimensions?.height ?? t.height);
+  // Growing the text's hit/selection frame must not move its rendered content.
+  const center = {
+    x: t.x + width / 2,
+    y: t.y + (object.type === "text" ? t.height : height) / 2,
+  };
   return boundsOfPoints(
     [
       { x: t.x, y: t.y },

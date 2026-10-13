@@ -186,6 +186,24 @@ describe("editing text directly on the slide", () => {
     });
   }
 
+  function textSizeField() {
+    const field = host.querySelector<HTMLInputElement>(
+      'input[aria-label="Text size"]',
+    );
+    if (!field) throw new Error("Missing text size field");
+    return field;
+  }
+
+  async function inputNumber(target: HTMLInputElement, value: string) {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(target, value);
+      target.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
   async function key(
     value: string,
     options: KeyboardEventInit = {},
@@ -200,6 +218,484 @@ describe("editing text directly on the slide", () => {
     await act(async () => target.dispatchEvent(event));
     return event;
   }
+
+  function selectionHeight() {
+    const rectangle = host.querySelector<SVGRectElement>(
+      ".slide-paper svg .selection > rect",
+    );
+    if (!rectangle) throw new Error("Missing text selection frame");
+    return Number(rectangle.getAttribute("height"));
+  }
+
+  function editorHeight() {
+    const viewport = editor().closest("foreignObject");
+    if (!viewport) throw new Error("Missing inline editor viewport");
+    return Number(viewport.getAttribute("height"));
+  }
+
+  function hitHeight() {
+    const rectangle = host.querySelector<SVGRectElement>(
+      '.slide-paper svg .canvas-object > rect[fill="transparent"]',
+    );
+    if (!rectangle) throw new Error("Missing text hit frame");
+    return Number(rectangle.getAttribute("height"));
+  }
+
+  function inspectorHeight() {
+    const field = host.querySelector<HTMLInputElement>(
+      'input[aria-label="Object height"]',
+    );
+    if (!field) throw new Error("Missing object height field");
+    return Number(field.value);
+  }
+
+  function textWorldOrigin() {
+    const group = host.querySelector(".slide-paper svg .canvas-object");
+    const values = group
+      ?.getAttribute("transform")
+      ?.match(/[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi)
+      ?.map(Number);
+    if (!values || values.length !== 5)
+      throw new Error("Missing translated and rotated text frame");
+    const [x, y, rotation, centerX, centerY] = values;
+    const angle = (rotation * Math.PI) / 180;
+    return {
+      x: x + centerX * (1 - Math.cos(angle)) + centerY * Math.sin(angle),
+      y: y + centerY * (1 - Math.cos(angle)) - centerX * Math.sin(angle),
+    };
+  }
+
+  it("includes a pending inspector text size when saving and creates one undo step", async () => {
+    const original = textObject({ fontSize: 8 });
+    const deck = deckWith([original]);
+    await render(deck);
+    await click("Select Canvas title");
+    const field = textSizeField();
+    await act(async () => field.focus());
+    await inputNumber(field, "16");
+    expect(canvasText(original.text).getAttribute("font-size")).toBe("8");
+    expect((await key("s", { ctrlKey: true }, field)).defaultPrevented).toBe(
+      true,
+    );
+    expect(buildDeckArchive).toHaveBeenCalledTimes(1);
+    expect(packaged?.slides[0].objects[0]).toEqual({
+      ...original,
+      fontSize: 16,
+    });
+    expect(downloadBlob).toHaveBeenCalledTimes(1);
+    await key("z", { ctrlKey: true });
+    expect(await persist()).toEqual(deck);
+    expect(button("Undo · Ctrl+Z").disabled).toBe(true);
+  });
+
+  it("keeps partial automatic-height input local and restores the effective height after committing a smaller manual frame", async () => {
+    const original = textObject({
+      text: "First\nSecond\nThird",
+      transform: { x: 150, y: 180, width: 800, height: 64, rotation: 12 },
+    });
+    const deck = deckWith([original]);
+    await render(deck);
+    await click("Select Canvas title");
+    const field = host.querySelector<HTMLInputElement>(
+      'input[aria-label="Object height"]',
+    )!;
+    expect(field.value).toBe("187.2");
+    await act(async () => field.focus());
+    for (const draft of ["", "1", "120"]) {
+      await inputNumber(field, draft);
+      expect(field.value).toBe(draft);
+      expect(selectionHeight()).toBeCloseTo(187.2);
+      expect(await persist()).toEqual(deck);
+      expect(button("Undo · Ctrl+Z").disabled).toBe(true);
+    }
+    await key("Enter", {}, field);
+    expect((await persist()).slides[0].objects[0]).toEqual({
+      ...original,
+      transform: { ...original.transform, height: 120 },
+    });
+    expect(field.value).toBe("187.2");
+    expect(selectionHeight()).toBeCloseTo(187.2);
+    await key("z", { ctrlKey: true });
+    expect(await persist()).toEqual(deck);
+    expect(button("Undo · Ctrl+Z").disabled).toBe(true);
+  });
+
+  it("keeps a partially typed text size local and commits its final value once", async () => {
+    const original = textObject({ fontSize: 8 });
+    const deck = deckWith([original]);
+    await render(deck);
+    await click("Select Canvas title");
+    const field = textSizeField();
+    await act(async () => field.focus());
+    for (const draft of ["", "1", "16"]) {
+      await inputNumber(field, draft);
+      expect(field.value).toBe(draft);
+      expect(canvasText(original.text).getAttribute("font-size")).toBe("8");
+      expect(await persist()).toEqual(deck);
+      expect(button("Undo · Ctrl+Z").disabled).toBe(true);
+    }
+    await key("Enter", {}, field);
+    expect(canvasText(original.text).getAttribute("font-size")).toBe("16");
+    expect((await persist()).slides[0].objects[0]).toEqual({
+      ...original,
+      fontSize: 16,
+    });
+    // Let the first edit pass the history grouping interval before blurring,
+    // so a duplicate commit would create an observable extra undo step.
+    await act(async () => field.blur());
+    await persist();
+    await key("z", { ctrlKey: true });
+    expect(await persist()).toEqual(deck);
+    expect(button("Undo · Ctrl+Z").disabled).toBe(true);
+  });
+
+  it("restores canceled size drafts and resets the field when selecting another text object", async () => {
+    const first = textObject({ fontSize: 8 });
+    const second = textObject({
+      id: "second-title",
+      name: "Second title",
+      text: "Second title",
+      fontSize: 8,
+    });
+    const deck = deckWith([first, second]);
+    await render(deck);
+    await click("Select Canvas title");
+    const firstField = textSizeField();
+    await act(async () => firstField.focus());
+    await inputNumber(firstField, "");
+    await act(async () => firstField.blur());
+    expect(firstField.value).toBe("8");
+    await act(async () => firstField.focus());
+    await inputNumber(firstField, "16");
+    await key("Escape", {}, firstField);
+    expect(firstField.value).toBe("8");
+    await act(async () => firstField.blur());
+    expect(await persist()).toEqual(deck);
+    expect(button("Undo · Ctrl+Z").disabled).toBe(true);
+    await inputNumber(firstField, "32");
+    await click("Select Second title");
+    const secondField = textSizeField();
+    expect(secondField).not.toBe(firstField);
+    expect(secondField.value).toBe("8");
+    expect(await persist()).toEqual(deck);
+    await act(async () => secondField.focus());
+    await inputNumber(secondField, "1");
+    await inputNumber(secondField, "24");
+    expect(canvasText(first.text).getAttribute("font-size")).toBe("8");
+    expect(canvasText(second.text).getAttribute("font-size")).toBe("8");
+    expect(button("Undo · Ctrl+Z").disabled).toBe(true);
+    await key("Enter", {}, secondField);
+    expect((await persist()).slides[0].objects).toEqual([
+      first,
+      { ...second, fontSize: 24 },
+    ]);
+    expect(canvasText(second.text).getAttribute("font-size")).toBe("24");
+    await act(async () => secondField.blur());
+    await key("z", { ctrlKey: true });
+    expect(await persist()).toEqual(deck);
+    expect(button("Undo · Ctrl+Z").disabled).toBe(true);
+  });
+
+  it("uses alignment buttons to align text within its frame and undo without changing its geometry", async () => {
+    const original = textObject();
+    const deck = deckWith([original]);
+    await render(deck);
+    await click("Select Canvas title");
+    expect(
+      host.querySelector('select[aria-label="Text alignment"]'),
+    ).toBeNull();
+    expect(button("Align text left").getAttribute("aria-pressed")).toBe("true");
+    await click("Align text center");
+    expect((await persist()).slides[0].objects[0]).toEqual({
+      ...original,
+      align: "center",
+    });
+    expect(canvasText(original.text).getAttribute("text-anchor")).toBe(
+      "middle",
+    );
+    expect(
+      canvasText(original.text).querySelector("tspan")?.getAttribute("x"),
+    ).toBe("400");
+    expect(button("Align text center").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(button("Align text left").getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    await click("Align text right");
+    expect((await persist()).slides[0].objects[0]).toEqual({
+      ...original,
+      align: "right",
+    });
+    expect(canvasText(original.text).getAttribute("text-anchor")).toBe("end");
+    expect(
+      canvasText(original.text).querySelector("tspan")?.getAttribute("x"),
+    ).toBe("800");
+    expect(button("Align text right").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(button("Align text center").getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    expect(selectionHeight()).toBe(original.transform.height);
+    await key("z", { ctrlKey: true });
+    expect((await persist()).slides[0].objects[0]).toEqual({
+      ...original,
+      align: "center",
+    });
+    await click("Select Canvas title");
+    expect(button("Align text center").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    await key("z", { ctrlKey: true });
+    expect(await persist()).toEqual(deck);
+    expect(button("Undo · Ctrl+Z").disabled).toBe(true);
+  });
+
+  it("grows both the live editor and selection for new lines, then keeps the stored frame through commit and undo", async () => {
+    const original = textObject({
+      transform: { x: 150, y: 180, width: 800, height: 64, rotation: 12 },
+    });
+    const deck = deckWith([original]);
+    await render(deck);
+    const textarea = await edit();
+    expect(editorHeight()).toBeCloseTo(76.8);
+    expect(selectionHeight()).toBeCloseTo(76.8);
+    await key("Enter", {}, textarea);
+    await input(textarea, "First line\nSecond line");
+    expect(editor()).toBe(textarea);
+    expect(editorHeight()).toBe(125);
+    expect(selectionHeight()).toBe(125);
+    await key("Enter", {}, textarea);
+    const multiline = "First line\nSecond line\nThird line";
+    await input(textarea, multiline);
+    expect(editorHeight()).toBe(188);
+    expect(selectionHeight()).toBe(188);
+    expect(
+      textarea.closest("[data-inline-text-editor]")?.getAttribute("transform"),
+    ).toBe("translate(150 180) rotate(12 400 32)");
+    await key("Enter", { ctrlKey: true }, textarea);
+    expect((await persist()).slides[0].objects[0]).toEqual({
+      ...original,
+      text: multiline,
+    });
+    expect(selectionHeight()).toBeCloseTo(187.2);
+    expect(hitHeight()).toBeCloseTo(187.2);
+    expect(inspectorHeight()).toBe(187.2);
+    await key("z", { ctrlKey: true });
+    expect(await persist()).toEqual(deck);
+    expect(button("Undo · Ctrl+Z").disabled).toBe(true);
+    await click("Select Canvas title");
+    expect(selectionHeight()).toBe(64);
+    expect(hitHeight()).toBe(64);
+    expect(inspectorHeight()).toBe(64);
+  });
+
+  it("shrinks the live editor after deleting added lines and restores the original frame on Escape without history", async () => {
+    const original = textObject({
+      transform: { x: 150, y: 180, width: 800, height: 64, rotation: 12 },
+    });
+    const deck = deckWith([original]);
+    await render(deck);
+    const textarea = await edit();
+    await input(textarea, "First\nSecond\nThird\nFourth");
+    expect(editorHeight()).toBe(250);
+    expect(selectionHeight()).toBe(250);
+    await input(textarea, "Short");
+    expect(editorHeight()).toBeCloseTo(76.8);
+    expect(selectionHeight()).toBeCloseTo(76.8);
+    await input(textarea, "First\nSecond\nThird");
+    expect(editorHeight()).toBe(188);
+    await key("Escape", {}, textarea);
+    expect(host.querySelector("[data-inline-text-editor]")).toBeNull();
+    expect(await persist()).toEqual(deck);
+    expect(selectionHeight()).toBe(64);
+    expect(hitHeight()).toBe(64);
+    expect(inspectorHeight()).toBe(64);
+    expect(button("Undo · Ctrl+Z").disabled).toBe(true);
+  });
+
+  it("moves an expanded text box without persisting its automatic height", async () => {
+    const original = textObject({
+      text: "First\nSecond\nThird",
+      transform: { x: 150, y: 180, width: 800, height: 64, rotation: 12 },
+    });
+    const deck = deckWith([original]);
+    await render(deck);
+    await click("Select Canvas title");
+    expect(selectionHeight()).toBeCloseTo(187.2);
+    const hit = host.querySelector<SVGRectElement>(
+      '.slide-paper svg .canvas-object > rect[fill="transparent"]',
+    )!;
+    const svg = hit.ownerSVGElement!;
+    vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 1600,
+      bottom: 900,
+      width: 1600,
+      height: 900,
+      toJSON: () => ({}),
+    });
+    const captured = new Set<number>();
+    Object.defineProperties(svg, {
+      setPointerCapture: {
+        configurable: true,
+        value: (id: number) => captured.add(id),
+      },
+      hasPointerCapture: {
+        configurable: true,
+        value: (id: number) => captured.has(id),
+      },
+      releasePointerCapture: {
+        configurable: true,
+        value: (id: number) => captured.delete(id),
+      },
+    });
+    async function pointer(
+      target: EventTarget,
+      type: string,
+      clientX: number,
+      clientY: number,
+    ) {
+      const event = new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        buttons: type === "pointerup" ? 0 : 1,
+        altKey: true,
+        clientX,
+        clientY,
+      });
+      Object.defineProperties(event, {
+        pointerId: { value: 7 },
+        pointerType: { value: "mouse" },
+        isPrimary: { value: true },
+      });
+      await act(async () => target.dispatchEvent(event));
+    }
+    await pointer(hit, "pointerdown", 220, 230);
+    await pointer(window, "pointermove", 255, 257);
+    await pointer(window, "pointerup", 255, 257);
+    expect((await persist()).slides[0].objects[0]).toEqual({
+      ...original,
+      transform: { ...original.transform, x: 185, y: 207 },
+    });
+    expect(selectionHeight()).toBeCloseTo(187.2);
+    expect(hitHeight()).toBeCloseTo(187.2);
+    await key("z", { ctrlKey: true });
+    expect(await persist()).toEqual(deck);
+    expect(button("Undo · Ctrl+Z").disabled).toBe(true);
+  });
+
+  it.each<[number, number, number]>([
+    [0, 20, 10],
+    [12, 1, 0],
+  ])(
+    "resizes expanded text rotated %d° from its initial frame without accumulated growth or an automatic-height jump",
+    async (rotation, dx, dy) => {
+      const original = textObject({
+        text: "First\nSecond\nThird",
+        transform: { x: 150, y: 180, width: 800, height: 64, rotation },
+      });
+      const deck = deckWith([original]);
+      await render(deck);
+      await click("Select Canvas title");
+      expect(selectionHeight()).toBeCloseTo(187.2);
+      const initialHeight = selectionHeight();
+      const initialOrigin = textWorldOrigin();
+      const handle = host.querySelector<SVGRectElement>(
+        ".slide-paper svg .selection > rect.resize-handle",
+      );
+      if (!handle) throw new Error("Missing bottom-right resize handle");
+      const svg = handle.ownerSVGElement!;
+      vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        right: 1600,
+        bottom: 900,
+        width: 1600,
+        height: 900,
+        toJSON: () => ({}),
+      });
+      const captured = new Set<number>();
+      Object.defineProperties(svg, {
+        setPointerCapture: {
+          configurable: true,
+          value: (id: number) => captured.add(id),
+        },
+        hasPointerCapture: {
+          configurable: true,
+          value: (id: number) => captured.has(id),
+        },
+        releasePointerCapture: {
+          configurable: true,
+          value: (id: number) => captured.delete(id),
+        },
+      });
+      async function pointer(
+        target: EventTarget,
+        type: string,
+        clientX: number,
+        clientY: number,
+      ) {
+        const event = new MouseEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          buttons: type === "pointerup" ? 0 : 1,
+          altKey: true,
+          clientX,
+          clientY,
+        });
+        Object.defineProperties(event, {
+          pointerId: { value: 7 },
+          pointerType: { value: "mouse" },
+          isPrimary: { value: true },
+        });
+        await act(async () => target.dispatchEvent(event));
+      }
+      await pointer(handle, "pointerdown", 950, 367.2);
+      // Each event lets the scene publish its new preview metrics before the next
+      // move. Reusing those metrics as the resize origin would add 10 repeatedly.
+      for (let move = 0; move < 3; move++) {
+        await pointer(window, "pointermove", 950 + dx, 367.2 + dy);
+        expect(selectionHeight()).toBeCloseTo(initialHeight + dy);
+        expect(hitHeight()).toBeCloseTo(initialHeight + dy);
+      }
+      await pointer(window, "pointerup", 950 + dx, 367.2 + dy);
+      const resized = (await persist()).slides[0].objects[0];
+      expect(resized).toEqual({
+        ...original,
+        transform: {
+          ...original.transform,
+          width: 800 + dx,
+          height: resized.transform.height,
+          x: resized.transform.x,
+          y: resized.transform.y,
+        },
+      });
+      expect(resized.transform.height).toBeCloseTo(initialHeight + dy);
+      expect(inspectorHeight()).toBeCloseTo(initialHeight + dy);
+      const angle = (rotation * Math.PI) / 180;
+      const actualOrigin = textWorldOrigin();
+      // Resizing changes the pivot by half the width/height delta. Materializing
+      // an already visible automatic height must add no further displacement.
+      expect(actualOrigin.x - initialOrigin.x).toBeCloseTo(
+        ((1 - Math.cos(angle)) * dx + Math.sin(angle) * dy) / 2,
+      );
+      expect(actualOrigin.y - initialOrigin.y).toBeCloseTo(
+        ((1 - Math.cos(angle)) * dy - Math.sin(angle) * dx) / 2,
+      );
+      await key("z", { ctrlKey: true });
+      expect(await persist()).toEqual(deck);
+      expect(button("Undo · Ctrl+Z").disabled).toBe(true);
+    },
+  );
 
   it.each(["serif", "Missing Custom Face, serif"])(
     "retains the SVG font family and generic fallback %s during canvas editing",

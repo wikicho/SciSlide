@@ -7,6 +7,14 @@ export type InlineMathToken =
   | { type: "text"; text: string }
   | { type: "math"; latex: string; source: string };
 
+export interface InlineMathSpan {
+  /** Source offsets use JavaScript UTF-16 positions, as native text fields do. */
+  start: number;
+  end: number;
+  latex: string;
+  source: string;
+}
+
 export interface InlineTextRun {
   type: "text";
   text: string;
@@ -40,8 +48,22 @@ export interface InlineTextLayout {
   height: number;
 }
 
+/** Inputs that determine the displayed inline layout, excluding frame height. */
+export function inlineTextLayoutKey(object: TextObject, deck: Deck): string {
+  return JSON.stringify([
+    object.text,
+    object.transform.width,
+    object.fontFamily,
+    object.fontWeight,
+    object.fontSize,
+    object.color,
+    object.align,
+    deck.theme.equation.fontSetId,
+  ]);
+}
+
 export const MAX_INLINE_MATH_SPANS = 128;
-const MAX_TEXT_LENGTH = 100_000;
+export const MAX_INLINE_TEXT_LENGTH = 100_000;
 
 function closingDelimiter(
   source: string,
@@ -59,7 +81,11 @@ function closingDelimiter(
   return -1;
 }
 
-function scan(source: string, firstMathOnly = false): InlineMathToken[] {
+function scan(
+  source: string,
+  firstMathOnly = false,
+  spans?: InlineMathSpan[],
+): InlineMathToken[] {
   const tokens: InlineMathToken[] = [];
   let literal = "";
   let noMoreParenthesizedClosers = false;
@@ -111,6 +137,12 @@ function scan(source: string, firstMathOnly = false): InlineMathToken[] {
         if (latex.trim()) {
           flush();
           tokens.push({ type: "math", latex, source: original });
+          spans?.push({
+            start: cursor,
+            end: end + delimiterWidth,
+            latex,
+            source: original,
+          });
           if (firstMathOnly) return tokens;
         } else literal += original;
         cursor = end + delimiterWidth;
@@ -130,6 +162,13 @@ function scan(source: string, firstMathOnly = false): InlineMathToken[] {
 /** Delimiters and escapes affect display only; document source stays intact. */
 export function parseInlineMath(source: string): InlineMathToken[] {
   return scan(source);
+}
+
+/** Exact source locations from the same scanner used by rendering. */
+export function getInlineMathSpans(source: string): InlineMathSpan[] {
+  const spans: InlineMathSpan[] = [];
+  scan(source, false, spans);
+  return spans;
 }
 
 /** This synchronous predicate never rejects an unfinished edit or span budget. */
@@ -208,7 +247,7 @@ export async function layoutInlineText(
   object: TextObject,
   deck: Deck,
 ): Promise<InlineTextLayout> {
-  if (object.text.length > MAX_TEXT_LENGTH)
+  if (object.text.length > MAX_INLINE_TEXT_LENGTH)
     throw new Error("Inline text is too long (maximum 100,000 characters).");
   const tokens = parseInlineMath(object.text);
   const math = tokens.filter((token) => token.type === "math");

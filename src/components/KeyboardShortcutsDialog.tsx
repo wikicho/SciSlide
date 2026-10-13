@@ -90,6 +90,10 @@ const groups: { title: string; rows: ShortcutRow[] }[] = [
     rows: [
       { label: "Edit selected text", keys: "Enter / Double-click" },
       { label: "Insert a new line", keys: "Enter" },
+      {
+        label: "Insert or edit inline equation",
+        action: "insertInlineEquation",
+      },
       { label: "Apply text changes", action: "finishTextEditing" },
       { label: "Cancel text changes", keys: "Esc" },
       { label: "Toggle bold on selected text objects", action: "bold" },

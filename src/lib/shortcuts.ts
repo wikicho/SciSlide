@@ -29,6 +29,7 @@ export type ShortcutAction =
   | "exportSvg"
   | "help"
   | "finishTextEditing"
+  | "insertInlineEquation"
   | "addSlide"
   | "insertEquation"
   | "compileEquation"

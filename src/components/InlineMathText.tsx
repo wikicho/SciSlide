@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import type { Deck, TextObject } from "../lib/model";
-import { layoutInlineText } from "../lib/inline-math";
+import {
+  getInlineMathSpans,
+  inlineTextLayoutKey,
+  layoutInlineText,
+} from "../lib/inline-math";
 import type { InlineTextLayout } from "../lib/inline-math";
 import { wrapText } from "../lib/layout";
 import { exportTextFontFamily, exportTextFontWeight } from "../lib/text-fonts";
@@ -9,20 +13,15 @@ import { exportTextFontFamily, exportTextFontWeight } from "../lib/text-fonts";
 export function InlineMathText({
   object,
   deck,
+  onMetrics,
+  onEditEquation,
 }: {
   object: TextObject;
   deck: Deck;
+  onMetrics?: (id: string, key: string, height: number) => void;
+  onEditEquation?: (start: number, end: number) => void;
 }) {
-  const key = JSON.stringify([
-    object.text,
-    object.transform.width,
-    object.fontFamily,
-    object.fontWeight,
-    object.fontSize,
-    object.color,
-    object.align,
-    deck.theme.equation.fontSetId,
-  ]);
+  const key = inlineTextLayoutKey(object, deck);
   const [state, setState] = useState<{
     key: string;
     layout?: InlineTextLayout;
@@ -49,6 +48,11 @@ export function InlineMathText({
   }, [key]);
   const current = state?.key === key ? state : undefined;
   const layout = current?.layout;
+  const spans = getInlineMathSpans(object.text);
+  let equationIndex = 0;
+  useEffect(() => {
+    if (layout) onMetrics?.(object.id, key, layout.height);
+  }, [object.id, key, layout, onMetrics]);
   return (
     <g
       data-inline-math={object.id}
@@ -60,13 +64,20 @@ export function InlineMathText({
       {layout ? (
         layout.lines.map((line, index) => (
           <g key={index} data-inline-math-line={index}>
-            {line.runs.map((run, runIndex) =>
-              run.type === "math" ? (
+            {line.runs.map((run, runIndex) => {
+              const span =
+                run.type === "math" ? spans[equationIndex++] : undefined;
+              return run.type === "math" ? (
                 <g
                   key={runIndex}
                   data-inline-math-fragment={run.latex}
                   aria-label={run.latex}
                   transform={`translate(${run.x} ${run.y})`}
+                  onDoubleClick={(event) => {
+                    if (!span || !onEditEquation) return;
+                    event.stopPropagation();
+                    onEditEquation(span.start, span.end);
+                  }}
                   dangerouslySetInnerHTML={{ __html: run.svg }}
                 />
               ) : (
@@ -82,8 +93,8 @@ export function InlineMathText({
                 >
                   {run.text}
                 </text>
-              ),
-            )}
+              );
+            })}
           </g>
         ))
       ) : (
