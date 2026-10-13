@@ -6,6 +6,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  realpath,
   rm,
   symlink,
   writeFile,
@@ -108,8 +109,8 @@ function client(releases, routes = {}) {
 }
 
 async function directory(t, suffix = "") {
-  const root = await mkdtemp(
-    path.join(os.tmpdir(), `scislide-update-${suffix}`),
+  const root = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), `scislide-update-${suffix}`)),
   );
   t.after(() => rm(root, { recursive: true, force: true }));
   return root;
@@ -409,6 +410,23 @@ test("a valid streamed installer is hashed, saved privately and reported without
   });
   assert.equal(calls.filter((call) => call.url === info.asset.url).length, 1);
 });
+
+test(
+  "installer paths resolve output directory symlinks to their canonical destination",
+  { skip: process.platform === "win32" },
+  async (t) => {
+    const root = await directory(t);
+    const destination = path.join(root, "real downloads");
+    const alias = path.join(root, "linked downloads");
+    await mkdir(destination);
+    await symlink(path.relative(root, destination), alias);
+    const { info, fetch } = await infoAndClient();
+    const result = await downloadUpdate(info, { destination: alias, fetch });
+    assert.equal(result.path, path.join(destination, info.asset.name));
+    assert.deepEqual(await readFile(result.path), binary);
+    assert.deepEqual(await readdir(alias), [info.asset.name]);
+  },
+);
 
 test("GitHub SHA-256 digest alone is sufficient when the release has no sidecar", async (t) => {
   const destination = await directory(t);
@@ -822,7 +840,7 @@ test("CLI downloads print the verified path/hash and correctly quote install pat
   assert.ok(output.includes(`SHA-256: ${digest(binary)}`));
   assert.ok(
     output.includes(
-      `Install manually: sudo apt install -- '${path.join(root, "someone")}\'\"\'\"\'s downloads/SciSlide-0.6.3-linux-x64.deb'`,
+      `Install manually: sudo apt install -- '${path.join(root, "someone")}'"'"'${path.join("s downloads", "SciSlide-0.6.3-linux-x64.deb")}'`,
     ),
   );
   assert.deepEqual(
