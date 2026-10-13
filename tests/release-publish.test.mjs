@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   mkdtemp,
@@ -10,6 +11,7 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import test from "node:test";
 import {
   publishRelease,
@@ -19,6 +21,7 @@ import {
 const version = "0.6.0";
 const sha = "a".repeat(40);
 const repo = "wikicho/SciSlide";
+const execute = promisify(execFile);
 
 async function fixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), "scislide-release-test-"));
@@ -72,6 +75,63 @@ async function fixture(t) {
   }
   return { root, directory, repo, sha, runId: "50" };
 }
+
+test("workflow source validation accepts main pushes and requires exact dispatch source SHA", async (t) => {
+  const options = await fixture(t);
+  const workflow = await readFile(
+    new URL("../.github/workflows/release.yml", import.meta.url),
+    "utf8",
+  );
+  const source = workflow.match(
+    /node --input-type=module <<'NODE'\n([\s\S]*?)\n          NODE/,
+  )?.[1];
+  assert.ok(
+    source,
+    "Release workflow must validate its source before building",
+  );
+  const environment = {
+    ...process.env,
+    GITHUB_REPOSITORY: repo,
+    GITHUB_REF: "refs/heads/main",
+    GITHUB_SHA: sha,
+    GITHUB_EVENT_NAME: "push",
+    EXPECTED_SOURCE_SHA: "",
+  };
+  delete environment.NODE_TEST_CONTEXT;
+  delete environment.NODE_TEST_WORKER_ID;
+  const validate = (overrides = {}) =>
+    execute(process.execPath, ["--input-type=module", "-e", source], {
+      cwd: options.root,
+      env: { ...environment, ...overrides },
+      timeout: 10_000,
+    });
+  const pushed = await validate();
+  assert.ok(
+    pushed.stdout.includes(`Preparing SciSlide ${version} from ${sha}`),
+  );
+  await validate({
+    GITHUB_EVENT_NAME: "workflow_dispatch",
+    EXPECTED_SOURCE_SHA: sha,
+  });
+  for (const overrides of [
+    { GITHUB_EVENT_NAME: "workflow_dispatch" },
+    {
+      GITHUB_EVENT_NAME: "workflow_dispatch",
+      EXPECTED_SOURCE_SHA: "b".repeat(40),
+    },
+    { GITHUB_EVENT_NAME: "pull_request" },
+    { GITHUB_EVENT_NAME: "workflow_run" },
+    { GITHUB_REF: "refs/heads/release" },
+    { GITHUB_REPOSITORY: "other/SciSlide" },
+    { GITHUB_SHA: "invalid" },
+  ]) {
+    await assert.rejects(
+      validate(overrides),
+      /Release source must|Dispatch main/,
+      JSON.stringify(overrides),
+    );
+  }
+});
 
 test("release verification requires all 13 source-matching files and computes their hashes", async (t) => {
   const options = await fixture(t);
@@ -143,7 +203,7 @@ test("changed binaries fail their checksum and directories cannot stand in for a
 
 async function apiFixture(
   options,
-  { existing = false, wrongTag = false, failUpload = false } = {},
+  { existing = false, wrongTag = false, failUpload = false, run = {} } = {},
 ) {
   const files = await verifyReleaseFiles({ ...options, version });
   let tagSha = wrongTag ? "b".repeat(40) : existing ? sha : null;
@@ -170,6 +230,7 @@ async function apiFixture(
         event: "workflow_dispatch",
         name: "SciSlide development release",
         path: ".github/workflows/release.yml",
+        ...run,
       };
     if (resource.startsWith("git/ref/tags/"))
       return tagSha ? { object: { type: "commit", sha: tagSha } } : null;
@@ -217,6 +278,50 @@ test("a draft publishes only after all assets verify, and a rerun makes no chang
   const count = mock.commands.length;
   await publishRelease(options, mock);
   assert.equal(mock.commands.length, count);
+});
+
+test("a trusted main push publishes the complete verified prerelease", async (t) => {
+  const options = await fixture(t);
+  const mock = await apiFixture(options, { run: { event: "push" } });
+  const result = await publishRelease(options, mock);
+  assert.equal(result.sha, sha);
+  assert.equal(result.assetCount, 13);
+  assert.equal(mock.release().draft, false);
+  assert.equal(mock.release().prerelease, true);
+  assert.equal(mock.commands.filter((args) => args[1] === "upload").length, 13);
+  assert.equal(mock.commands.at(-1)[1], "edit");
+});
+
+test("publication rejects other events and altered push provenance before release writes", async (t) => {
+  const options = await fixture(t);
+  const invalidRuns = [
+    { event: "pull_request" },
+    { event: "workflow_run" },
+    { event: "schedule" },
+    { event: "push", head_branch: "release" },
+    { event: "push", repository: { full_name: "other/SciSlide" } },
+    { event: "push", head_repository: { full_name: "other/SciSlide" } },
+    { event: "push", head_sha: "b".repeat(40) },
+    { event: "push", id: 51 },
+    { event: "push", name: "Another release workflow" },
+    { event: "push", path: ".github/workflows/linux-release.yml" },
+  ];
+  for (const run of invalidRuns) {
+    const mock = await apiFixture(options, { run });
+    const calls = [];
+    const api = async (...args) => {
+      calls.push(args);
+      return mock.api(...args);
+    };
+    await assert.rejects(
+      publishRelease(options, { ...mock, api }),
+      /trusted release workflow/,
+      JSON.stringify(run),
+    );
+    assert.deepEqual(calls, [["actions/runs/50"]]);
+    assert.equal(mock.commands.length, 0);
+    assert.equal(mock.release(), null);
+  }
 });
 
 test("publication refuses wrong tags and mismatched existing assets without overwriting", async (t) => {

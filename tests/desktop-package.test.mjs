@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import {
   cp,
   lstat,
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   realpath,
   rm,
   symlink,
@@ -45,6 +47,8 @@ async function fixture(t) {
     JSON.stringify({ version: "44.5.1" }),
   );
   await writeFile(path.join(root, "desktop/main.cjs"), "// host");
+  await writeFile(path.join(root, "desktop/update-cli.mjs"), "// update entry");
+  await writeFile(path.join(root, "desktop/update.mjs"), "// updater");
   await writeFile(path.join(root, "desktop/host.test.cjs"), "// excluded test");
   await writeFile(path.join(root, "desktop/USAGE.md"), "Linux usage");
   await writeFile(path.join(root, "desktop/MACOS.md"), "Mac usage");
@@ -159,6 +163,31 @@ test("Mac package carries portable and installed usage/examples, metadata, and s
       "editable example",
     );
   }
+  const cli = path.join(resources, "scislide-cli");
+  assert.deepEqual(
+    JSON.parse(await readFile(path.join(cli, "package.json"), "utf8")),
+    { name: "scislide", version: "0.2.1" },
+  );
+  assert.deepEqual((await readdir(cli)).sort(), [
+    "bin",
+    "desktop",
+    "package.json",
+  ]);
+  assert.deepEqual((await readdir(path.join(cli, "desktop"))).sort(), [
+    "update-cli.mjs",
+    "update.mjs",
+  ]);
+  for (const launcher of [
+    path.join(apps[0], "bin/scislide"),
+    path.join(cli, "bin/scislide"),
+  ]) {
+    if (process.platform !== "win32")
+      assert.equal((await lstat(launcher)).mode & 0o777, 0o755);
+    assert.match(
+      await readFile(launcher, "utf8"),
+      /ELECTRON_RUN_AS_NODE=1 exec/,
+    );
+  }
 });
 
 test("A failed packaging call cleans only its unique temporary stage", async (t) => {
@@ -211,7 +240,174 @@ test("Windows x64 package carries Windows instructions and editable examples", a
     await readFile(path.join(apps[0], "examples/example.scislide"), "utf8"),
     "editable example",
   );
+  const cli = path.join(apps[0], "resources/scislide-cli");
+  assert.deepEqual(
+    JSON.parse(await readFile(path.join(cli, "package.json"), "utf8")),
+    { name: "scislide", version: "0.2.1" },
+  );
+  assert.deepEqual((await readdir(cli)).sort(), ["desktop", "package.json"]);
+  const launcher = await readFile(
+    path.join(apps[0], "bin/scislide.cmd"),
+    "utf8",
+  );
+  assert.match(launcher, /DisableDelayedExpansion/);
+  assert.match(launcher, /set "scislide_dir=%~dp0"/);
+  assert.ok(
+    launcher.indexOf('set "scislide_dir=%~dp0"') <
+      launcher.indexOf("\r\nshift\r\n"),
+  );
+  assert.match(
+    launcher,
+    /:scislide_empty_argument\r\nif "%1"=="" goto scislide_launch\r\nshift/,
+  );
+  assert.match(launcher, /set "ELECTRON_RUN_AS_NODE=1"/);
+  assert.match(
+    launcher,
+    /"%scislide_dir%\.\.\\scislide\.exe" "%scislide_dir%\.\.\\resources\\scislide-cli\\desktop\\update-cli\.mjs" %\*/,
+  );
+  assert.match(
+    launcher,
+    /start "" \/wait "%scislide_dir%\.\.\\scislide\.exe" %\*/,
+  );
+  assert.match(launcher, /exit \/b %errorlevel%/);
 });
+
+test("missing or linked updater sources fail before creating the packaged app", async (t) => {
+  const root = await fixture(t);
+  let packaged = false;
+  const options = { root, platform: "linux", arch: "x64" };
+  const dependencies = {
+    packager: async () => {
+      packaged = true;
+      return [];
+    },
+  };
+  await rm(path.join(root, "desktop/update.mjs"));
+  await assert.rejects(
+    packageDesktop(options, dependencies),
+    /Desktop CLI requires a regular source file/,
+  );
+  assert.equal(packaged, false);
+  if (process.platform !== "win32") {
+    await symlink(
+      path.join(root, "package.json"),
+      path.join(root, "desktop/update.mjs"),
+    );
+    await assert.rejects(
+      packageDesktop(options, dependencies),
+      /Desktop CLI requires a regular source file/,
+    );
+    assert.equal(packaged, false);
+  }
+});
+
+const shellStub = `#!/bin/sh
+printf 'MODE=%s\\n' "\${ELECTRON_RUN_AS_NODE:-gui}"
+for scislide_argument in "$@"; do printf 'ARG=%s\\n' "$scislide_argument"; done
+exit "\${SCISLIDE_STUB_EXIT:-0}"
+`;
+
+for (const platform of ["linux", "darwin"]) {
+  test(
+    `${platform} launchers run headless without Node, including spaces and symlinks`,
+    { skip: process.platform === "win32" },
+    async (t) => {
+      const root = await fixture(t);
+      const [app] = await packageDesktop(
+        { root, platform, arch: "x64", out: "release folder with spaces" },
+        {
+          packager: async (options) => {
+            const directory = path.join(
+              options.out,
+              `SciSlide-${platform}-x64`,
+            );
+            const contents =
+              platform === "darwin"
+                ? path.join(directory, "SciSlide.app/Contents")
+                : directory;
+            const resources = path.join(
+              contents,
+              platform === "darwin" ? "Resources" : "resources",
+            );
+            const binary = path.join(
+              contents,
+              platform === "darwin" ? "MacOS/scislide" : "scislide",
+            );
+            await mkdir(resources, { recursive: true });
+            await mkdir(path.dirname(binary), { recursive: true });
+            await writeFile(path.join(resources, "app.asar"), "app");
+            await writeFile(binary, shellStub, { mode: 0o755 });
+            return [directory];
+          },
+        },
+      );
+      const tools = path.join(root, "shell tools without node");
+      await mkdir(tools);
+      for (const name of ["dirname", "readlink"])
+        await symlink(`/usr/bin/${name}`, path.join(tools, name));
+      const env = {
+        ...process.env,
+        PATH: tools,
+        DISPLAY: "",
+        WAYLAND_DISPLAY: "",
+        SCISLIDE_STUB_EXIT: "23",
+      };
+      delete env.ELECTRON_RUN_AS_NODE;
+      assert.notEqual(
+        spawnSync("/bin/sh", ["-c", "command -v node"], { env }).status,
+        0,
+      );
+      const portable = path.join(app, "bin/scislide");
+      const link = path.join(root, "linked launcher with spaces");
+      await symlink(path.relative(root, portable), link);
+      const launchers = [portable, link];
+      const entry =
+        platform === "darwin"
+          ? path.join(
+              app,
+              "SciSlide.app/Contents/Resources/scislide-cli/desktop/update-cli.mjs",
+            )
+          : path.join(app, "resources/scislide-cli/desktop/update-cli.mjs");
+      if (platform === "darwin")
+        launchers.push(
+          path.join(
+            app,
+            "SciSlide.app/Contents/Resources/scislide-cli/bin/scislide",
+          ),
+        );
+      for (const launcher of launchers) {
+        const args = [
+          "an argument with spaces",
+          "--check-update",
+          "literal;$text",
+        ];
+        const result = spawnSync(launcher, args, {
+          cwd: os.tmpdir(),
+          env,
+          encoding: "utf8",
+        });
+        assert.equal(result.status, 23, result.stderr);
+        const lines = result.stdout.trimEnd().split("\n");
+        assert.equal(lines.shift(), "MODE=1");
+        assert.equal(path.resolve(lines.shift().slice(4)), entry);
+        assert.deepEqual(
+          lines,
+          args.map((value) => `ARG=${value}`),
+        );
+        const gui = spawnSync(
+          launcher,
+          ["--no-sandbox", "a deck with spaces.scislide"],
+          { env, encoding: "utf8" },
+        );
+        assert.equal(gui.status, 23, gui.stderr);
+        assert.equal(
+          gui.stdout,
+          "MODE=gui\nARG=--no-sandbox\nARG=a deck with spaces.scislide\n",
+        );
+      }
+    },
+  );
+}
 
 test("Existing unrecognized app directories and symlinks cannot be overwritten", async (t) => {
   const root = await fixture(t);

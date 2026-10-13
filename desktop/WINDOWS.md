@@ -1,16 +1,34 @@
-# SciSlide 0.6.2 — Windows x64
+# SciSlide 0.6.3 — Windows x64
 
 This development build contains the **x64 (Intel/AMD 64-bit)** SciSlide app for Windows 10 or later. Windows 11 x64 is the intended desktop target. Node.js, a development server and TeX are not required for MathJax editing. Physical Windows 10/11 desktop validation is still a release requirement.
 
 ## Install or run the portable app
 
-Local 0.6.2 Windows packages are stored in `release/windows-x64/`. A Linux or macOS build produces the portable ZIP only; the setup executable requires a native Windows build with Inno Setup. The commands below describe each distribution when it is available.
+Use `release/windows-x64/` for local Windows package output. A Linux or macOS build produces the portable ZIP only; the setup executable requires a native Windows build with Inno Setup. The commands below describe each distribution when it is available.
 
-Run `SciSlide-0.6.2-windows-x64-setup-unsigned.exe` to install for your current user. The default destination is `%LOCALAPPDATA%\Programs\SciSlide`, with a Start menu shortcut. Administrator privileges are not requested. Quit SciSlide before installing an update. Remove it through Windows' installed-app settings. Uninstallation does not remove presentations you saved elsewhere or the app's user-data folder.
+Run `SciSlide-0.6.3-windows-x64-setup-unsigned.exe` to install for your current user. The default destination is `%LOCALAPPDATA%\Programs\SciSlide`, with a Start menu shortcut. Administrator privileges are not requested. Quit SciSlide before installing an update. Remove it through Windows' installed-app settings. Uninstallation does not remove presentations you saved elsewhere or the app's user-data folder.
 
-Alternatively, extract **all** of `SciSlide-0.6.2-windows-x64-portable.zip`, then open `SciSlide-win32-x64\scislide.exe`. Keep the runtime files, DLLs and `resources` directory together. The portable edition runs without installation, but still uses Electron's ordinary per-user app-data directory; recovery data is not stored beside the executable.
+Alternatively, extract **all** of `SciSlide-0.6.3-windows-x64-portable.zip`, then open `SciSlide-win32-x64\scislide.exe`. Keep the runtime files, DLLs and `resources` directory together. The portable edition runs without installation, but still uses Electron's ordinary per-user app-data directory; recovery data is not stored beside the executable.
 
 Both distributions are **unsigned development builds**. Windows security policies may block installation or launch. Code signing and publisher reputation are later release work; these builds do not change system security settings. The application binary is x64, and the installer uses an x64 bootstrap executable. A separate native ARM64 or 32-bit Windows edition is not provided.
+
+## Command-line update downloads
+
+New installed builds include `bin\scislide.cmd`. In PowerShell:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\SciSlide\bin\scislide.cmd" --check-update
+& "$env:LOCALAPPDATA\Programs\SciSlide\bin\scislide.cmd" --update
+```
+
+To use `scislide --update` in the current terminal, prepend the launcher's directory to its PATH:
+
+```powershell
+$env:Path = "$env:LOCALAPPDATA\Programs\SciSlide\bin;$env:Path"
+scislide --update
+```
+
+Portable distributions include `SciSlide-win32-x64\bin\scislide.cmd`. The CLI selects a newer x64 setup installer from GitHub Releases, saves it in `~/Downloads/SciSlide-updates`, verifies SHA-256 and prints its installation command. Use `--output DIR` to change the destination or `--stable` to exclude development prereleases. Run the installer separately after closing SciSlide. No editor window or extra Node installation is needed. Published v0.6.2 distributions predate this feature.
 
 ## Use the editor
 
@@ -20,11 +38,15 @@ Drag a slide thumbnail above or below another thumbnail to reorder the presentat
 
 Double-click text or press **Enter** on a selected text box to edit directly on the slide. **Enter** adds a line, **Ctrl+Enter** or clicking outside applies one undoable edit, and **Escape** cancels. Korean IME input and plain-text paste are supported. Write `$\chi$` or `\(\frac{1}{2}\)` inside text to render inline MathJax formulas. They match the surrounding font's lowercase height, retain their mathematical baseline and remain vectors in PDF/SVG; editing and native saves preserve the original syntax.
 
+Press **Ctrl+Shift+M** in canvas or Inspector text to insert/edit an inline equation with a live LaTeX preview, or double-click a rendered formula. Apply preserves the surrounding prose; Escape returns to the previous text selection. Text frames grow to fit their content using loaded-font metrics; moving/resizing preserves rotated placement. Inspector text size and frame width/height fields commit on Enter or blur and cancel a pending value with Escape.
+
+With the canvas focused, **Tab / Shift+Tab** selects eligible objects/groups in stacking order and follows normal UI focus order at the boundaries. **Ctrl+Alt+I / Ctrl+Shift+L** toggle and focus Inspector / Objects & Layers independently. Duplicate targets the focused thumbnail even with a retained canvas selection. Text fields, dialogs and playback retain their input; native menu availability follows focus, selection and busy state.
+
 Choose **Figure** to import PNG, JPEG, sanitized SVG or a selected PDF page. PDF preview/selection embeds a high-resolution PNG; original PDF vector preservation is not implemented. **CROP & INSET** lets you apply/reset a reversible crop or create an independent enlarged inset. **Replace figure** preserves the frame and normalized crop. Selecting a Keynote White photo/video placeholder before **Figure / Video** fills its frame; photo crops remain adjustable. Video layouts use imported MP4/WebM, with no live-camera feed.
 
 Choose **Draw rectangle**, **Draw ellipse**, **Draw line** or **Draw arrow**, then drag on the canvas. Shift constrains squares/circles or line direction; Escape cancels drawing. Selected lines/arrows have editable endpoint handles. The Inspector provides solid/dashed/dotted strokes, stroke width/color, no-fill outlines and arrowheads at the start, end or both ends. Shapes export as vectors in PDF/SVG.
 
-Shift+click selects objects for **Group objects / Ungroup objects**; **Ctrl+G** groups and **Ctrl+Shift+G** ungroups. Flat groups move together and duplicate independently. Ungroup before resizing, rotating or editing an individual member's endpoints. Use six-way alignment and equal-gap distribution to arrange a selection. Automatic guides appear while dragging/resizing; **Alt** bypasses them. **Snap to 20 px grid** takes precedence over object guides. The **OBJECTS & LAYERS** list selects hidden or covered objects and controls visibility, locks and order. Object copy/cut/paste works across slides or decks in one session. Nested groups, whole-group scaling/rotation, attached connectors and freehand paths remain planned.
+Shift+click selects objects for **Group objects / Ungroup objects**; **Ctrl+G** groups and **Ctrl+Shift+G** ungroups. Flat groups move together and duplicate independently. Ungroup before resizing, rotating or editing an individual member's endpoints. Use equal-gap distribution and Inspector text alignment to arrange a selection. Automatic guides appear while dragging/resizing; **Alt** bypasses them. **Snap to 20 px grid** takes precedence over object guides. The **OBJECTS & LAYERS** list selects hidden or covered objects and controls visibility, locks and order. Object copy/cut/paste works across slides or decks in one session. Nested groups, whole-group scaling/rotation, attached connectors and freehand paths remain planned.
 
 Keyboard shortcuts follow [PowerPoint for Windows](https://support.microsoft.com/en-us/accessibility/powerpoint/use-keyboard-shortcuts-to-create-powerpoint-presentations) for supported actions. **Ctrl+O / Ctrl+S / Ctrl+Shift+S** open/save/save as; **Ctrl+Z / Ctrl+Y** undo/redo, with **Ctrl+Shift+Z** also accepted for Redo.
 
@@ -63,8 +85,8 @@ Bundled editable examples are in the app's `examples` folder. Copy one to your d
 Each distribution has a matching `.sha256` file. In PowerShell, compare its recorded hash with the result of:
 
 ```powershell
-Get-FileHash .\SciSlide-0.6.2-windows-x64-setup-unsigned.exe -Algorithm SHA256
-Get-Content .\SciSlide-0.6.2-windows-x64-setup-unsigned.exe.sha256
+Get-FileHash .\SciSlide-0.6.3-windows-x64-setup-unsigned.exe -Algorithm SHA256
+Get-Content .\SciSlide-0.6.3-windows-x64-setup-unsigned.exe.sha256
 ```
 
 Use the portable ZIP's filename to verify that distribution. A matching checksum detects file changes; it does not certify a publisher or replace code signing.

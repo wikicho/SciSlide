@@ -1,6 +1,6 @@
 {
   "name": "scislide",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,7 +13,7 @@
     "desktop": "pnpm build && electron .",
     "desktop:dev": "node scripts/desktop-dev.mjs",
     "desktop:package": "pnpm build && node scripts/package-desktop.mjs",
-    "test:desktop": "node --test --test-isolation=none desktop/host-utils.test.cjs tests/desktop-tex.test.mjs tests/desktop-package.test.mjs tests/windows-package.test.mjs tests/linux-package.test.mjs tests/desktop-ai.test.mjs tests/desktop-pdf-policy.test.mjs",
+    "test:desktop": "node --test --test-isolation=none desktop/host-utils.test.cjs desktop/update-cli.test.mjs tests/desktop-update.test.mjs tests/desktop-tex.test.mjs tests/desktop-package.test.mjs tests/windows-package.test.mjs tests/linux-package.test.mjs tests/desktop-ai.test.mjs tests/desktop-pdf-policy.test.mjs",
     "desktop:package:mac": "pnpm build && node scripts/package-macos.mjs",
     "desktop:package:win": "pnpm build && node scripts/package-windows.mjs",
     "desktop:package:linux": "pnpm build && node scripts/package-linux.mjs"

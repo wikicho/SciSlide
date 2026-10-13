@@ -159,7 +159,7 @@ export async function publishRelease(options, dependencies = {}) {
     run.repository.full_name === repo &&
     run.head_repository.full_name === repo &&
     run.head_branch === "main" &&
-    run.event === "workflow_dispatch" &&
+    ["workflow_dispatch", "push"].includes(run.event) &&
     run.name === "SciSlide development release" &&
     run.path ===
       ".github/workflows/release.yml", "Artifacts must come from the trusted release workflow at the requested source commit");

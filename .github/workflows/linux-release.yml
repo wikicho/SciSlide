@@ -91,16 +91,39 @@ jobs:
           dpkg-deb --extract "$package" "$extract"
           test -s "$extract/opt/scislide/resources/app.asar"
           test -x "$extract/opt/scislide/scislide"
-          test "$(readlink "$extract/usr/bin/scislide")" = /opt/scislide/scislide
+          test -x "$extract/usr/bin/scislide"
           test -s "$extract/usr/share/applications/scislide.desktop"
           test -s "$extract/usr/share/icons/hicolor/scalable/apps/scislide.svg"
           node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
+          import { lstatSync, readFileSync } from 'node:fs';
           import { join } from 'node:path';
-          const file = join(process.env.RUNNER_TEMP, 'scislide-deb-review', 'opt/scislide/scislide');
+          import { linuxInstalledLauncher } from './scripts/package-desktop.mjs';
+          const extract = join(process.env.RUNNER_TEMP, 'scislide-deb-review');
+          const file = join(extract, 'opt/scislide/scislide');
           const bytes = readFileSync(file);
           if (bytes.subarray(0, 4).toString('hex') !== '7f454c46' || bytes[4] !== 2 || bytes[5] !== 1 || bytes.readUInt16LE(18) !== 62) {
             throw new Error('Packaged Electron executable must be Linux x86-64 ELF.');
+          }
+          const launcher = join(extract, 'usr/bin/scislide');
+          const stat = lstatSync(launcher);
+          if (!stat.isFile() || stat.isSymbolicLink() || !(stat.mode & 0o111) || readFileSync(launcher, 'utf8') !== linuxInstalledLauncher()) {
+            throw new Error('Installed command must be the executable SciSlide CLI launcher.');
+          }
+          const cli = join(extract, 'opt/scislide/resources/scislide-cli');
+          for (const name of ['package.json', 'desktop/update-cli.mjs', 'desktop/update.mjs']) {
+            const stat = lstatSync(join(cli, name));
+            if (!stat.isFile() || stat.isSymbolicLink() || !stat.size) {
+              throw new Error(`Missing regular CLI payload: ${name}`);
+            }
+          }
+          const metadata = JSON.parse(readFileSync(join(cli, 'package.json'), 'utf8'));
+          if (metadata.name !== 'scislide' || metadata.version !== process.env.SCISLIDE_VERSION) {
+            throw new Error('CLI metadata must match the packaged application version.');
+          }
+          for (const name of ['update-cli.mjs', 'update.mjs']) {
+            if (!readFileSync(join(cli, 'desktop', name)).equals(readFileSync(join('desktop', name)))) {
+              throw new Error(`CLI payload differs from release source: ${name}`);
+            }
           }
           NODE
 

@@ -7,7 +7,6 @@ import {
   mkdtemp,
   readFile,
   readdir,
-  readlink,
   realpath,
   rm,
   symlink,
@@ -22,6 +21,7 @@ import {
   parseLinuxOptions,
   verifyLinuxX64,
 } from "../scripts/package-linux.mjs";
+import { linuxInstalledLauncher } from "../scripts/package-desktop.mjs";
 
 const run = promisify(execFile);
 const linux = process.platform === "linux";
@@ -89,6 +89,25 @@ async function fakeApp(options, main = elf()) {
   await mkdir(path.join(directory, "resources"), { recursive: true });
   await mkdir(path.join(directory, "examples"), { recursive: true });
   await mkdir(path.join(directory, "locales"), { recursive: true });
+  await mkdir(path.join(directory, "resources/scislide-cli/desktop"), {
+    recursive: true,
+  });
+  await mkdir(path.join(directory, "bin"), { recursive: true });
+  await writeFile(
+    path.join(directory, "resources/scislide-cli/package.json"),
+    JSON.stringify({ name: "scislide", version: "0.3.0" }),
+  );
+  await writeFile(
+    path.join(directory, "resources/scislide-cli/desktop/update-cli.mjs"),
+    "// CLI entry\n",
+  );
+  await writeFile(
+    path.join(directory, "resources/scislide-cli/desktop/update.mjs"),
+    "// updater\n",
+  );
+  await writeFile(path.join(directory, "bin/scislide"), "#!/bin/sh\nexit 0\n", {
+    mode: 0o755,
+  });
   await writeFile(path.join(directory, "scislide"), main, { mode: 0o755 });
   await writeFile(path.join(directory, "chrome-sandbox"), elf(), {
     mode: 0o755,
@@ -223,9 +242,31 @@ test(
       await readFile(path.join(extracted, "opt/scislide/README.md"), "utf8"),
       "Ubuntu / Linux x64 installation instructions\n",
     );
+    const command = path.join(extracted, "usr/bin/scislide");
+    assert.equal((await lstat(command)).isSymbolicLink(), false);
+    assert.equal((await lstat(command)).mode & 0o777, 0o755);
+    assert.equal(await readFile(command, "utf8"), linuxInstalledLauncher());
+    assert.deepEqual(
+      JSON.parse(
+        await readFile(
+          path.join(
+            extracted,
+            "opt/scislide/resources/scislide-cli/package.json",
+          ),
+          "utf8",
+        ),
+      ),
+      { name: "scislide", version: "0.3.0" },
+    );
     assert.equal(
-      await readlink(path.join(extracted, "usr/bin/scislide")),
-      "/opt/scislide/scislide",
+      await readFile(
+        path.join(
+          extracted,
+          "opt/scislide/resources/scislide-cli/desktop/update-cli.mjs",
+        ),
+        "utf8",
+      ),
+      "// CLI entry\n",
     );
     const launcher = await readFile(
       path.join(extracted, "usr/share/applications/scislide.desktop"),
@@ -253,6 +294,11 @@ test(
       archive,
       /^-rwsr-xr-x\s+root\/root\s+.*\.\/opt\/scislide\/chrome-sandbox$/m,
     );
+    for (const command of ["usr/bin/scislide", "opt/scislide/bin/scislide"])
+      assert.match(
+        archive,
+        new RegExp(`^-rwxr-xr-x\\s+root/root\\s+.*\\./${command}$`, "m"),
+      );
     assert.match(
       archive,
       /^-rw-r--r--\s+root\/root\s+.*\.\/opt\/scislide\/locales\/en-US\.pak$/m,
@@ -278,6 +324,85 @@ test(
       (await readdir(path.join(root, "release/linux-deb"))).every(
         (entry) => !entry.startsWith(".scislide-linux-"),
       ),
+    );
+  },
+);
+
+test(
+  "the installed command routes explicit CLI flags headlessly and leaves GUI arguments unchanged",
+  linuxOnly,
+  async (t) => {
+    const root = await fixture(t);
+    const app = path.join(root, "installed app with spaces");
+    await mkdir(app);
+    await writeFile(
+      path.join(app, "scislide"),
+      `#!/bin/sh
+printf 'MODE=%s\\n' "\${ELECTRON_RUN_AS_NODE:-gui}"
+for scislide_argument in "$@"; do printf 'ARG=%s\\n' "$scislide_argument"; done
+exit 19
+`,
+      { mode: 0o755 },
+    );
+    const launcher = path.join(root, "scislide");
+    await writeFile(
+      launcher,
+      linuxInstalledLauncher().replaceAll("/opt/scislide", app),
+      { mode: 0o755 },
+    );
+    const env = {
+      ...process.env,
+      PATH: "/nonexistent-no-node-or-tools",
+      DISPLAY: "",
+      WAYLAND_DISPLAY: "",
+    };
+    delete env.ELECTRON_RUN_AS_NODE;
+    for (const flag of ["--update", "--check-update", "--help", "-h"]) {
+      const args = ["an argument with spaces", flag, "literal;$text"];
+      const result = spawnSync(launcher, args, { env, encoding: "utf8" });
+      assert.equal(result.status, 19, result.stderr);
+      assert.equal(
+        result.stdout,
+        `MODE=1\nARG=${app}/resources/scislide-cli/desktop/update-cli.mjs\n${args.map((value) => `ARG=${value}\n`).join("")}`,
+      );
+    }
+    const normal = spawnSync(
+      launcher,
+      ["--no-sandbox", "a deck with spaces.scislide"],
+      { env, encoding: "utf8" },
+    );
+    assert.equal(normal.status, 19, normal.stderr);
+    assert.equal(
+      normal.stdout,
+      "MODE=gui\nARG=--no-sandbox\nARG=a deck with spaces.scislide\n",
+    );
+  },
+);
+
+test(
+  "a Linux package without its external CLI runtime is rejected before building",
+  linuxOnly,
+  async (t) => {
+    const root = await fixture(t);
+    await assert.rejects(
+      packageLinux(
+        { root },
+        {
+          run: guardRun,
+          packageDesktop: async (options) => {
+            const apps = await fakeApp(options);
+            await rm(
+              path.join(apps[0], "resources/scislide-cli/desktop/update.mjs"),
+            );
+            return apps;
+          },
+        },
+      ),
+      /missing its CLI runtime/,
+    );
+    await assert.rejects(
+      lstat(path.join(root, "release/linux-deb/SciSlide-0.3.0-linux-x64.deb")),
+      { code: "ENOENT" },
     );
   },
 );

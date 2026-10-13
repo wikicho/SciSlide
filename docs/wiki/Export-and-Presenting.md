@@ -1,6 +1,6 @@
 # Export and presenting
 
-SciSlide 0.6.2 exports **all slides as PDF** or **the current slide as SVG**. Save a `.scislide` file as well if you need to continue editing: PDF and SVG exports do not preserve the native editable deck.
+SciSlide 0.6.3 exports **all slides as PDF** or **the current slide as SVG**. Save a `.scislide` file as well if you need to continue editing: PDF and SVG exports do not preserve the native editable deck.
 
 ## Export formats
 
@@ -11,7 +11,7 @@ Open **Export** in the toolbar, then choose **PDF presentation** or the current-
 | PDF                           | One page per slide at the deck's dimensions; vector equations and supported SVG figures; embedded raster images; selectable supported body text. |
 | SVG                           | The current slide, with vector equations, supported SVG figures, embedded raster figures and bundled body-font data.                             |
 | `.scislide`                   | Editable source, embedded assets and successful Local LaTeX vector results. Use **Save / Save As**, rather than Export.                          |
-| PPTX, standalone HTML, Beamer | No deck exporter is implemented in 0.6.2.                                                                                                        |
+| PPTX, standalone HTML, Beamer | No deck exporter is implemented in 0.6.3.                                                                                                        |
 
 The built web app in `dist/` is the editor application; it is not a standalone HTML export of your presentation.
 

@@ -1,18 +1,18 @@
-# SciSlide 0.6.2 — Linux x64
+# SciSlide 0.6.3 — Linux x64
 
 The Debian package contains SciSlide and its Electron runtime for **x64 (Intel/AMD 64-bit)** Linux. Debian calls this architecture **amd64**. Ubuntu 24.04 x64 is the packaging target; other Debian/Ubuntu releases need separate desktop validation. MathJax editing uses bundled fonts and equation resources without Node.js, TeX or a development server.
 
-Version **0.6.2** adds LibreOffice Impress-style keyboard shortcuts, alongside the existing drag-and-drop slide ordering. Source builds and the published Debian package use the same editor version.
+Version **0.6.3** adds canvas object traversal, pane toggles, inline equation editing, a Local LaTeX compile shortcut and verified installer downloads. LibreOffice Impress-style shortcuts and drag-and-drop slide ordering remain available. Source builds and the published Debian package use the same editor version.
 
 ## Install, launch and remove
 
-Download the `.deb` and its matching `.sha256` from the [v0.6.2 development prerelease](https://github.com/wikicho/SciSlide/releases/tag/v0.6.2), or download a Linux workflow artifact and extract it first. Keep Linux Debian distribution files in `release/linux-deb/` when working in the source checkout. A local source build uses that directory by default.
+Download the `.deb` and its matching `.sha256` from the [v0.6.3 development prerelease](https://github.com/wikicho/SciSlide/releases/tag/v0.6.3), or download a Linux workflow artifact and extract it first. Keep Linux Debian distribution files in `release/linux-deb/` when working in the source checkout. A local source build uses that directory by default.
 
 From the folder containing both files:
 
 ```sh
-sha256sum -c SciSlide-0.6.2-linux-x64.deb.sha256
-sudo apt install ./SciSlide-0.6.2-linux-x64.deb
+sha256sum -c SciSlide-0.6.3-linux-x64.deb.sha256
+sudo apt install ./SciSlide-0.6.3-linux-x64.deb
 scislide
 ```
 
@@ -29,6 +29,16 @@ sudo apt remove scislide
 Removal leaves presentations saved elsewhere and Electron's per-user application data intact.
 
 ## APT repository and updates
+
+**Command-line update downloads:** use:
+
+```sh
+scislide --check-update
+scislide --update
+scislide --update --output "$HOME/Downloads"
+```
+
+The command checks GitHub Releases for a newer Linux x64 `.deb`, downloads it to `~/Downloads/SciSlide-updates` by default, verifies SHA-256, and prints the exact `sudo apt install` command. Installation is a separate step; quit the editor before installing. Prereleases are included because SciSlide currently publishes development builds; add `--stable` to check only stable releases. The command works without a graphical session or an extra Node installation. Portable app folders include `bin/scislide` with the same options. The published v0.6.2 packages predate this CLI addition.
 
 Installing a local `.deb` does **not** register an APT repository. `apt install scislide` by package name and automatic updates through `apt upgrade` require a configured repository containing SciSlide. No SciSlide APT repository is currently provided; download and install a new `.deb` to update.
 
@@ -47,8 +57,8 @@ The command builds the editor and creates:
 
 ```text
 release/linux-deb/SciSlide-linux-x64/
-release/linux-deb/SciSlide-0.6.2-linux-x64.deb
-release/linux-deb/SciSlide-0.6.2-linux-x64.deb.sha256
+release/linux-deb/SciSlide-0.6.3-linux-x64.deb
+release/linux-deb/SciSlide-0.6.3-linux-x64.deb.sha256
 release/linux-deb/LINUX-INSTALL.md
 ```
 
@@ -58,22 +68,26 @@ Verify and install a current local build with:
 
 ```sh
 cd release/linux-deb
-sha256sum -c SciSlide-0.6.2-linux-x64.deb.sha256
-sudo apt install ./SciSlide-0.6.2-linux-x64.deb
+sha256sum -c SciSlide-0.6.3-linux-x64.deb.sha256
+sudo apt install ./SciSlide-0.6.3-linux-x64.deb
 scislide
 ```
 
 The manually started **Linux x64 development packages** workflow runs on Ubuntu 24.04, checks the editor/desktop tests, builds the package, verifies SHA-256, checks `Package: scislide` and `Architecture: amd64`, and extracts the package to verify its launcher, desktop entry, application archive and x86-64 executable. Its artifacts are retained for 30 days. These are packaging checks; the workflow does not install the package or validate the complete editor journey on a physical Ubuntu desktop. TeX integration fixtures run only when the required tools and isolation are available.
 
-By default the Linux-only workflow uploads an artifact. Its optional publication uses a new `v<package-version>-linux-dev.<positive-number>` tag and refuses existing tags/releases. The separate **SciSlide development release** workflow builds all five macOS/Windows/Linux distributions at the requested `main` commit; explicit publication creates one `v<package-version>` development prerelease with checksums and platform guides.
+By default the Linux-only workflow uploads an artifact. Its optional publication uses a new `v<package-version>-linux-dev.<positive-number>` tag and refuses existing tags/releases. The separate **SciSlide development release** workflow builds all five macOS/Windows/Linux distributions and publishes one `v<package-version>` development prerelease with checksums and platform guides when versioned release notes change on `main`. Manual dispatch also supports a requested `main` commit, with optional publication defaulting off.
 
 ## Use the editor
 
 Choose one of five starter themes before creating a presentation. **Keynote White** has fifteen coordinated layouts and blank slides; the other themes keep the existing fourteen-layout picker. Double-click text or press **Enter** to edit on the slide; **Ctrl+Enter** applies and **Escape** cancels. Write `$\chi$` or `\(\frac{1}{2}\)` inside text for MathJax formulas with font-aware sizing and a preserved mathematical baseline. Raw source stays editable; formulas remain vectors in PDF/SVG.
 
+Press **Ctrl+Shift+M** in canvas or Inspector text to insert/edit an inline equation with a live LaTeX preview, or double-click a rendered formula. Apply preserves the surrounding prose; Escape returns to the previous text selection. Text frames grow to fit their content using loaded-font metrics; moving/resizing preserves rotated placement. Inspector text size and frame width/height fields commit on Enter or blur and cancel a pending value with Escape.
+
+With the canvas focused, **Tab / Shift+Tab** selects eligible objects/groups in stacking order and follows normal UI focus order at the boundaries. **Ctrl+Alt+I / Ctrl+Shift+L** toggle and focus Inspector / Objects & Layers independently. Duplicate targets the focused thumbnail even with a retained canvas selection. Text fields, dialogs and playback retain their input; native menu availability follows focus, selection and busy state.
+
 Drag slide thumbnails above or below other thumbnails to reorder them. A teal insertion line shows the destination, and the list scrolls when dragging near its edges. The active slide and object selection are preserved. **Ctrl+Z** undoes a completed move; **Escape** or releasing outside the list cancels a drag. Page numbering, slideshow navigation and saved order update together. Move-up/move-down buttons remain available.
 
-**Figure** imports PNG, JPEG, sanitized SVG or a selected PDF page. PDF pages become embedded high-resolution PNGs. **CROP & INSET** supports reversible crops and independent enlarged insets; **Replace figure** preserves the frame/crop. Selected Keynote White photo/video placeholders can be filled through **Figure / Video**. Use the object/layer list, object clipboard, six-way alignment and equal-gap distribution to arrange slides.
+**Figure** imports PNG, JPEG, sanitized SVG or a selected PDF page. PDF pages become embedded high-resolution PNGs. **CROP & INSET** supports reversible crops and independent enlarged insets; **Replace figure** preserves the frame/crop. Selected Keynote White photo/video placeholders can be filled through **Figure / Video**. Use the object/layer list, object clipboard, Inspector text alignment and equal-gap distribution to arrange slides.
 
 Ubuntu/Linux shortcuts follow [LibreOffice Impress](https://help.libreoffice.org/latest/en-US/text/simpress/04/01020000.html) for supported actions. **Ctrl+O / Ctrl+S / Ctrl+Shift+S** open/save/save as; **Ctrl+Z / Ctrl+Y** undo/redo, with **Ctrl+Shift+Z** retained as a Redo alias.
 
@@ -97,7 +111,7 @@ Ubuntu/Linux shortcuts follow [LibreOffice Impress](https://help.libreoffice.org
 
 **Page Up / Page Down** navigates slides; **Home / End** selects the first / last slide. Thumbnail move commands require thumbnail focus; the [Impress guide's](https://books.libreoffice.org/en/IG242/IG2413-KeyboardShortcuts.html) **Ctrl+Shift+Up / Down / Home / End** aliases also work there. **Up / Down** selects thumbnails and **Delete / Backspace** deletes the focused slide. Canvas arrows continue moving objects. Bare **+ / -** zoom outside text fields. Use numeric-keypad **+** to distinguish **Ctrl++** (one layer forward) from **Ctrl+Shift++** (front); on a main keyboard, use **Ctrl+= / Ctrl+Shift+=** for the same actions.
 
-**Alt+Shift+E** inserts an equation, following LibreOffice's [Formula Object shortcut](https://help.libreoffice.org/latest/en-US/text/shared/01/04160300.html); **Ctrl+Alt+=** remains an alias from the Impress guide. **Shift+F3** performs an immediate duplicate rather than opening Impress's options dialog. **Ctrl+D**, **Ctrl+G**, **Ctrl+Shift+/** and **Ctrl+Enter** remain aliases for duplicate, group, help and presenting from the current slide. **Ctrl+Shift+G** now groups, matching Impress. Text formatting applies to whole selected text objects; inline text editing retains clipboard, cursor, IME and undo behavior, and **Ctrl+Enter** applies the edit.
+**Alt+Shift+E** inserts an equation, reveals Inspector and focuses **LATEX SOURCE**, following LibreOffice's [Formula Object shortcut](https://help.libreoffice.org/latest/en-US/text/shared/01/04160300.html); **Ctrl+Alt+=** remains an alias from the Impress guide. **Shift+F3** performs an immediate duplicate rather than opening Impress's options dialog. **Ctrl+D**, **Ctrl+G**, **Ctrl+Shift+/** and **Ctrl+Enter** remain aliases for duplicate, group, help and presenting from the current slide. **Ctrl+Shift+G** now groups, matching Impress. Text formatting applies to whole selected text objects; inline text editing retains clipboard, cursor, IME and undo behavior, and **Ctrl+Enter** applies the edit.
 
 SciSlide's **Ctrl+Alt+P / Ctrl+Alt+S** export PDF/current-slide SVG. In a slideshow, **Enter** advances a build or slide, **Backspace** goes back, and **Esc / -** exits; arrow, Space and Page Up/Down navigation remain available. Media controls keep their own keys. **My equations** provides a local named/tagged library with JSON transfer. **Presenter display** provides a separate notes/preview/timer window; move it to your screen manually.
 
@@ -110,6 +124,8 @@ MathJax, AMS notation and the bundled STIX Two, Fira Math and Latin Modern fonts
 ```sh
 sudo apt install texlive-latex-extra texlive-fonts-recommended texlive-science texlive-xetex dvisvgm bubblewrap util-linux
 ```
+
+Select one visible, unlocked equation in **Local LaTeX** mode and use **Ctrl+Shift+Enter** from the canvas or equation Inspector, including source and preamble, to run **Compile with LaTeX** when TeX is ready and the editor is idle. This updates the draft preview; **Apply equation** remains a separate action. Browser/MathJax mode, notes, inline text, media, thumbnails, dialogs, playback, IME composition and held-key repetition do not trigger compilation.
 
 SciSlide checks whether isolation actually works before enabling compilation. Home-installed TeX packages such as `~/texmf` are not currently mounted into its compile environment. Valid local vector renders saved in a presentation remain viewable and exportable without the original compiler.
 

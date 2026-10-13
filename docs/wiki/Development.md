@@ -1,6 +1,6 @@
 # Development
 
-SciSlide uses a shared React/TypeScript editor with an Electron desktop host. This page describes the **0.6.2** development workflow and current source, including unreleased P1 shortcut changes. See [Architecture and roadmap](Architecture-and-Roadmap) for module boundaries and planned work.
+SciSlide uses a shared React/TypeScript editor with an Electron desktop host. This page describes the **0.6.3** development workflow and source. See [Architecture and roadmap](Architecture-and-Roadmap) for module boundaries and planned work.
 
 ## Prerequisites and setup
 
@@ -12,7 +12,7 @@ cd SciSlide
 pnpm install --frozen-lockfile
 ```
 
-To check out the exact documented release before installation, use `git checkout v0.6.2`.
+To check out the exact documented release before installation, use `git checkout v0.6.3`.
 
 ## Run the app
 
@@ -74,7 +74,7 @@ Windows setup requires **Windows and Inno Setup 6.7 or later**. On Linux/macOS, 
 
 ## Release workflow
 
-The manually dispatched **SciSlide development release** GitHub Actions workflow builds all five distributions at the requested `main` commit. It verifies source/version consistency, architecture, checksums and the Windows install/launch/uninstall smoke path. Publication is optional and defaults off; explicitly enabling it publishes a `v<package-version>` development prerelease with binaries, checksums and platform guides.
+The **SciSlide development release** GitHub Actions workflow runs when versioned release notes in `docs/releases/` change on `main`. It builds all five distributions from that commit, verifies source/version consistency, architecture, checksums and the Windows install/launch/uninstall smoke path, then publishes a `v<package-version>` development prerelease with binaries, checksums and platform guides. Manual dispatch remains available for a requested `main` commit; its publication option defaults off.
 
 Separate platform workflows also exist. Workflow artifacts are retained for 30 days; published GitHub release assets are the user download location. Signing, notarization, automatic updates and complete physical-device validation remain future work.
 
@@ -90,10 +90,11 @@ Separate platform workflows also exist. Workflow artifacts are retained for 30 d
 | `src/lib/export.ts`                                            | SVG scenes, PDF export and resource/font preflight.                    |
 | `src/lib/ai-draft.ts`, `desktop/ai.mjs`                        | Draft validation/insertion and installed-provider adapters.            |
 | `desktop/main.cjs`, `desktop/preload.cjs`                      | Native window/file/menu handling and narrow renderer API.              |
+| `desktop/update.mjs`, `desktop/update-cli.mjs`                 | GitHub release checks, verified installer downloads and CLI launch.    |
 | `desktop/tex.mjs`                                              | Installed TeX detection and isolated Linux compiler worker.            |
 | `scripts/`, `.github/workflows/`, `tests/`                     | Packaging, release automation and regression tests.                    |
 
-Package version **0.6.2** and document format **0.5.0** are separate version numbers. Current source P1 shortcuts have not yet been packaged as a new release. Native menus receive live focus/selection/busy enabled states from the same availability rules as renderer dispatch. The optional availability bridge accepts only bounded fixed command IDs and booleans from the trusted main editor frame. Focused text retains native clipboard/history; disabled application commands do not dispatch. Physical-platform validation of native application/window roles remains required. Preserve source/archive migrations and saved-result validation when extending the model. Loading or exporting a document must not execute imported TeX source.
+Package version **0.6.3** and document format **0.5.0** are separate version numbers. P1 shortcuts are included in v0.6.3. Native menus receive live focus/selection/busy enabled states from the same availability rules as renderer dispatch. The optional availability bridge accepts only bounded fixed command IDs and booleans from the trusted main editor frame. Focused text retains native clipboard/history; disabled application commands do not dispatch. Physical-platform validation of native application/window roles remains required. Preserve source/archive migrations and saved-result validation when extending the model. Loading or exporting a document must not execute imported TeX source.
 
 ## Wiki maintenance
 

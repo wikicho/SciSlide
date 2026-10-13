@@ -9,7 +9,7 @@ The Electron desktop app can use a compatible installed **Codex CLI**, **Claude 
 3. Choose **Refresh AI connections**, then select an available provider.
 4. If a connection is unavailable, read the displayed reason. Detection verifies executables and required controls, rather than proving successful authentication.
 
-SciSlide 0.6.2 accepts these reviewed adapter configurations:
+SciSlide 0.6.3 accepts these reviewed adapter configurations:
 
 | Provider    | Required compatibility                                                                                                                                 |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |

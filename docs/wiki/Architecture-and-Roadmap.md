@@ -1,6 +1,6 @@
 # Architecture and roadmap
 
-SciSlide **v0.6.2** uses one React/TypeScript editor for the browser and Electron desktop application. The application is a development prototype; the sections below distinguish released behavior, explicitly marked unreleased source additions, and planned work.
+SciSlide **v0.6.3** uses one React/TypeScript editor for the browser and Electron desktop application. The application is a development prototype; the sections below distinguish released behavior and planned work.
 
 ## Application structure
 
@@ -31,7 +31,7 @@ See [Development](Development) for source directories and commands.
 
 ## Native document format
 
-The application version **0.6.2** and file-format version **0.5.0** are separate. A `.scislide` file is a ZIP container:
+The application version **0.6.3** and file-format version **0.5.0** are separate. A `.scislide` file is a ZIP container:
 
 ```text
 presentation.scislide
@@ -63,13 +63,15 @@ Workspace recovery, unfinished equation drafts, and the personal equation librar
 - Embedded MP4/WebM video, click-triggered appear/fade builds, notes, and a separate presenter display.
 - Native save/open, PDF/SVG export, workspace recovery, and installed AI CLI drafts.
 - Platform-specific shortcuts using Keynote, PowerPoint, and Impress conventions where the corresponding action exists.
-- **Unreleased P1 shortcuts:** shared renderer/native command metadata and live native menu availability; canvas object traversal; independent Inspector/Objects & Layers focus; macOS thumbnail reordering; focused-slide duplication; and consistent presentation key ownership/repeat policy. Published 0.6.2 installers are unchanged.
+- Inline equation popups, auto-growing text frames, and committed text size/frame inputs.
+- Update CLI checks and SHA-256-verified installer downloads; installation remains separate.
+- **P1 shortcuts:** shared renderer/native command metadata and live native menu availability; canvas object traversal; independent Inspector/Objects & Layers focus; macOS thumbnail reordering; focused-slide duplication; and consistent presentation key ownership/repeat policy.
 
 See [Shortcut specification](Shortcut-Specification) for remaining P2/P3 requirements. Physical-platform validation of native application/window roles remains required.
 
 ## Planned work
 
-These features are **not implemented in v0.6.2**:
+These features are **not implemented in v0.6.3**:
 
 | Direction            | Remaining work                                                                                                            |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------- |
@@ -83,6 +85,6 @@ These features are **not implemented in v0.6.2**:
 | Interchange          | PPTX/HTML export and collaboration                                                                                        |
 | Project governance   | A selected project license and dedicated contribution/security documents                                                  |
 
-No delivery dates are promised by this list. The [project specification](https://github.com/wikicho/SciSlide/blob/v0.6.2/SciSlide-Project-Specification.md) records the broader requirements; its baseline narrative predates 0.6.2. Use this wiki, the [0.6.2 release notes](https://github.com/wikicho/SciSlide/blob/v0.6.2/docs/releases/v0.6.2.md), and source code to determine the current feature set.
+No delivery dates are promised by this list. The [project specification](https://github.com/wikicho/SciSlide/blob/v0.6.3/SciSlide-Project-Specification.md) records the broader requirements; its baseline narrative predates 0.6.2. Use this wiki, the [0.6.3 release notes](https://github.com/wikicho/SciSlide/blob/v0.6.3/docs/releases/v0.6.3.md), and source code to determine the current feature set.
 
 [Home](Home) · [Development](Development) · [Troubleshooting](Troubleshooting)

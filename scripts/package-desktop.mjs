@@ -1,4 +1,5 @@
 import {
+  chmod,
   cp,
   lstat,
   mkdir,
@@ -15,6 +16,133 @@ import { fileURLToPath } from "node:url";
 const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 const platforms = new Set(["darwin", "linux", "win32"]);
 const architectures = new Set(["arm64", "x64"]);
+
+const unixResolveLauncher = `scislide_launcher=$0
+case "$scislide_launcher" in
+  */*) ;;
+  *) scislide_launcher=$(command -v "$scislide_launcher") ;;
+esac
+while [ -L "$scislide_launcher" ]; do
+  scislide_dir=$(CDPATH= cd -P -- "$(dirname "$scislide_launcher")" && pwd)
+  scislide_link=$(readlink "$scislide_launcher")
+  case "$scislide_link" in
+    /*) scislide_launcher=$scislide_link ;;
+    *) scislide_launcher=$scislide_dir/$scislide_link ;;
+  esac
+done
+scislide_dir=$(CDPATH= cd -P -- "$(dirname "$scislide_launcher")" && pwd)
+`;
+
+function unixLaunchBody(binary, entry) {
+  return `scislide_binary=${binary}
+scislide_entry=${entry}
+for scislide_argument in "$@"; do
+  case "$scislide_argument" in
+    --update|--check-update|--help|-h)
+      ELECTRON_RUN_AS_NODE=1 exec "$scislide_binary" "$scislide_entry" "$@"
+      ;;
+  esac
+done
+exec "$scislide_binary" "$@"
+`;
+}
+
+/** The system command enters Node mode only for explicit CLI requests. */
+export function linuxInstalledLauncher() {
+  return `#!/bin/sh
+set -eu
+${unixLaunchBody('"/opt/scislide/scislide"', '"/opt/scislide/resources/scislide-cli/desktop/update-cli.mjs"')}`;
+}
+
+function unixPortableLauncher(platform, installed = false) {
+  const binary =
+    platform === "darwin"
+      ? installed
+        ? '"$scislide_dir/../../../MacOS/scislide"'
+        : '"$scislide_dir/../SciSlide.app/Contents/MacOS/scislide"'
+      : '"$scislide_dir/../scislide"';
+  const entry =
+    platform === "darwin"
+      ? installed
+        ? '"$scislide_dir/../desktop/update-cli.mjs"'
+        : '"$scislide_dir/../SciSlide.app/Contents/Resources/scislide-cli/desktop/update-cli.mjs"'
+      : '"$scislide_dir/../resources/scislide-cli/desktop/update-cli.mjs"';
+  return `#!/bin/sh
+set -eu
+${unixResolveLauncher}${unixLaunchBody(binary, entry)}`;
+}
+
+const windowsLauncher = [
+  "@echo off",
+  "setlocal EnableExtensions DisableDelayedExpansion",
+  'set "scislide_dir=%~dp0"',
+  'set "scislide_cli="',
+  ":scislide_scan",
+  'if "%~1"=="" goto scislide_empty_argument',
+  'if "%~1"=="--update" set "scislide_cli=1"',
+  'if "%~1"=="--check-update" set "scislide_cli=1"',
+  'if "%~1"=="--help" set "scislide_cli=1"',
+  'if "%~1"=="-h" set "scislide_cli=1"',
+  "shift",
+  "goto scislide_scan",
+  ":scislide_empty_argument",
+  'if "%1"=="" goto scislide_launch',
+  "shift",
+  "goto scislide_scan",
+  ":scislide_launch",
+  "if not defined scislide_cli goto scislide_gui",
+  'set "ELECTRON_RUN_AS_NODE=1"',
+  '"%scislide_dir%..\\scislide.exe" "%scislide_dir%..\\resources\\scislide-cli\\desktop\\update-cli.mjs" %*',
+  "exit /b %errorlevel%",
+  ":scislide_gui",
+  'start "" /wait "%scislide_dir%..\\scislide.exe" %*',
+  "exit /b %errorlevel%",
+  "",
+].join("\r\n");
+
+async function cliSources(root) {
+  const files = {};
+  for (const name of ["update-cli.mjs", "update.mjs"]) {
+    const filename = path.join(root, "desktop", name);
+    const stat = await exists(filename);
+    if (!stat?.isFile() || stat.isSymbolicLink())
+      throw new Error(
+        `Desktop CLI requires a regular source file: desktop/${name}`,
+      );
+    files[name] = await readFile(filename);
+  }
+  return files;
+}
+
+async function installCli(app, platform, pkg, files) {
+  const resources =
+    platform === "darwin"
+      ? path.join(app, "SciSlide.app", "Contents", "Resources")
+      : path.join(app, "resources");
+  const cli = path.join(resources, "scislide-cli");
+  await mkdir(path.join(cli, "desktop"), { recursive: true });
+  await writeFile(
+    path.join(cli, "package.json"),
+    JSON.stringify({ name: pkg.name, version: pkg.version }),
+  );
+  for (const [name, contents] of Object.entries(files))
+    await writeFile(path.join(cli, "desktop", name), contents);
+  const bin = path.join(app, "bin");
+  await mkdir(bin, { recursive: true });
+  if (platform === "win32") {
+    await writeFile(path.join(bin, "scislide.cmd"), windowsLauncher);
+  } else {
+    const launcher = path.join(bin, "scislide");
+    await writeFile(launcher, unixPortableLauncher(platform));
+    await chmod(launcher, 0o755);
+    if (platform === "darwin") {
+      const installed = path.join(cli, "bin", "scislide");
+      await mkdir(path.dirname(installed), { recursive: true });
+      await writeFile(installed, unixPortableLauncher(platform, true));
+      await chmod(installed, 0o755);
+    }
+  }
+}
 
 export function parsePackagingOptions(args, defaults = {}) {
   const options = {
@@ -159,6 +287,7 @@ export async function packageDesktop(options = {}, dependencies = {}) {
       "utf8",
     ),
   );
+  const updateSources = await cliSources(root);
   const usage = path.join(
     root,
     "desktop",
@@ -206,6 +335,7 @@ export async function packageDesktop(options = {}, dependencies = {}) {
       prune: false,
     });
     for (const app of apps) {
+      await installCli(app, target.platform, pkg, updateSources);
       await cp(usage, path.join(app, "README.md"));
       await cp(path.join(root, "examples"), path.join(app, "examples"), {
         recursive: true,

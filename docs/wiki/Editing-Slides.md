@@ -1,6 +1,6 @@
 # Editing slides
 
-These instructions describe SciSlide **0.6.2** and explicitly marked **unreleased source additions**. Published installers remain unchanged. Start with [[Getting-Started]] or see [[Keyboard-Shortcuts]] for platform-specific commands.
+These instructions describe SciSlide **0.6.3**. Start with [[Getting-Started]] or see [[Keyboard-Shortcuts]] for platform-specific commands.
 
 ## Slides and layouts
 
@@ -16,11 +16,13 @@ In **Keynote White**, select a single Photo placeholder frame, icon or label bef
 
 Double-click text or select it and press **Enter** to edit on the canvas. **Enter** creates a new line; **⌘/Ctrl+Enter** or clicking outside applies one undoable edit; **Escape** cancels. The Inspector also offers text and formatting controls. Inline LaTeX syntax is described in [[Equations-and-Fonts]].
 
-**Unreleased:** press **Ctrl+Shift+M** (**⌘+Shift+M** on macOS) in a text field to open the inline equation popup. Enter LaTeX such as `U(1)`, check its live preview and apply to insert `$U(1)$` at the caret. Place the caret inside an existing equation and use the shortcut to edit it, or double-click its rendered formula. Cancel returns to the previous text and selection. Typing dollar delimiters does not open the popup. Use `\$` for a literal dollar sign. A selected text box can also open the popup directly with the shortcut.
+Press **Ctrl+Shift+M** (**⌘+Shift+M** on macOS) in a text field to open the inline equation popup. Enter LaTeX such as `U(1)`, check its live preview and apply to insert `$U(1)$` at the caret. Place the caret inside an existing equation and use the shortcut to edit it, or double-click its rendered formula. Cancel returns to the previous text and selection. Typing dollar delimiters does not open the popup. Use `\$` for a literal dollar sign. A selected text box can also open the popup directly with the shortcut.
+
+Text frames grow vertically to fit their content, using loaded-font metrics; moving/resizing preserves rotated text placement. Inspector text size and frame width/height fields apply on Enter or blur, and Escape cancels a pending value. The Inspector provides left/center/right text alignment; equal-gap distribution remains in the toolbar.
 
 Click an object to select it; **Shift+click** selects several. macOS also supports **Command+click**. Drag to move, use the lower-right handle to resize, or enter geometry in the Inspector. Canvas arrow keys move selected objects by **1 logical document unit**; **Shift+Arrow** moves them by **10**.
 
-**Unreleased:** with the canvas focused, Tab/Shift+Tab selects eligible objects in back-to-front stacking order, treating a flat group as one unit and skipping hidden/locked content. At either end, Tab follows normal UI focus order into surrounding controls. A polite canvas status announces selected object names/counts.
+With the canvas focused, Tab/Shift+Tab selects eligible objects in back-to-front stacking order, treating a flat group as one unit and skipping hidden/locked content. At either end, Tab follows normal UI focus order into surrounding controls. A polite canvas status announces selected object names/counts.
 
 **Copy / Cut / Paste** reuses objects across slides or decks in the same editor session. Copies have independent IDs and carry their figures/videos. The object clipboard is internal to SciSlide; text fields keep their ordinary clipboard behavior. Locked objects can be copied but are protected from cutting.
 
@@ -28,7 +30,7 @@ Click an object to select it; **Shift+click** selects several. macOS also suppor
 
 Use **OBJECTS & LAYERS** to select covered or hidden objects, rename them, change visibility/locks or change their stacking order.
 
-**Unreleased:** Inspector and Objects & Layers have independent visibility. Their toolbar buttons and [shortcuts](Keyboard-Shortcuts) focus the pane when shown and return to the canvas when hidden. Text fields, dialogs and playback retain input ownership. Double-clicking an equation reveals Inspector before focusing its source.
+Inspector and Objects & Layers have independent visibility. Their toolbar buttons and [shortcuts](Keyboard-Shortcuts) focus the pane when shown and return to the canvas when hidden. Text fields, dialogs and playback retain input ownership. Double-clicking an equation reveals Inspector before focusing its source.
 
 **Distribute horizontally / vertically** in the toolbar and **Equal horizontal / vertical gaps** in **ARRANGE** equalize edge gaps between at least three unlocked objects/groups, keeping the first and last in place. The Inspector's **Alignment** icons align text within its box.
 

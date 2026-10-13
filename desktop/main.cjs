@@ -469,7 +469,28 @@ async function createMainWindow() {
   await mainWindow.loadURL(appUrl);
 }
 
-if (!app.requestSingleInstanceLock()) app.quit();
+const cliArguments = (process.argv ?? []).slice(app.isPackaged ? 1 : 2);
+const updateCommand = cliArguments.some((argument) =>
+  ["--update", "--check-update", "--help", "-h"].includes(argument),
+);
+if (updateCommand) {
+  // CLI checks run independently of an open editor and never create a window.
+  import(pathToFileURL(path.join(__dirname, "update-cli.mjs")).href)
+    .then(({ runCli }) =>
+      runCli(cliArguments, {
+        currentVersion: app.getVersion(),
+        defaultDestination: path.join(
+          app.getPath("downloads"),
+          "SciSlide-updates",
+        ),
+      }),
+    )
+    .then((code) => app.exit(code))
+    .catch((error) => {
+      console.error(`SciSlide update failed: ${error.message || error}`);
+      app.exit(1);
+    });
+} else if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on("second-instance", () => {
     if (mainWindow) {

@@ -2,30 +2,30 @@
 
 A scientific presentation editor with editable equations, vector output, and an Electron desktop host.
 
-[Documentation Wiki](https://github.com/wikicho/SciSlide/wiki) · [Downloads](https://github.com/wikicho/SciSlide/releases/tag/v0.6.2) · [Report an issue](https://github.com/wikicho/SciSlide/issues)
+[Documentation Wiki](https://github.com/wikicho/SciSlide/wiki) · [Downloads](https://github.com/wikicho/SciSlide/releases/tag/v0.6.3) · [Report an issue](https://github.com/wikicho/SciSlide/issues)
 
-**v0.6.2 is a working prototype.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews and font-aware inline formulas inside text; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux systems. Fourteen existing starter layouts combine scientific structure with minimal Keynote-inspired composition; the **Keynote White** theme adds a dedicated set of fifteen coordinated layouts. Drawing, groups, smart guides, equal-spacing commands and an object/layer list help compose slides. Figures support SVG/PNG/JPEG import and PDF page selection, reversible cropping, enlarged insets and replacement without rebuilding the layout. A personal equation library, separate presenter display and recovery of unfinished equation drafts extend the authoring workflow. The included three-slide cosmology deck uses synthetic demonstration data. Compatible installed AI CLIs generate editable slide drafts. Deck-wide page numbers, embedded video, and ordered click-triggered builds remain available.
+**v0.6.3 is a working prototype.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews and font-aware inline formulas inside text; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux systems. Fourteen existing starter layouts combine scientific structure with minimal Keynote-inspired composition; the **Keynote White** theme adds a dedicated set of fifteen coordinated layouts. Drawing, groups, smart guides, equal-spacing commands and an object/layer list help compose slides. Figures support SVG/PNG/JPEG import and PDF page selection, reversible cropping, enlarged insets and replacement without rebuilding the layout. A personal equation library, separate presenter display and recovery of unfinished equation drafts extend the authoring workflow. The included three-slide cosmology deck uses synthetic demonstration data. Compatible installed AI CLIs generate editable slide drafts. Deck-wide page numbers, embedded video, and ordered click-triggered builds remain available.
 
-v0.6.2 adds platform-specific keyboard shortcuts: Keynote conventions on macOS, PowerPoint on Windows and LibreOffice Impress on Ubuntu/Linux. Native menus, toolbar hints and shortcut help use the same bindings. Drag-and-drop slide ordering and Linux Debian output in `release/linux-deb/` remain available.
+v0.6.2 introduced platform-specific keyboard shortcuts: Keynote conventions on macOS, PowerPoint on Windows and LibreOffice Impress on Ubuntu/Linux. Native menus, toolbar hints and shortcut help use the same bindings. Drag-and-drop slide ordering and Linux Debian output in `release/linux-deb/` remain available.
 
-**Unreleased source additions:** canvas Tab/Shift+Tab object selection, independent Inspector/Objects & Layers toggles, macOS thumbnail reorder keys, focused-thumbnail duplication, and consistent presentation key ownership/repeat behavior. The published v0.6.2 installers have not been rebuilt with these changes.
+v0.6.3 adds canvas Tab/Shift+Tab object selection, independent Inspector/Objects & Layers toggles, macOS thumbnail reorder keys, focused-thumbnail duplication, and consistent presentation key ownership/repeat behavior. It also adds inline equation popups, improved text frame controls, a Linux equation compile shortcut and verified installer downloads through the update CLI.
 
-Local v0.6.2 macOS installers are kept in `release/macos-pkg/`, and Windows x64 distributions in `release/windows-x64/`. Select these directories with the packaging scripts' `--out` option; their general defaults remain `release/`.
+Use `release/macos-pkg/` for macOS installer output and `release/windows-x64/` for Windows x64 distributions. Select these directories with the packaging scripts' `--out` option; their general defaults remain `release/`.
 
 ## Download desktop builds
 
-Download the **v0.6.2 development build** from [GitHub Releases](https://github.com/wikicho/SciSlide/releases/tag/v0.6.2):
+Download the **v0.6.3 development build** from [GitHub Releases](https://github.com/wikicho/SciSlide/releases/tag/v0.6.3):
 
 | System                            | Download                                                                                                                                                                                                                                             |
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| macOS Apple Silicon (M1 or later) | [arm64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.2/SciSlide-0.6.2-macos-arm64-unsigned.pkg)                                                                                                                                 |
-| macOS Intel                       | [x64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.2/SciSlide-0.6.2-macos-x64-unsigned.pkg)                                                                                                                                     |
-| Windows Intel/AMD x64             | [setup `.exe`](https://github.com/wikicho/SciSlide/releases/download/v0.6.2/SciSlide-0.6.2-windows-x64-setup-unsigned.exe) · [portable `.zip`](https://github.com/wikicho/SciSlide/releases/download/v0.6.2/SciSlide-0.6.2-windows-x64-portable.zip) |
-| Linux Intel/AMD x64               | [`.deb` / amd64](https://github.com/wikicho/SciSlide/releases/download/v0.6.2/SciSlide-0.6.2-linux-x64.deb)                                                                                                                                          |
+| macOS Apple Silicon (M1 or later) | [arm64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.3/SciSlide-0.6.3-macos-arm64-unsigned.pkg)                                                                                                                                 |
+| macOS Intel                       | [x64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.3/SciSlide-0.6.3-macos-x64-unsigned.pkg)                                                                                                                                     |
+| Windows Intel/AMD x64             | [setup `.exe`](https://github.com/wikicho/SciSlide/releases/download/v0.6.3/SciSlide-0.6.3-windows-x64-setup-unsigned.exe) · [portable `.zip`](https://github.com/wikicho/SciSlide/releases/download/v0.6.3/SciSlide-0.6.3-windows-x64-portable.zip) |
+| Linux Intel/AMD x64               | [`.deb` / amd64](https://github.com/wikicho/SciSlide/releases/download/v0.6.3/SciSlide-0.6.3-linux-x64.deb)                                                                                                                                          |
 
-Matching SHA-256 checksum files and installation instructions are included in the release. macOS installers are unsigned and unnotarized; Windows distributions are unsigned. System security policies may block installation or launch. See the [macOS](desktop/MACOS.md), [Windows](desktop/WINDOWS.md) or [Linux](desktop/LINUX.md) installation guide and the [v0.6.2 release notes](docs/releases/v0.6.2.md). Node.js and TeX are not required for MathJax editing.
+Matching SHA-256 checksum files and installation instructions are included in the release. macOS installers are unsigned and unnotarized; Windows distributions are unsigned. System security policies may block installation or launch. See the [macOS](desktop/MACOS.md), [Windows](desktop/WINDOWS.md) or [Linux](desktop/LINUX.md) installation guide and the [v0.6.3 release notes](docs/releases/v0.6.3.md). Node.js and TeX are not required for MathJax editing.
 
-The manually dispatched **SciSlide development release** workflow builds all five distributions from the same requested `main` commit, verifies architecture/checksums and uploads build artifacts. Publication is optional and defaults off; explicitly enabling it publishes one `v<package-version>` development prerelease with all distributions, checksums and platform guides. Packaging and automated checks do not replace complete physical-device validation.
+The **SciSlide development release** workflow runs when versioned release notes in `docs/releases/` change on `main`, builds all five distributions from that commit, verifies architecture/checksums and publishes one `v<package-version>` development prerelease with all distributions, checksums and platform guides. Manual dispatch remains available for a requested `main` commit; its publication option defaults off. Packaging and automated checks do not replace complete physical-device validation.
 
 ## Getting Started
 
@@ -68,12 +68,12 @@ Build a **Linux x64 `.deb` package** on Debian/Ubuntu with `dpkg-deb` installed:
 pnpm desktop:package:linux --arch=x64
 ```
 
-This creates `release/linux-deb/SciSlide-0.6.2-linux-x64.deb`, its SHA-256 file, `LINUX-INSTALL.md` and a complete `release/linux-deb/SciSlide-linux-x64/` app folder. Linux Debian packaging defaults to `release/linux-deb/`; `--out` selects another output directory. Debian's architecture name is **amd64**. Verify and install the local package:
+This creates `release/linux-deb/SciSlide-0.6.3-linux-x64.deb`, its SHA-256 file, `LINUX-INSTALL.md` and a complete `release/linux-deb/SciSlide-linux-x64/` app folder. Linux Debian packaging defaults to `release/linux-deb/`; `--out` selects another output directory. Debian's architecture name is **amd64**. Verify and install the local package:
 
 ```sh
 cd release/linux-deb
-sha256sum -c SciSlide-0.6.2-linux-x64.deb.sha256
-sudo apt install ./SciSlide-0.6.2-linux-x64.deb
+sha256sum -c SciSlide-0.6.3-linux-x64.deb.sha256
+sudo apt install ./SciSlide-0.6.3-linux-x64.deb
 scislide
 ```
 
@@ -89,7 +89,7 @@ pnpm desktop:package:mac
 pnpm desktop:package:mac --arch=arm64
 ```
 
-The current source defaults to output paths `release/SciSlide-0.6.2-macos-arm64-unsigned.pkg` and `release/SciSlide-0.6.2-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
+The current source defaults to output paths `release/SciSlide-0.6.3-macos-arm64-unsigned.pkg` and `release/SciSlide-0.6.3-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
 
 The default `.pkg` implementation uses [Electron's official pure JavaScript packaging](https://packages.electronjs.org/osx-sign/v2.6.0/index.html#pure-javascript-packaging), so it also works on Linux. On macOS with Xcode Command Line Tools, use `pnpm desktop:package:mac --implementation=native` to package with Apple's `pkgbuild` and `productbuild`. **Both methods produce development installers without Developer ID signing or notarization.** macOS security policies may block installation or launch. The packaging process does not change system security settings.
 
@@ -103,11 +103,35 @@ pnpm desktop:package:win
 pnpm desktop:package:win --portable-only
 ```
 
-This command always targets **Intel/AMD x64**, regardless of the build host. The current source creates `release/SciSlide-0.6.2-windows-x64-setup-unsigned.exe` and `release/SciSlide-0.6.2-windows-x64-portable.zip`, with SHA-256 checksum files. The installer uses an x64 bootstrap executable, installs for the current user under `%LOCALAPPDATA%\Programs\SciSlide`, and adds a Start menu shortcut. The portable ZIP contains the complete app folder; extract it and launch `SciSlide-win32-x64/scislide.exe`. No Node.js or TeX installation is needed to run MathJax editing.
+This command always targets **Intel/AMD x64**, regardless of the build host. The current source creates `release/SciSlide-0.6.3-windows-x64-setup-unsigned.exe` and `release/SciSlide-0.6.3-windows-x64-portable.zip`, with SHA-256 checksum files. The installer uses an x64 bootstrap executable, installs for the current user under `%LOCALAPPDATA%\Programs\SciSlide`, and adds a Start menu shortcut. The portable ZIP contains the complete app folder; extract it and launch `SciSlide-win32-x64/scislide.exe`. No Node.js or TeX installation is needed to run MathJax editing.
 
 See the [Windows installation and build guide](desktop/WINDOWS.md) for compiler selection, checksums and platform limits. The **Windows x64 development distributions** Actions workflow builds on a Windows x64 runner, verifies the executable architectures and hashes, and checks installation/uninstallation in a temporary directory. Its versioned downloadable artifacts contain both distributions and are retained for 30 days. Windows 10 or later is required; physical Windows 10/11 editing and export validation remains open. Local LaTeX compilation is currently disabled on Windows.
 
 **Windows distributions are unsigned development builds.** Windows security policies may block installation or launch. Automatic updates, macOS notarization, Windows signing, and complete distribution validation across all three operating systems remain future work.
+
+## Command-line update downloads
+
+v0.6.3 packages include an update CLI. Published v0.6.2 installers need to be replaced with a build containing this feature before using it.
+
+```sh
+scislide --check-update
+scislide --update
+scislide --update --output "$HOME/Downloads"
+scislide --update --stable
+```
+
+The CLI checks [SciSlide's GitHub Releases](https://github.com/wikicho/SciSlide/releases), compares the installed version, and selects the matching Linux x64 `.deb`, Windows x64 setup `.exe`, or macOS arm64/x64 `.pkg`. Development prereleases are included by default; `--stable` restricts the check to stable releases. A current or newer installed version is kept. Downloads go to `~/Downloads/SciSlide-updates` unless `--output` selects another directory.
+
+Downloaded installers are checked against their SHA-256 metadata/checksum before the CLI reports success. It prints the saved path and installation command; run that command when ready to install. Existing unrelated files are preserved, and failed or invalid downloads are cleaned up. `--check-update` only checks availability.
+
+On Debian/Ubuntu, the installed `scislide` command provides this workflow. Portable packages include `bin/scislide` or `bin/scislide.cmd`; macOS installers retain a launcher inside the app. See the [Linux](desktop/LINUX.md), [macOS](desktop/MACOS.md), and [Windows](desktop/WINDOWS.md) guides for the exact paths. The bundled Electron runtime runs the CLI without opening the editor or requiring a separate Node installation.
+
+From a source checkout with Node.js installed:
+
+```sh
+node desktop/update-cli.mjs --check-update
+node desktop/update-cli.mjs --update
+```
 
 ## Using the Editor
 
@@ -115,7 +139,9 @@ SciSlide starts with **Choose your theme**. Select **Scientific**, **Minimal Whi
 
 Double-click a text box to edit directly on the slide, or select it and press **Enter**. New text boxes open ready for typing. **Enter** inserts a new line; **Ctrl / ⌘ + Enter** or clicking outside finishes the edit, and **Escape** cancels it. Each completed edit is one undo step. Korean IME input, plain-text paste, alignment, font size, rotation and canvas zoom are supported. The Inspector remains available for text and formatting; equations continue to use the LaTeX source editor.
 
-**Unreleased inline equation editor:** while typing in a text box, press **Ctrl+Shift+M** (**⌘+Shift+M** on macOS) to open a LaTeX popup with a live preview. Enter `U(1)` and apply to insert `$U(1)$` at the caret, keeping the surrounding prose. The same shortcut edits the equation containing the caret; double-clicking a rendered inline equation also opens its popup. **Escape** cancels the popup and returns to the original text selection. Typing `$U(1)$` directly stays in the text field without opening a popup. Type `\$` for a literal dollar sign. The Inspector's text field supports the same workflow.
+**Inline equation editor:** while typing in a text box, press **Ctrl+Shift+M** (**⌘+Shift+M** on macOS) to open a LaTeX popup with a live preview. Enter `U(1)` and apply to insert `$U(1)$` at the caret, keeping the surrounding prose. The same shortcut edits the equation containing the caret; double-clicking a rendered inline equation also opens its popup. **Escape** cancels the popup and returns to the original text selection. Typing `$U(1)$` directly stays in the text field without opening a popup. Type `\$` for a literal dollar sign. The Inspector's text field supports the same workflow.
+
+Text frames grow vertically to fit their content and follow loaded-font metrics. Dragging or resizing keeps rotated text in place. The Inspector's text size and frame width/height fields commit on Enter or blur; Escape cancels a pending value. Text alignment stays in the Inspector, and equal-gap distribution remains available in the toolbar.
 
 1. Select a slide from the thumbnails on the left. On narrow screens, use the slide selector above the canvas.
 2. Add objects with **Text / Equation / Figure / Video**. Figures support SVG, PNG, JPEG and PDF pages; videos support local MP4 and WebM files.
@@ -128,7 +154,7 @@ The desktop menu provides New Presentation, Open, Save, Save As, object editing,
 
 ## Keyboard Shortcuts
 
-The [Keyboard Shortcut Specification](docs/specifications/keyboard-shortcuts.md) defines the Keynote mapping, current exceptions, context rules, remaining additions and acceptance criteria. The tables below describe current source bindings; rows marked **unreleased** are additions after the published 0.6.2 installers.
+The [Keyboard Shortcut Specification](docs/specifications/keyboard-shortcuts.md) defines the Keynote mapping, current exceptions, context rules, remaining additions and acceptance criteria. The tables below describe v0.6.3 bindings.
 
 SciSlide detects the host operating system and uses **Command (⌘)** on macOS or **Ctrl** on Ubuntu/Linux and Windows. **Option (⌥)** is the macOS equivalent of **Alt**. Toolbar hints, native menus and **Keyboard shortcuts** show the current platform's bindings. The help dialog's platform tabs change only the reference being displayed.
 
@@ -148,7 +174,8 @@ For supported actions, macOS follows [Keynote](https://support.apple.com/en-gb/g
 | Duplicate current slide                    | —                             | —                               | Ctrl+Shift+D          |
 | Open the new-slide layout chooser          | ⌘+Shift+N                     | Ctrl+M                          | Ctrl+M                |
 | Insert equation                            | ⌘+Option+E                    | Alt+Shift+E                     | Alt+=                 |
-| Compile with LaTeX (unreleased, desktop)   | —                             | Ctrl+Shift+Enter                | —                     |
+| Insert/edit inline equation                | ⌘+Shift+M                     | Ctrl+Shift+M                    | Ctrl+Shift+M          |
+| Compile with LaTeX (Linux desktop)         | —                             | Ctrl+Shift+Enter                | —                     |
 | Group / Ungroup                            | ⌘+Option+G / ⌘+Option+Shift+G | Ctrl+Shift+G / Ctrl+Alt+Shift+G | Ctrl+G / Ctrl+Shift+G |
 | Present from first slide                   | —                             | F5                              | F5                    |
 | Present from current slide                 | ⌘+Option+P                    | Shift+F5                        | Shift+F5              |
@@ -156,8 +183,8 @@ For supported actions, macOS follows [Keynote](https://support.apple.com/en-gb/g
 | Export PDF                                 | ⌘+Option+Shift+P              | Ctrl+Alt+P                      | Ctrl+Alt+P            |
 | Export current slide as SVG                | ⌘+Option+S                    | Ctrl+Alt+S                      | Ctrl+Alt+S            |
 | Keyboard shortcuts                         | ⌘+Shift+/                     | F1                              | F1                    |
-| Toggle/focus Inspector (unreleased)        | ⌘+Option+I                    | Ctrl+Alt+I                      | Ctrl+Alt+I            |
-| Toggle/focus Objects & Layers (unreleased) | ⌘+Shift+L                     | Ctrl+Shift+L                    | Ctrl+Shift+L          |
+| Toggle/focus Inspector                     | ⌘+Option+I                    | Ctrl+Alt+I                      | Ctrl+Alt+I            |
+| Toggle/focus Objects & Layers              | ⌘+Shift+L                     | Ctrl+Shift+L                    | Ctrl+Shift+L          |
 | Bypass alignment guides while dragging     | Hold Option                   | Hold Alt                        | Hold Alt              |
 
 Additional macOS commands:
@@ -175,8 +202,8 @@ Additional macOS commands:
 | Fit slide to window                          | ⌘+Option+0                          |
 | Next / Previous slide while editing          | Page Down / Page Up                 |
 | First / Last slide while editing             | Home / End                          |
-| Move focused slide up / down (unreleased)    | ⌘+Option+Up / Down                  |
-| Move focused slide first / last (unreleased) | ⌘+Option+Shift+Up / Down            |
+| Move focused slide up / down                 | ⌘+Option+Up / Down                  |
+| Move focused slide first / last              | ⌘+Option+Shift+Up / Down            |
 | Toggle bold on selected text objects         | ⌘+B                                 |
 | Increase / Decrease selected text size       | ⌘ and + / ⌘ and -                   |
 | Align selected text left / center / right    | ⌘+{ / ⌘+\| / ⌘+}                    |
@@ -201,17 +228,17 @@ Linux **Ctrl+Num +** advances an object by one layer; **Ctrl+Shift+Num +** sends
 
 On compact Mac keyboards, **Fn+↓ / Fn+↑** send Page Down / Page Up, and **Fn+← / Fn+→** send Home / End. On every platform, **Up / Down** selects slides and **Delete / Backspace** removes the focused slide when a thumbnail has focus. All slide-move shortcuts require thumbnail focus; canvas arrow keys continue moving objects. In the current source, duplication also targets the focused thumbnail, selects/focuses the new copy, and creates one undoable edit; thumbnail navigation and deletion ignore held-key repetition. On the canvas, arrow keys move selected objects by 1 logical document unit; Shift+Arrow moves them by 10. **Shift+click** selects multiple objects, and macOS also accepts **Command+click** to add or remove an object from the selection. Zoom changes in 10% steps between 50% and 150%; Fit restores the existing 100% view, which fits the slide to the available canvas.
 
-**Unreleased:** when the slide canvas has focus, **Tab / Shift+Tab** selects eligible objects in back-to-front stacking order. A group is one unit; hidden and locked content is skipped. At the first/last object, Tab follows ordinary UI focus order instead of wrapping. Inspector and Objects & Layers have independent visibility; their shortcuts focus the shown pane or return to the canvas when hiding it. These shortcuts leave text fields, dialogs, and playback in control of their input. A polite canvas status announces object selections; double-clicking an equation reveals Inspector and focuses its source.
+When the slide canvas has focus, **Tab / Shift+Tab** selects eligible objects in back-to-front stacking order. A group is one unit; hidden and locked content is skipped. At the first/last object, Tab follows ordinary UI focus order instead of wrapping. Inspector and Objects & Layers have independent visibility; their shortcuts focus the shown pane or return to the canvas when hiding it. These shortcuts leave text fields, dialogs, and playback in control of their input. A polite canvas status announces object selections; double-clicking an equation reveals Inspector and focuses its source.
 
-**Unreleased Linux equation workflow:** **Alt+Shift+E** (or legacy **Ctrl+Alt+=**) inserts an equation, reveals Inspector and focuses **LATEX SOURCE**. In the Linux desktop app, **Ctrl+Shift+Enter** runs **Compile with LaTeX** for one selected visible, unlocked equation in Local LaTeX mode when installed TeX is ready and the editor is idle. Use it with canvas focus or in the equation Inspector, including source and preamble. It updates the draft preview; **Apply equation** remains a separate action and compilation creates no document undo step. The command stays disabled in the browser and MathJax mode; MathJax already previews live. Notes, inline text, media, thumbnails, dialogs and playback retain their keys; IME composition and held-key repetition do not trigger compilation.
+**Linux equation workflow:** **Alt+Shift+E** (or legacy **Ctrl+Alt+=**) inserts an equation, reveals Inspector and focuses **LATEX SOURCE**. In the Linux desktop app, **Ctrl+Shift+Enter** runs **Compile with LaTeX** for one selected visible, unlocked equation in Local LaTeX mode when installed TeX is ready and the editor is idle. Use it with canvas focus or in the equation Inspector, including source and preamble. It updates the draft preview; **Apply equation** remains a separate action and compilation creates no document undo step. The command stays disabled in the browser and MathJax mode; MathJax already previews live. Notes, inline text, media, thumbnails, dialogs and playback retain their keys; IME composition and held-key repetition do not trigger compilation.
 
-**Unreleased desktop menus:** enabled states follow current focus, selection, clipboard/history availability, dialogs and busy operations, using the renderer's shared availability rules. Native text clipboard/history commands remain with the focused field, including modal text controls; disabled application commands do not dispatch.
+**Desktop menus:** enabled states follow current focus, selection, clipboard/history availability, dialogs and busy operations, using the renderer's shared availability rules. Native text clipboard/history commands remain with the focused field, including modal text controls; disabled application commands do not dispatch.
 
 Text-formatting commands act on whole selected text objects on the canvas. **Enter** edits selected text or inserts a new line while editing. **⌘/Ctrl+Enter** applies an inline text edit and **Esc** cancels it. Save captures the current text. Clipboard, selection, undo/redo and navigation retain their normal text-field behavior in the inline editor and Inspector; composing Korean or other IME text does not trigger canvas commands.
 
 For compatibility, macOS still accepts **⌘+Shift+S** for Save As, **⌘+G / ⌘+Shift+G** for Group/Ungroup and **⌘+Enter** to present from the canvas. PDF export uses **⌘+Option+Shift+P** because **⌘+Option+P** starts the presentation. Windows and Ubuntu/Linux also accept **Ctrl+Shift+Z** for Redo, **Ctrl+Enter** to present from the current slide, and **Ctrl+Shift+/** for shortcut help. Linux keeps **Ctrl+D** as a duplicate alias and accepts **Ctrl+Alt+=** for equation insertion from the [Impress guide](https://books.libreoffice.org/en/IG242/IG2413-KeyboardShortcuts.html). Its slide navigator also accepts **Ctrl+Shift+Up / Down / Home / End** to move the focused slide up, down, first or last. Existing Linux **Ctrl+G** grouping remains available; **Ctrl+Shift+G** now groups, matching Impress.
 
-During a slideshow, **Right / Down / Space / Page Down** advances a build or slide, **Left / Up / Page Up** goes back, **Home / End** selects the first or last slide, and **Esc** exits. Windows and Ubuntu/Linux also accept **Enter** to advance and **Backspace** to go back; Windows accepts **N / P**, and Linux accepts **-** to exit. **F5 / Shift+F5** start from the first / current slide, as in [PowerPoint](https://support.microsoft.com/en-us/accessibility/powerpoint/use-keyboard-shortcuts-to-deliver-powerpoint-presentations) and [Impress](https://books.libreoffice.org/en/IG242/IG2413-KeyboardShortcuts.html). macOS also accepts **Q** to exit when focus is outside text fields and media controls. **Unreleased:** audience and presenter use the same routing: editable/media controls retain all keys, including Escape, and focused buttons retain Space/Enter. Plain Escape exits with presentation focus. Navigation, Home/End and exit ignore auto-repeat. Shift+arrow keeps the established build-navigation behavior; other shifted playback keys are ignored. Native desktop menus use the same platform bindings; in a browser, use the toolbar when a browser-reserved combination takes precedence.
+During a slideshow, **Right / Down / Space / Page Down** advances a build or slide, **Left / Up / Page Up** goes back, **Home / End** selects the first or last slide, and **Esc** exits. Windows and Ubuntu/Linux also accept **Enter** to advance and **Backspace** to go back; Windows accepts **N / P**, and Linux accepts **-** to exit. **F5 / Shift+F5** start from the first / current slide, as in [PowerPoint](https://support.microsoft.com/en-us/accessibility/powerpoint/use-keyboard-shortcuts-to-deliver-powerpoint-presentations) and [Impress](https://books.libreoffice.org/en/IG242/IG2413-KeyboardShortcuts.html). macOS also accepts **Q** to exit when focus is outside text fields and media controls. Audience and presenter use the same routing: editable/media controls retain all keys, including Escape, and focused buttons retain Space/Enter. Plain Escape exits with presentation focus. Navigation, Home/End and exit ignore auto-repeat. Shift+arrow keeps the established build-navigation behavior; other shifted playback keys are ignored. Native desktop menus use the same platform bindings; in a browser, use the toolbar when a browser-reserved combination takes precedence.
 
 ## Inline Equations in Text
 
@@ -250,7 +277,7 @@ Use **Copy / Cut / Paste** or **Ctrl+C / Ctrl+X / Ctrl+V** (Cmd on macOS) to reu
 
 The **OBJECTS & LAYERS** list at the top of the Inspector gives access to covered and hidden objects. Select a row, rename it, show/hide it, lock/unlock it, or move it forward/backward. Hidden objects remain selectable in this list. A group moves through the layer order as one unit.
 
-The toolbar and the Inspector's **ARRANGE** section align selected objects/groups **left / center / right / top / middle / bottom** and provide equal horizontal/vertical gaps. With one object or group, alignment uses the slide margins; with several, it uses their combined bounds. **Distribute horizontally / vertically** equalizes edge gaps between at least three unlocked objects or groups while keeping the first and last in place. Different object sizes are supported; leave enough room for nonoverlapping gaps.
+The toolbar and the Inspector's **ARRANGE** section provide equal horizontal/vertical gaps. The Inspector's **Alignment** icons align text left, center or right within its frame. **Distribute horizontally / vertically** equalizes edge gaps between at least three unlocked objects or groups while keeping the first and last in place. Different object sizes are supported; leave enough room for nonoverlapping gaps.
 
 ## Figure Import, Crops and Insets
 
@@ -414,7 +441,7 @@ The app checks the executables and whether isolated execution actually works. If
 1. Choose **Local LaTeX · Installed packages** for an equation.
 2. Select LaTeX or XeLaTeX under **TeX engine**.
 3. Enter packages, macros, and font settings in **PREAMBLE**, and the equation body in **LATEX SOURCE**.
-4. Click **Compile with LaTeX** (or **Ctrl+Shift+Enter** in the unreleased Linux desktop source). Review the draft preview, then click **Apply equation** to commit it to the slide.
+4. Click **Compile with LaTeX** (or **Ctrl+Shift+Enter** in the Linux desktop app). Review the draft preview, then click **Apply equation** to commit it to the slide.
 
 Example LaTeX preamble:
 
@@ -460,7 +487,7 @@ Local LaTeX equations retain their source, preamble, engine, result SVG and dime
 - Deck-wide dynamic page numbers in the editor, slideshow, PDF and SVG.
 - Ordered click-triggered appear/fade builds; editor/thumbnails/static exports show the complete layout.
 - Moving, resizing, rotation, opacity, locking, duplication, object copy/cut/paste, and a selectable object/layer list including hidden objects.
-- Shift+click multi-selection, flat persistent groups, six-way alignment, equal horizontal/vertical distribution, smart movement/resize/equal-gap guides, separate 20 px grid snapping, and keyboard movement.
+- Shift+click multi-selection, flat persistent groups, Inspector text alignment, equal horizontal/vertical distribution, smart movement/resize/equal-gap guides, separate 20 px grid snapping, and keyboard movement.
 - Local SVG/PNG/JPEG import and PDF page preview/selection; selected PDF pages become embedded high-resolution PNG figures.
 - Reversible figure cropping, enlarged independent insets and replacement preserving layout/crop.
 - A local searchable equation library with named/tagged entries and JSON import/export.

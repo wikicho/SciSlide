@@ -11,7 +11,6 @@ import {
   realpath,
   rename,
   rm,
-  symlink,
   writeFile,
 } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -19,7 +18,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { packageDesktop } from "./package-desktop.mjs";
+import { linuxInstalledLauncher, packageDesktop } from "./package-desktop.mjs";
 
 const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 const run = promisify(execFile);
@@ -259,6 +258,19 @@ export async function packageLinux(options = {}, dependencies = {}) {
     const archive = await exists(path.join(appFolder, "resources", "app.asar"));
     if (!archive?.isFile() || archive.isSymbolicLink() || !archive.size)
       throw new Error("The Linux app is missing its bundled app.asar payload.");
+    for (const filename of [
+      "package.json",
+      "desktop/update-cli.mjs",
+      "desktop/update.mjs",
+    ]) {
+      const stat = await exists(
+        path.join(appFolder, "resources/scislide-cli", filename),
+      );
+      if (!stat?.isFile() || stat.isSymbolicLink() || !stat.size)
+        throw new Error(
+          `The Linux app is missing its CLI runtime: ${filename}`,
+        );
+    }
     // Reject every source link before any README write or payload copy.
     await walkPayload(appFolder);
     const tree = path.join(stage, "package");
@@ -281,6 +293,7 @@ export async function packageLinux(options = {}, dependencies = {}) {
     const bin = path.join(tree, "usr", "bin");
     for (const directory of [applications, icons, docs, bin])
       await mkdir(directory, { recursive: true });
+    await writeFile(path.join(bin, "scislide"), linuxInstalledLauncher());
     await writeFile(
       path.join(applications, "scislide.desktop"),
       [
@@ -316,13 +329,14 @@ export async function packageLinux(options = {}, dependencies = {}) {
         path.join(app, "scislide"),
         path.join(app, "chrome-sandbox"),
         path.join(app, "chrome_crashpad_handler"),
+        path.join(app, "bin", "scislide"),
+        path.join(bin, "scislide"),
       ]),
     );
     await chmod(path.join(app, "scislide"), 0o755);
     // Set the bit only on this temporary payload. dpkg-deb records root:root
     // ownership; installation provides Chromium's normal setuid sandbox.
     await chmod(path.join(app, "chrome-sandbox"), 0o4755);
-    await symlink("/opt/scislide/scislide", path.join(bin, "scislide"));
     const control = path.join(tree, "DEBIAN");
     await mkdir(control, { mode: 0o755 });
     await writeFile(

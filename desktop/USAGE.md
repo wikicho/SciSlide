@@ -1,4 +1,4 @@
-# SciSlide 0.6.2 — Linux x64 standalone app
+# SciSlide 0.6.3 — Linux x64 standalone app
 
 Run the `scislide` executable in this folder. Keep the Electron runtime files together. Node.js, TeX and a development server are not required for MathJax editing.
 
@@ -6,13 +6,21 @@ Run the `scislide` executable in this folder. Keep the Electron runtime files to
 ./scislide
 ```
 
-For system installation, the separate `SciSlide-0.6.2-linux-x64.deb` adds a desktop launcher and icon. Install it with `sudo apt install ./SciSlide-0.6.2-linux-x64.deb`, then launch `scislide`. Ubuntu 24.04 x64 is the packaging target; Debian calls the architecture `amd64`. No SciSlide APT repository or Snap package is currently provided.
+For system installation, the separate `SciSlide-0.6.3-linux-x64.deb` adds a desktop launcher and icon. Install it with `sudo apt install ./SciSlide-0.6.3-linux-x64.deb`, then launch `scislide`. Ubuntu 24.04 x64 is the packaging target; Debian calls the architecture `amd64`. No SciSlide APT repository or Snap package is currently provided.
+
+## Update CLI
+
+Portable builds include `bin/scislide`; Debian packages expose it as `scislide`. Run `scislide --check-update` to check only, or `scislide --update` to download a newer matching installer from GitHub Releases. The default destination is `~/Downloads/SciSlide-updates`; `--output DIR` changes it. Development prereleases are included unless `--stable` is specified. SHA-256 is verified before success, and the CLI prints the installer path and installation command. Installation remains a separate step. The bundled runtime handles the CLI without opening an editor or requiring Node.js. Published v0.6.2 packages predate this feature.
 
 ## Start and edit a presentation
 
 Choose **Scientific**, **Minimal White**, **Minimal Black**, **Navy** or **Keynote White**, then **Create presentation**. **Open presentation** loads a `.scislide` file, **Resume previous work** restores a recovered workspace and **Explore demo** opens the sample deck. Keynote White has fifteen coordinated white/black layouts; the other themes retain fourteen Scientific/Keynote-inspired layouts. **New slide** or **+** opens the theme's picker, including **Blank slide**. Added slides are editable and can be undone.
 
 Double-click text or press **Enter** on a selected text box to edit on the slide. **Enter** adds a line, **Ctrl+Enter** or clicking outside applies one undoable edit, and **Escape** cancels. Korean IME input and plain-text paste are supported. Write `$\chi$` or `\(\frac{1}{2}\)` inside a text box for inline mathematics. MathJax formulas match the surrounding font's lowercase height and preserve their mathematical baseline; tall formulas expand their own line's spacing. Editing and native saves retain the original source. PDF/SVG preserve vector formulas and selectable ordinary text.
+
+Press **Ctrl+Shift+M** in canvas or Inspector text to insert/edit an inline equation with a live LaTeX preview, or double-click a rendered formula. Apply preserves the surrounding prose; Escape returns to the previous text selection. Text frames grow to fit their content using loaded-font metrics; moving/resizing preserves rotated placement. Inspector text size and frame width/height fields commit on Enter or blur and cancel a pending value with Escape.
+
+With the canvas focused, **Tab / Shift+Tab** selects eligible objects/groups in stacking order and follows normal UI focus order at the boundaries. **Ctrl+Alt+I / Ctrl+Shift+L** toggle and focus Inspector / Objects & Layers independently. Duplicate targets the focused thumbnail even with a retained canvas selection. Text fields, dialogs and playback retain their input; native menu availability follows focus, selection and busy state.
 
 **Open / Save / Save As** use native dialogs. Save updates the selected source file; **Export** saves all slides as PDF or the current slide as SVG. Copy bundled examples to your documents folder before editing them. `examples/inline-math.scislide` demonstrates English/Korean inline formulas, `examples/keynote-white-theme.scislide` contains all fifteen layouts, and `examples/electron-local-latex.scislide` includes a saved Local LaTeX result. Scientific demonstration data is synthetic.
 
@@ -22,7 +30,7 @@ Double-click text or press **Enter** on a selected text box to edit on the slide
 
 Choose **Draw rectangle / ellipse / line / arrow**, then drag. **Shift** constrains geometry; **Escape** cancels. The Inspector controls stroke color/width/style, no-fill outlines and arrowheads. Drag a selected line/arrow's endpoints to edit it. Shapes export as vectors.
 
-**Shift+click** selects objects. **Ctrl+Shift+G / Ctrl+Alt+Shift+G** group/ungroup; flat groups move together and duplicate independently. Ungroup before resizing or rotating a member. Use six-way alignment and equal-gap distribution for a selection. Smart guides help while moving/resizing; **Alt** bypasses them. Separate **Snap to 20 px grid** takes precedence. **OBJECTS & LAYERS** selects hidden/covered objects and controls visibility, locks and order. Object copy/cut/paste works across slides or decks in one session. Nested groups, whole-group scaling/rotation, attached connectors and freehand paths remain planned.
+**Shift+click** selects objects. **Ctrl+Shift+G / Ctrl+Alt+Shift+G** group/ungroup; flat groups move together and duplicate independently. Ungroup before resizing or rotating a member. Use equal-gap distribution and Inspector text alignment for a selection. Smart guides help while moving/resizing; **Alt** bypasses them. Separate **Snap to 20 px grid** takes precedence. **OBJECTS & LAYERS** selects hidden/covered objects and controls visibility, locks and order. Object copy/cut/paste works across slides or decks in one session. Nested groups, whole-group scaling/rotation, attached connectors and freehand paths remain planned.
 
 ## Shortcuts, recovery and presentation
 

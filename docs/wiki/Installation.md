@@ -1,17 +1,17 @@
 # Installation
 
-SciSlide **0.6.2** is a development prerelease. Its desktop packages include the Electron runtime, editor and MathJax resources. Node.js, a TeX distribution and a development server are not required to use the packaged editor.
+SciSlide **0.6.3** is a development prerelease. Its desktop packages include the Electron runtime, editor and MathJax resources. Node.js, a TeX distribution and a development server are not required to use the packaged editor.
 
 ## Download
 
-Download the package matching your operating system and processor from the [v0.6.2 release](https://github.com/wikicho/SciSlide/releases/tag/v0.6.2).
+Download the package matching your operating system and processor from the [v0.6.3 release](https://github.com/wikicho/SciSlide/releases/tag/v0.6.3).
 
 | System                           | Package                                                                                                                                                                                                                                               |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| macOS Apple Silicon, M1 or later | [arm64 installer `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.2/SciSlide-0.6.2-macos-arm64-unsigned.pkg)                                                                                                                        |
-| macOS Intel                      | [x64 installer `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.2/SciSlide-0.6.2-macos-x64-unsigned.pkg)                                                                                                                            |
-| Windows Intel/AMD x64            | [Setup `.exe`](https://github.com/wikicho/SciSlide/releases/download/v0.6.2/SciSlide-0.6.2-windows-x64-setup-unsigned.exe) or [portable `.zip`](https://github.com/wikicho/SciSlide/releases/download/v0.6.2/SciSlide-0.6.2-windows-x64-portable.zip) |
-| Ubuntu/Debian Intel/AMD x64      | [Debian package `.deb`](https://github.com/wikicho/SciSlide/releases/download/v0.6.2/SciSlide-0.6.2-linux-x64.deb)                                                                                                                                    |
+| macOS Apple Silicon, M1 or later | [arm64 installer `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.3/SciSlide-0.6.3-macos-arm64-unsigned.pkg)                                                                                                                        |
+| macOS Intel                      | [x64 installer `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.3/SciSlide-0.6.3-macos-x64-unsigned.pkg)                                                                                                                            |
+| Windows Intel/AMD x64            | [Setup `.exe`](https://github.com/wikicho/SciSlide/releases/download/v0.6.3/SciSlide-0.6.3-windows-x64-setup-unsigned.exe) or [portable `.zip`](https://github.com/wikicho/SciSlide/releases/download/v0.6.3/SciSlide-0.6.3-windows-x64-portable.zip) |
+| Ubuntu/Debian Intel/AMD x64      | [Debian package `.deb`](https://github.com/wikicho/SciSlide/releases/download/v0.6.3/SciSlide-0.6.3-linux-x64.deb)                                                                                                                                    |
 
 Matching `.sha256` files and platform installation guides are release assets. macOS packages are **unsigned and unnotarized**; Windows packages are **unsigned**. System security policies may block installation or launch. Signing and notarization remain future distribution work.
 
@@ -26,8 +26,8 @@ Both installers use the same application name and destination; install only the 
 To check a download, compare the two hashes:
 
 ```sh
-shasum -a 256 SciSlide-0.6.2-macos-arm64-unsigned.pkg
-cat SciSlide-0.6.2-macos-arm64-unsigned.pkg.sha256
+shasum -a 256 SciSlide-0.6.3-macos-arm64-unsigned.pkg
+cat SciSlide-0.6.3-macos-arm64-unsigned.pkg.sha256
 ```
 
 Use the x64 filename when checking the Intel package.
@@ -43,8 +43,8 @@ For the portable edition, extract the **complete ZIP**, then launch `SciSlide-wi
 In PowerShell, compare the recorded checksum with the calculated one:
 
 ```powershell
-Get-FileHash .\SciSlide-0.6.2-windows-x64-setup-unsigned.exe -Algorithm SHA256
-Get-Content .\SciSlide-0.6.2-windows-x64-setup-unsigned.exe.sha256
+Get-FileHash .\SciSlide-0.6.3-windows-x64-setup-unsigned.exe -Algorithm SHA256
+Get-Content .\SciSlide-0.6.3-windows-x64-setup-unsigned.exe.sha256
 ```
 
 Use the portable ZIP's filename to check that distribution.
@@ -56,8 +56,8 @@ Ubuntu **24.04 x64** is the packaging target. Other Debian/Ubuntu releases requi
 Put the `.deb` and matching checksum file in the same folder, then run:
 
 ```sh
-sha256sum -c SciSlide-0.6.2-linux-x64.deb.sha256
-sudo apt install ./SciSlide-0.6.2-linux-x64.deb
+sha256sum -c SciSlide-0.6.3-linux-x64.deb.sha256
+sudo apt install ./SciSlide-0.6.3-linux-x64.deb
 scislide
 ```
 
@@ -69,7 +69,13 @@ Quit SciSlide before installing a newer `.deb`. Remove the application with:
 sudo apt remove scislide
 ```
 
-Removal leaves separately saved presentations and per-user app data intact. There is currently **no SciSlide APT repository, automatic updater, Snap package or Snap Store listing**. Update by downloading and installing a new release package.
+Removal leaves separately saved presentations and per-user app data intact. There is currently **no SciSlide APT repository, background updater, Snap package or Snap Store listing**. Update by downloading and installing a new release package.
+
+## Command-line update downloads
+
+v0.6.3 packages support `scislide --check-update` and `scislide --update`. The first only checks GitHub Releases; the second downloads a newer installer matching the platform/CPU, verifies SHA-256 and prints the installation command. Downloads default to `~/Downloads/SciSlide-updates`; change the destination with `--output DIR`. Development prereleases are included by default, with `--stable` available for stable-only checks. Run the printed installation command separately when ready.
+
+Debian packages register `scislide`; portable builds provide `bin/scislide` or `bin/scislide.cmd`. See the platform guides for installed macOS/Windows launcher paths. The bundled runtime handles the CLI without an editor window or a separate Node installation. Published v0.6.2 installers predate this feature.
 
 ## Optional installed tools
 

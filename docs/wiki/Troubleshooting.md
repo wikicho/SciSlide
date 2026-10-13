@@ -1,6 +1,6 @@
 # Troubleshooting
 
-These notes describe SciSlide **0.6.2**. Include your operating system, CPU architecture, app version, the failing action and exact error when opening a [GitHub issue](https://github.com/wikicho/SciSlide/issues). A small presentation that reproduces the problem helps; remove private content before sharing it.
+These notes describe SciSlide **0.6.3**. Include your operating system, CPU architecture, app version, the failing action and exact error when opening a [GitHub issue](https://github.com/wikicho/SciSlide/issues). A small presentation that reproduces the problem helps; remove private content before sharing it.
 
 ## Installation or launch is blocked
 

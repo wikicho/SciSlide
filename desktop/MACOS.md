@@ -1,10 +1,28 @@
-# SciSlide 0.6.2 — macOS development installer
+# SciSlide 0.6.3 — macOS development installer
 
 Choose the installer that matches your Mac: **arm64** for Apple Silicon (M1 or later), or **x64** for Intel. The installer copies SciSlide to `/Applications/SciSlide.app`. Node.js, a development server and TeX are not required for MathJax editing.
 
 These are **unsigned, unnotarized development installers**. They do not carry an Apple Developer ID Application or Installer signature. macOS may prevent installation or launch under its security policy. A signed and notarized distribution is a separate future step; this build does not change system security settings.
 
 Quit an existing SciSlide window before installing an update. Both architectures use the same application name and installation location; install only the matching one. Open SciSlide from Applications after installation.
+
+## Command-line update downloads
+
+v0.6.3 includes a launcher inside the installed app:
+
+```sh
+/Applications/SciSlide.app/Contents/Resources/scislide-cli/bin/scislide --check-update
+/Applications/SciSlide.app/Contents/Resources/scislide-cli/bin/scislide --update
+```
+
+For a shorter command in the current terminal, define:
+
+```sh
+alias scislide='/Applications/SciSlide.app/Contents/Resources/scislide-cli/bin/scislide'
+scislide --update
+```
+
+The CLI chooses the `.pkg` matching the running app's arm64/x64 architecture, verifies SHA-256, and saves it in `~/Downloads/SciSlide-updates`. Use `--output DIR` for another destination or `--stable` to exclude development prereleases. It prints the installer path and installation command for you to run. A portable app folder also provides `bin/scislide`. The editor stays closed during the check/download, and no extra Node installation is needed. Published v0.6.2 installers predate this feature.
 
 ## Use the editor
 
@@ -14,11 +32,15 @@ Drag a slide thumbnail above or below another thumbnail to reorder slides. A tea
 
 Double-click text or press **Enter** on a selected text box to edit directly on the slide. **Enter** adds a line, **⌘+Enter** or clicking outside applies one undoable edit, and **Escape** cancels. Korean IME input and plain-text paste are supported. Write `$\chi$` or `\(\frac{1}{2}\)` inside text to render inline MathJax formulas. They match the surrounding font's lowercase height, retain their mathematical baseline and remain vectors in PDF/SVG; editing and native saves preserve the original syntax.
 
+Press **⌘+Shift+M** in canvas or Inspector text to insert/edit an inline equation with a live LaTeX preview, or double-click a rendered formula. Apply preserves the surrounding prose; Escape returns to the previous text selection. Text frames grow to fit their content using loaded-font metrics; moving/resizing preserves rotated placement. Inspector text size and frame width/height fields commit on Enter or blur and cancel a pending value with Escape.
+
+With the canvas focused, **Tab / Shift+Tab** selects eligible objects/groups in stacking order and follows normal UI focus order at the boundaries. **⌘+Option+I / ⌘+Shift+L** toggle and focus Inspector / Objects & Layers independently. With a thumbnail focused, **⌘+Option+Up / Down** moves it one position and **⌘+Option+Shift+Up / Down** moves it first/last. Duplicate targets the focused thumbnail even with a retained canvas selection. Text fields, dialogs and playback retain their input; native menu availability follows focus, selection and busy state.
+
 Choose **Figure** to import PNG, JPEG, sanitized SVG or a selected PDF page. PDF preview/selection embeds a high-resolution PNG; original PDF vector preservation is not implemented. **CROP & INSET** lets you apply/reset a reversible crop or create an independent enlarged inset. **Replace figure** preserves the frame and normalized crop. Selecting a Keynote White photo/video placeholder before **Figure / Video** fills its frame; photo crops remain adjustable. Video layouts use imported MP4/WebM, with no live-camera feed.
 
 Choose **Draw rectangle**, **Draw ellipse**, **Draw line** or **Draw arrow**, then drag on the canvas. Shift constrains squares/circles or line direction; Escape cancels drawing. Selected lines/arrows have editable endpoint handles. The Inspector provides solid/dashed/dotted strokes, stroke width/color, no-fill outlines and arrowheads at the start, end or both ends. Shapes export as vectors in PDF/SVG.
 
-Shift+click or Command+click selects objects for **Group objects / Ungroup objects**; **⌘+Option+G** groups and **⌘+Option+Shift+G** ungroups. Flat groups move together and duplicate independently. Ungroup before resizing, rotating or editing an individual member's endpoints. Use six-way alignment and equal-gap distribution to arrange a selection. Automatic guides appear while dragging/resizing; **Option** bypasses them. **Snap to 20 px grid** takes precedence over object guides. The **OBJECTS & LAYERS** list selects hidden or covered objects and controls visibility, locks and order. Object copy/cut/paste works across slides or decks in one session. Nested groups, whole-group scaling/rotation, attached connectors and freehand paths remain planned.
+Shift+click or Command+click selects objects for **Group objects / Ungroup objects**; **⌘+Option+G** groups and **⌘+Option+Shift+G** ungroups. Flat groups move together and duplicate independently. Ungroup before resizing, rotating or editing an individual member's endpoints. Use equal-gap distribution and Inspector text alignment to arrange a selection. Automatic guides appear while dragging/resizing; **Option** bypasses them. **Snap to 20 px grid** takes precedence over object guides. The **OBJECTS & LAYERS** list selects hidden or covered objects and controls visibility, locks and order. Object copy/cut/paste works across slides or decks in one session. Nested groups, whole-group scaling/rotation, attached connectors and freehand paths remain planned.
 
 Keyboard shortcuts use **Command** and **Option**, following [Apple's Keynote shortcuts](https://support.apple.com/ko-kr/guide/keynote/tanfde4a3e6d/mac) for supported actions. **⌘+O / ⌘+S / ⌘+Option+Shift+S** open/save/save as; **⌘+Z / ⌘+Shift+Z** undo/redo. **⌘+Option+P** presents from the canvas. **⌘+Option+Shift+P / ⌘+Option+S** export PDF/current-slide SVG. **⌘+Shift+/** opens shortcut help.
 
@@ -54,7 +76,7 @@ The editor is a prototype. Modern Korean body text is supported through bundled 
 Each installer has a matching `.sha256` file. To verify a download, put the installer and checksum file in the same folder and run:
 
 ```sh
-shasum -a 256 -c SciSlide-0.6.2-macos-arm64-unsigned.pkg.sha256
+shasum -a 256 -c SciSlide-0.6.3-macos-arm64-unsigned.pkg.sha256
 ```
 
 Use the x64 filename for an Intel installer. This checks that the file matches its accompanying checksum; it does not certify the publisher or replace Apple's code signing and notarization.
