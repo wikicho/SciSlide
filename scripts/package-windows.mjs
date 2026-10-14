@@ -253,8 +253,14 @@ export async function packageWindows(options = {}, dependencies = {}) {
   const pkg = JSON.parse(
     await readFile(path.join(root, "package.json"), "utf8"),
   );
-  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(pkg.version)) {
-    throw new Error("The package version must be a safe semantic version.");
+  if (
+    !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?(?:-[0-9A-Za-z.-]+)?$/.test(
+      pkg.version,
+    )
+  ) {
+    throw new Error(
+      "The package version must be a safe semantic version with an optional numeric revision.",
+    );
   }
   const compiler = target.portableOnly
     ? null

@@ -1,18 +1,18 @@
-# SciSlide 0.6.3 — Linux x64
+# SciSlide 0.6.3.1 — Linux x64
 
 The Debian package contains SciSlide and its Electron runtime for **x64 (Intel/AMD 64-bit)** Linux. Debian calls this architecture **amd64**. Ubuntu 24.04 x64 is the packaging target; other Debian/Ubuntu releases need separate desktop validation. MathJax editing uses bundled fonts and equation resources without Node.js, TeX or a development server.
 
-Version **0.6.3** adds canvas object traversal, pane toggles, inline equation editing, a Local LaTeX compile shortcut and verified installer downloads. LibreOffice Impress-style shortcuts and drag-and-drop slide ordering remain available. Source builds and the published Debian package use the same editor version.
+Version **0.6.3.1** adds the headless agent CLI and four-part update version support. The canvas object traversal, pane toggles, inline equation editing, Local LaTeX compile shortcut and verified installer downloads introduced in v0.6.3 remain available. LibreOffice Impress-style shortcuts and drag-and-drop slide ordering remain available. Source builds and the published Debian package use the same editor version.
 
 ## Install, launch and remove
 
-Download the `.deb` and its matching `.sha256` from the [v0.6.3 development prerelease](https://github.com/wikicho/SciSlide/releases/tag/v0.6.3), or download a Linux workflow artifact and extract it first. Keep Linux Debian distribution files in `release/linux-deb/` when working in the source checkout. A local source build uses that directory by default.
+Download the `.deb` and its matching `.sha256` from the [v0.6.3.1 development prerelease](https://github.com/wikicho/SciSlide/releases/tag/v0.6.3.1), or download a Linux workflow artifact and extract it first. Keep Linux Debian distribution files in `release/linux-deb/` when working in the source checkout. A local source build uses that directory by default.
 
 From the folder containing both files:
 
 ```sh
-sha256sum -c SciSlide-0.6.3-linux-x64.deb.sha256
-sudo apt install ./SciSlide-0.6.3-linux-x64.deb
+sha256sum -c SciSlide-0.6.3.1-linux-x64.deb.sha256
+sudo apt install ./SciSlide-0.6.3.1-linux-x64.deb
 scislide
 ```
 
@@ -57,8 +57,8 @@ The command builds the editor and creates:
 
 ```text
 release/linux-deb/SciSlide-linux-x64/
-release/linux-deb/SciSlide-0.6.3-linux-x64.deb
-release/linux-deb/SciSlide-0.6.3-linux-x64.deb.sha256
+release/linux-deb/SciSlide-0.6.3.1-linux-x64.deb
+release/linux-deb/SciSlide-0.6.3.1-linux-x64.deb.sha256
 release/linux-deb/LINUX-INSTALL.md
 ```
 
@@ -68,14 +68,20 @@ Verify and install a current local build with:
 
 ```sh
 cd release/linux-deb
-sha256sum -c SciSlide-0.6.3-linux-x64.deb.sha256
-sudo apt install ./SciSlide-0.6.3-linux-x64.deb
+sha256sum -c SciSlide-0.6.3.1-linux-x64.deb.sha256
+sudo apt install ./SciSlide-0.6.3.1-linux-x64.deb
 scislide
 ```
 
 The manually started **Linux x64 development packages** workflow runs on Ubuntu 24.04, checks the editor/desktop tests, builds the package, verifies SHA-256, checks `Package: scislide` and `Architecture: amd64`, and extracts the package to verify its launcher, desktop entry, application archive and x86-64 executable. Its artifacts are retained for 30 days. These are packaging checks; the workflow does not install the package or validate the complete editor journey on a physical Ubuntu desktop. TeX integration fixtures run only when the required tools and isolation are available.
 
 By default the Linux-only workflow uploads an artifact. Its optional publication uses a new `v<package-version>-linux-dev.<positive-number>` tag and refuses existing tags/releases. The separate **SciSlide development release** workflow builds all five macOS/Windows/Linux distributions and publishes one `v<package-version>` development prerelease with checksums and platform guides when versioned release notes change on `main`. Manual dispatch also supports a requested `main` commit, with optional publication defaulting off.
+
+**Upgrading from v0.6.3:** download and install v0.6.3.1 directly from the release page. The old update CLI accepts only three-part versions and ignores this four-part release tag. The v0.6.3.1 CLI supports both three-part and four-part versions; installer execution remains a separate step.
+
+## Headless agent commands
+
+v0.6.3.1 includes `schema`, `create`, `inspect`, `validate`, `apply`, `unpack`, `pack` and `export`. Run `scislide --cli schema` to discover native objects and edit operations. These commands return JSON and create/edit `.scislide` documents or export SVG/PDF without an editor window or a separate Node installation. Use the launcher path above when `scislide` is not on PATH. See the [agent CLI guide](https://github.com/wikicho/SciSlide/blob/v0.6.3.1/docs/AGENT_CLI.md) for examples and export limits.
 
 ## Use the editor
 

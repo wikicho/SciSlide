@@ -1,4 +1,4 @@
-# SciSlide 0.6.3 — Linux x64 standalone app
+# SciSlide 0.6.3.1 — Linux x64 standalone app
 
 Run the `scislide` executable in this folder. Keep the Electron runtime files together. Node.js, TeX and a development server are not required for MathJax editing.
 
@@ -6,11 +6,17 @@ Run the `scislide` executable in this folder. Keep the Electron runtime files to
 ./scislide
 ```
 
-For system installation, the separate `SciSlide-0.6.3-linux-x64.deb` adds a desktop launcher and icon. Install it with `sudo apt install ./SciSlide-0.6.3-linux-x64.deb`, then launch `scislide`. Ubuntu 24.04 x64 is the packaging target; Debian calls the architecture `amd64`. No SciSlide APT repository or Snap package is currently provided.
+For system installation, the separate `SciSlide-0.6.3.1-linux-x64.deb` adds a desktop launcher and icon. Install it with `sudo apt install ./SciSlide-0.6.3.1-linux-x64.deb`, then launch `scislide`. Ubuntu 24.04 x64 is the packaging target; Debian calls the architecture `amd64`. No SciSlide APT repository or Snap package is currently provided.
 
 ## Update CLI
 
 Portable builds include `bin/scislide`; Debian packages expose it as `scislide`. Run `scislide --check-update` to check only, or `scislide --update` to download a newer matching installer from GitHub Releases. The default destination is `~/Downloads/SciSlide-updates`; `--output DIR` changes it. Development prereleases are included unless `--stable` is specified. SHA-256 is verified before success, and the CLI prints the installer path and installation command. Installation remains a separate step. The bundled runtime handles the CLI without opening an editor or requiring Node.js. Published v0.6.2 packages predate this feature.
+
+**Upgrading from v0.6.3:** download and install v0.6.3.1 directly from the release page. The old update CLI accepts only three-part versions and ignores this four-part release tag. The v0.6.3.1 CLI supports both three-part and four-part versions; installer execution remains a separate step.
+
+## Headless agent commands
+
+v0.6.3.1 includes `schema`, `create`, `inspect`, `validate`, `apply`, `unpack`, `pack` and `export`. Run `scislide --cli schema` to discover native objects and edit operations. These commands return JSON and create/edit `.scislide` documents or export SVG/PDF without an editor window or a separate Node installation. Use the launcher path above when `scislide` is not on PATH. See the [agent CLI guide](https://github.com/wikicho/SciSlide/blob/v0.6.3.1/docs/AGENT_CLI.md) for examples and export limits.
 
 ## Start and edit a presentation
 

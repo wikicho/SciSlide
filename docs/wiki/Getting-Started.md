@@ -1,10 +1,10 @@
 # Getting started
 
-SciSlide is a scientific presentation editor for editable mathematical notation, figures and vector PDF/SVG output. Version **0.6.3** is a working prototype, available as an Electron desktop app and a browser editor.
+SciSlide is a scientific presentation editor for editable mathematical notation, figures and vector PDF/SVG output. Version **0.6.3.1** is a working prototype, available as an Electron desktop app and a browser editor.
 
 ## 1. Install or launch
 
-Download the package for your operating system from the [v0.6.3 release](https://github.com/wikicho/SciSlide/releases/tag/v0.6.3). See [[Installation]] for architecture selection, checksums and platform instructions. Node.js and TeX are **not required** to use a packaged app with MathJax.
+Download the package for your operating system from the [v0.6.3.1 release](https://github.com/wikicho/SciSlide/releases/tag/v0.6.3.1). See [[Installation]] for architecture selection, checksums and platform instructions. Node.js and TeX are **not required** to use a packaged app with MathJax.
 
 To run the source checkout instead, see [[Development]]. The browser editor shares the editing interface, but installed-tool integration requires Electron.
 

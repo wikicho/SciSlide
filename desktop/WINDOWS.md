@@ -1,4 +1,4 @@
-# SciSlide 0.6.3 — Windows x64
+# SciSlide 0.6.3.1 — Windows x64
 
 This development build contains the **x64 (Intel/AMD 64-bit)** SciSlide app for Windows 10 or later. Windows 11 x64 is the intended desktop target. Node.js, a development server and TeX are not required for MathJax editing. Physical Windows 10/11 desktop validation is still a release requirement.
 
@@ -6,9 +6,9 @@ This development build contains the **x64 (Intel/AMD 64-bit)** SciSlide app for 
 
 Use `release/windows-x64/` for local Windows package output. A Linux or macOS build produces the portable ZIP only; the setup executable requires a native Windows build with Inno Setup. The commands below describe each distribution when it is available.
 
-Run `SciSlide-0.6.3-windows-x64-setup-unsigned.exe` to install for your current user. The default destination is `%LOCALAPPDATA%\Programs\SciSlide`, with a Start menu shortcut. Administrator privileges are not requested. Quit SciSlide before installing an update. Remove it through Windows' installed-app settings. Uninstallation does not remove presentations you saved elsewhere or the app's user-data folder.
+Run `SciSlide-0.6.3.1-windows-x64-setup-unsigned.exe` to install for your current user. The default destination is `%LOCALAPPDATA%\Programs\SciSlide`, with a Start menu shortcut. Administrator privileges are not requested. Quit SciSlide before installing an update. Remove it through Windows' installed-app settings. Uninstallation does not remove presentations you saved elsewhere or the app's user-data folder.
 
-Alternatively, extract **all** of `SciSlide-0.6.3-windows-x64-portable.zip`, then open `SciSlide-win32-x64\scislide.exe`. Keep the runtime files, DLLs and `resources` directory together. The portable edition runs without installation, but still uses Electron's ordinary per-user app-data directory; recovery data is not stored beside the executable.
+Alternatively, extract **all** of `SciSlide-0.6.3.1-windows-x64-portable.zip`, then open `SciSlide-win32-x64\scislide.exe`. Keep the runtime files, DLLs and `resources` directory together. The portable edition runs without installation, but still uses Electron's ordinary per-user app-data directory; recovery data is not stored beside the executable.
 
 Both distributions are **unsigned development builds**. Windows security policies may block installation or launch. Code signing and publisher reputation are later release work; these builds do not change system security settings. The application binary is x64, and the installer uses an x64 bootstrap executable. A separate native ARM64 or 32-bit Windows edition is not provided.
 
@@ -29,6 +29,12 @@ scislide --update
 ```
 
 Portable distributions include `SciSlide-win32-x64\bin\scislide.cmd`. The CLI selects a newer x64 setup installer from GitHub Releases, saves it in `~/Downloads/SciSlide-updates`, verifies SHA-256 and prints its installation command. Use `--output DIR` to change the destination or `--stable` to exclude development prereleases. Run the installer separately after closing SciSlide. No editor window or extra Node installation is needed. Published v0.6.2 distributions predate this feature.
+
+**Upgrading from v0.6.3:** download and install v0.6.3.1 directly from the release page. The old update CLI accepts only three-part versions and ignores this four-part release tag. The v0.6.3.1 CLI supports both three-part and four-part versions; installer execution remains a separate step.
+
+## Headless agent commands
+
+v0.6.3.1 includes `schema`, `create`, `inspect`, `validate`, `apply`, `unpack`, `pack` and `export`. Run `scislide --cli schema` to discover native objects and edit operations. These commands return JSON and create/edit `.scislide` documents or export SVG/PDF without an editor window or a separate Node installation. Use the launcher path above when `scislide` is not on PATH. See the [agent CLI guide](https://github.com/wikicho/SciSlide/blob/v0.6.3.1/docs/AGENT_CLI.md) for examples and export limits.
 
 ## Use the editor
 
@@ -85,8 +91,8 @@ Bundled editable examples are in the app's `examples` folder. Copy one to your d
 Each distribution has a matching `.sha256` file. In PowerShell, compare its recorded hash with the result of:
 
 ```powershell
-Get-FileHash .\SciSlide-0.6.3-windows-x64-setup-unsigned.exe -Algorithm SHA256
-Get-Content .\SciSlide-0.6.3-windows-x64-setup-unsigned.exe.sha256
+Get-FileHash .\SciSlide-0.6.3.1-windows-x64-setup-unsigned.exe -Algorithm SHA256
+Get-Content .\SciSlide-0.6.3.1-windows-x64-setup-unsigned.exe.sha256
 ```
 
 Use the portable ZIP's filename to verify that distribution. A matching checksum detects file changes; it does not certify a publisher or replace code signing.

@@ -1,11 +1,10 @@
 /** Installed TeX compilation. Every untrusted TeX job requires OS isolation. */
-import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   access,
   mkdtemp,
   mkdir,
-  readFile,
+  open,
   realpath,
   rm,
   stat,
@@ -14,14 +13,19 @@ import {
 import { constants } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { runTexProcess as run } from "./tex-process.mjs";
+import { macosSandboxInvocation, prepareMacosSandbox } from "./tex-macos.mjs";
 
 const MAX_SOURCE_BYTES = 64 * 1024;
 const MAX_PREAMBLE_BYTES = 32 * 1024;
 const MAX_SVG_BYTES = 2 * 1024 * 1024;
-const MAX_OUTPUT_BYTES = 512 * 1024;
+const MAX_RECORDER_BYTES = 8 * 1024 * 1024;
+const MAX_INTERMEDIATE_BYTES = 32 * 1024 * 1024;
+const MAX_RECORDED_INPUTS = 8192;
+const MAX_DEPENDENCIES = 2048;
 const TIMEOUT_MS = 20_000;
 const MAX_CACHE_ENTRIES = 12;
-const TEMPLATE_REVISION = "scislide-local-tex-1";
+const TEMPLATE_REVISION = "scislide-local-tex-2";
 const jobs = new Map();
 const cache = new Map();
 let detection;
@@ -44,7 +48,9 @@ async function executable(name) {
           "/usr/bin",
           "/bin",
           "/usr/local/bin",
-          ...(process.platform === "darwin" ? ["/Library/TeX/texbin"] : []),
+          ...(process.platform === "darwin"
+            ? ["/Library/TeX/texbin", "/opt/homebrew/bin"]
+            : []),
           ...(process.env.PATH || "").split(path.delimiter),
         ];
   for (const directory of [...new Set(directories.filter(Boolean))]) {
@@ -60,58 +66,6 @@ async function executable(name) {
     }
   }
   return undefined;
-}
-
-function run(command, args, { cwd, env, job, timeout = TIMEOUT_MS } = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      cwd,
-      env: env || { PATH: "/usr/bin:/bin", LANG: "C.UTF-8", LC_ALL: "C.UTF-8" },
-      shell: false,
-      detached: process.platform !== "win32",
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    if (job) job.child = child;
-    let output = "";
-    let bytes = 0;
-    let failure;
-    const stop = (reason) => {
-      failure ||= reason;
-      try {
-        if (process.platform !== "win32") process.kill(-child.pid, "SIGKILL");
-        else child.kill("SIGKILL");
-      } catch {
-        /* The process may already have exited. */
-      }
-    };
-    const timer = setTimeout(
-      () => stop(new Error("Local LaTeX exceeded its 20-second time limit.")),
-      timeout,
-    );
-    const collect = (chunk) => {
-      bytes += chunk.length;
-      if (bytes > MAX_OUTPUT_BYTES)
-        stop(new Error("Local LaTeX produced too much diagnostic output."));
-      else output += chunk.toString("utf8");
-    };
-    child.stdout.on("data", collect);
-    child.stderr.on("data", collect);
-    child.once("error", (error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
-    child.once("close", (code, signal) => {
-      clearTimeout(timer);
-      if (job) job.child = undefined;
-      if (job?.timedOut)
-        reject(new Error("Local LaTeX exceeded its 20-second time limit."));
-      else if (job?.cancelled)
-        reject(new Error("Local LaTeX compilation was cancelled."));
-      else if (failure) reject(failure);
-      else resolve({ code, signal, output });
-    });
-  });
 }
 
 async function runtimeMounts() {
@@ -195,7 +149,8 @@ async function inspectInstallation() {
         executable,
       ),
     );
-  const mounts = await runtimeMounts();
+  let mounts = await runtimeMounts();
+  let macos;
   const engines = [];
   const paths = { latex, xelatex, converter, bwrap, prlimit, kpsewhich };
   for (const [id, label] of [
@@ -224,7 +179,7 @@ async function inspectInstallation() {
   let sandbox = {
     available: false,
     reason:
-      "Local LaTeX currently requires Linux and bubblewrap. MathJax and saved equation previews remain available.",
+      "Isolated local LaTeX compilation is supported on Linux and macOS. MathJax and saved equation previews remain available.",
   };
   if (process.platform === "linux" && bwrap && prlimit) {
     try {
@@ -249,6 +204,16 @@ async function inspectInstallation() {
   } else if (process.platform === "linux") {
     sandbox.reason =
       "Install bubblewrap and util-linux (prlimit) to enable isolated local LaTeX compilation.";
+  } else if (process.platform === "darwin") {
+    const prepared = await prepareMacosSandbox({ executables: paths, run });
+    sandbox = {
+      available: prepared.available,
+      ...(prepared.reason ? { reason: prepared.reason } : {}),
+    };
+    if (prepared.available) {
+      macos = prepared.config;
+      mounts = macos.readRoots;
+    }
   }
   const packages = [];
   if (kpsewhich) {
@@ -294,6 +259,7 @@ async function inspectInstallation() {
     },
     paths,
     mounts,
+    macos,
   };
 }
 
@@ -364,6 +330,22 @@ function template(request) {
 
 async function sandboxRun(installation, directory, command, args, job) {
   if (job.cancelled) throw new Error("Local LaTeX compilation was cancelled.");
+  if (process.platform === "darwin") {
+    const invocation = await macosSandboxInvocation({
+      config: installation.macos,
+      directory,
+      command,
+      args,
+    });
+    if (job.cancelled)
+      throw new Error("Local LaTeX compilation was cancelled.");
+    return run(invocation.command, invocation.args, {
+      cwd: invocation.cwd,
+      env: invocation.env,
+      memoryLimitBytes: invocation.memoryLimitBytes,
+      job,
+    });
+  }
   if (!installation.mounts.some((root) => within(command, root)))
     throw new Error(
       "This TeX installation is outside supported system runtime directories.",
@@ -384,10 +366,46 @@ async function sandboxRun(installation, directory, command, args, job) {
   );
 }
 
+// Untrusted compilers can name output files. Never let a symlink or oversized
+// recorder/output become an unrestricted read by the unsandboxed parent.
+async function readRegularFile(filename, maximum) {
+  const handle = await open(
+    filename,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+  );
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || info.size > maximum)
+      throw new Error(
+        "Local LaTeX output or dependency exceeded its file limit.",
+      );
+    const bytes = Buffer.alloc(info.size + 1);
+    let read = 0;
+    while (read < bytes.length) {
+      const chunk = await handle.read(bytes, read, bytes.length - read, null);
+      if (!chunk.bytesRead) break;
+      read += chunk.bytesRead;
+    }
+    const current = await handle.stat();
+    if (read !== info.size || current.size !== info.size)
+      throw new Error(
+        "Local LaTeX output or dependency changed while reading.",
+      );
+    return bytes.subarray(0, read);
+  } finally {
+    await handle.close();
+  }
+}
+
 async function dependencies(installation, directory, recorder, job) {
   const found = new Map();
   let totalBytes = 0;
+  let recordedInputs = 0;
   async function include(filename) {
+    if (job.timedOut)
+      throw new Error("Local LaTeX exceeded its 20-second time limit.");
+    if (job.cancelled)
+      throw new Error("Local LaTeX compilation was cancelled.");
     let resolved;
     try {
       resolved = await realpath(filename);
@@ -401,27 +419,36 @@ async function dependencies(installation, directory, recorder, job) {
       return;
     const info = await stat(resolved);
     if (!info.isFile() || info.size > 32 * 1024 * 1024) return;
+    if (found.size >= MAX_DEPENDENCIES)
+      throw new Error("Local LaTeX exceeded its dependency count limit.");
     totalBytes += info.size;
     if (totalBytes > 128 * 1024 * 1024)
       throw new Error("Local LaTeX dependencies exceeded the recording limit.");
     found.set(resolved, {
       filename: resolved,
       name: resolved.replace(/^\//, ""),
-      sha256: sha256(await readFile(resolved)),
+      sha256: sha256(await readRegularFile(resolved, MAX_INTERMEDIATE_BYTES)),
     });
   }
   for (const entry of recorder.split(/\r?\n/)) {
     if (!entry.startsWith("INPUT ")) continue;
+    if (++recordedInputs > MAX_RECORDED_INPUTS)
+      throw new Error("Local LaTeX exceeded its recorder input count limit.");
     const filename = entry.slice(6);
     if (path.isAbsolute(filename)) await include(filename);
   }
   if (installation.engine === "xelatex") {
     // XeTeX's recorder omits native font files, but XDV embeds their resolved paths.
     // Only mounted system files can become dependency records.
-    const xdv = await readFile(path.join(directory, "equation.xdv"));
+    const xdv = await readRegularFile(
+      path.join(directory, "equation.xdv"),
+      MAX_INTERMEDIATE_BYTES,
+    );
     for (const match of xdv
       .toString("utf8")
-      .matchAll(/\/(?:usr|var|opt)\/[^\x00-\x1f]*?\.(?:otf|ttf|ttc|pfb)/g))
+      .matchAll(
+        /\/(?:usr|var|opt|Library|System\/Library)\/[^\x00-\x1f]*?\.(?:otf|ttf|ttc|pfb)/g,
+      ))
       await include(match[0]);
   }
   for (const filename of [
@@ -455,7 +482,9 @@ async function dependencies(installation, directory, recorder, job) {
     const mappedFiles = new Set();
     for (const [filename, dependency] of found) {
       if (!dependency.name.endsWith("/psfonts.map")) continue;
-      const map = await readFile(filename, "utf8");
+      const map = (
+        await readRegularFile(filename, MAX_INTERMEDIATE_BYTES)
+      ).toString("utf8");
       for (const line of map.split(/\r?\n/)) {
         if (!fontNames.includes(line.trim().split(/\s+/)[0])) continue;
         for (const match of line.matchAll(
@@ -479,11 +508,18 @@ async function dependencies(installation, directory, recorder, job) {
   return [...found.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-async function cacheStillValid(entry) {
+async function cacheStillValid(entry, installation) {
   try {
-    for (const dependency of entry.dependencies)
-      if (sha256(await readFile(dependency.filename)) !== dependency.sha256)
+    for (const dependency of entry.dependencies) {
+      const resolved = await realpath(dependency.filename);
+      if (
+        resolved !== dependency.filename ||
+        !installation.mounts.some((root) => within(resolved, root)) ||
+        sha256(await readRegularFile(resolved, MAX_INTERMEDIATE_BYTES)) !==
+          dependency.sha256
+      )
         return false;
+    }
     return true;
   } catch {
     return false;
@@ -556,7 +592,7 @@ function normalizedSvg(source, fingerprint) {
   return { svg, width, height };
 }
 
-/** Compile an equation using installed system packages, inside a fresh Linux sandbox. */
+/** Compile an equation using installed system packages in an isolated OS worker. */
 export async function compileTex(request) {
   validateRequest(request);
   if (jobs.has(request.jobId))
@@ -594,20 +630,23 @@ export async function compileTex(request) {
       }),
     );
     const cached = cache.get(key);
-    if (cached && (await cacheStillValid(cached))) {
+    if (cached && (await cacheStillValid(cached, installation))) {
       if (job.cancelled)
         throw new Error("Local LaTeX compilation was cancelled.");
       cache.delete(key);
       cache.set(key, cached);
       return structuredClone(cached.result);
     }
-    directory = await mkdtemp(path.join(os.tmpdir(), "scislide-tex-"));
+    directory = await realpath(
+      await mkdtemp(path.join(os.tmpdir(), "scislide-tex-")),
+    );
     for (const name of [
       "home",
       "texmf-home",
       "texmf-var",
       "texmf-config",
       "cache",
+      "tmp",
     ])
       await mkdir(path.join(directory, name));
     await writeFile(path.join(directory, "equation.tex"), template(request), {
@@ -645,7 +684,7 @@ export async function compileTex(request) {
         "--exact-bbox",
         "--bbox=min",
         "--page=1",
-        "--cache=/work/cache",
+        `--cache=${process.platform === "darwin" ? path.join(directory, "cache") : "/work/cache"}`,
         "--output=equation.svg",
         request.engine === "xelatex" ? "equation.xdv" : "equation.dvi",
       ],
@@ -660,7 +699,12 @@ export async function compileTex(request) {
     const recorded = await dependencies(
       compiler,
       directory,
-      await readFile(path.join(directory, "equation.fls"), "utf8"),
+      (
+        await readRegularFile(
+          path.join(directory, "equation.fls"),
+          MAX_RECORDER_BYTES,
+        )
+      ).toString("utf8"),
       job,
     );
     if (job.cancelled)
@@ -673,10 +717,8 @@ export async function compileTex(request) {
       JSON.stringify({ key, dependencies: publicDependencies }),
     );
     const svgFile = path.join(directory, "equation.svg");
-    if ((await stat(svgFile)).size > MAX_SVG_BYTES)
-      throw new Error("The equation SVG exceeded the 2 MB limit.");
     const rendered = normalizedSvg(
-      await readFile(svgFile, "utf8"),
+      (await readRegularFile(svgFile, MAX_SVG_BYTES)).toString("utf8"),
       fingerprint,
     );
     const warnings = [

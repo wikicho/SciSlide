@@ -1,6 +1,6 @@
 # Equations and fonts
 
-SciSlide **0.6.3** offers bundled **MathJax** rendering and explicit compilation through **system-installed LaTeX/XeLaTeX on supported Linux systems**. Inline formulas in ordinary text always use MathJax.
+SciSlide **0.6.3.1** offers bundled **MathJax** rendering and explicit compilation through **system-installed LaTeX/XeLaTeX on supported Linux and macOS systems**. Inline formulas in ordinary text always use MathJax.
 
 ## Equation objects
 
@@ -53,9 +53,9 @@ Formulas use the deck's equation font and the text box's size/color. They share 
 
 Use `\$` for a literal dollar sign. Empty/unmatched delimiters and standalone `$$...$$` spans remain literal; use an Equation object for display mathematics. Invalid inline formulas show a diagnostic and prevent PDF/SVG export with the object's name. Installed LaTeX packages apply only to separate Local LaTeX equation objects.
 
-## System-installed LaTeX on Linux
+## System-installed LaTeX on Linux and macOS
 
-Local compilation requires system-installed `latex` or `xelatex`, `dvisvgm`, `kpsewhich`, **bubblewrap 0.9.0 or later** and `prlimit`, plus functioning isolation. See [[Installation]] for dependencies and [[Troubleshooting]] if the controls are disabled. macOS/Windows local compilation is not implemented; MathJax remains available there.
+Both platforms require system-installed `latex` or `xelatex`, `dvisvgm`, `kpsewhich` and functioning isolation. Linux also needs **bubblewrap 0.9.0 or later** and `prlimit`. v0.6.3.1 macOS packages use MacTeX/BasicTeX and the built-in `sandbox-exec`; previously published v0.6.3 packages do not contain this worker. Actual file/network/exec/fork containment probes must pass before compilation is enabled. Personal home package/font paths remain blocked. Windows local compilation is not implemented; MathJax remains available. See [[Installation]] and [[Troubleshooting]].
 
 Choose **Local LaTeX · Installed packages**, select the **TeX engine**, enter **PREAMBLE** and **LATEX SOURCE** separately, then choose **Compile with LaTeX → Apply equation**. Do not paste a complete document containing `\documentclass` or `\begin{document}`.
 

@@ -1,11 +1,14 @@
 {
   "name": "scislide",
-  "version": "0.6.3",
+  "version": "0.6.3.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/build-cli.mjs",
+    "build:cli": "node scripts/build-cli.mjs",
+    "cli": "node desktop/update-cli.mjs --cli",
+    "test:cli": "vitest run tests/agent-commands.test.ts tests/agent-cli.test.ts tests/agent-render.test.ts",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "test:release": "node --test --test-isolation=none tests/release-publish.test.mjs",
@@ -13,7 +16,7 @@
     "desktop": "pnpm build && electron .",
     "desktop:dev": "node scripts/desktop-dev.mjs",
     "desktop:package": "pnpm build && node scripts/package-desktop.mjs",
-    "test:desktop": "node --test --test-isolation=none desktop/host-utils.test.cjs desktop/update-cli.test.mjs tests/desktop-update.test.mjs tests/desktop-tex.test.mjs tests/desktop-package.test.mjs tests/windows-package.test.mjs tests/linux-package.test.mjs tests/desktop-ai.test.mjs tests/desktop-pdf-policy.test.mjs",
+    "test:desktop": "node --test --test-isolation=none desktop/host-utils.test.cjs desktop/update-cli.test.mjs tests/desktop-update.test.mjs tests/desktop-tex.test.mjs tests/desktop-tex-macos.test.mjs tests/desktop-package.test.mjs tests/windows-package.test.mjs tests/linux-package.test.mjs tests/desktop-ai.test.mjs tests/desktop-pdf-policy.test.mjs",
     "desktop:package:mac": "pnpm build && node scripts/package-macos.mjs",
     "desktop:package:win": "pnpm build && node scripts/package-windows.mjs",
     "desktop:package:linux": "pnpm build && node scripts/package-linux.mjs"

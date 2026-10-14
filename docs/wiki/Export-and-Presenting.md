@@ -1,6 +1,6 @@
 # Export and presenting
 
-SciSlide 0.6.3 exports **all slides as PDF** or **the current slide as SVG**. Save a `.scislide` file as well if you need to continue editing: PDF and SVG exports do not preserve the native editable deck.
+SciSlide 0.6.3.1 exports **all slides as PDF** or **the current slide as SVG**. Save a `.scislide` file as well if you need to continue editing: PDF and SVG exports do not preserve the native editable deck.
 
 ## Export formats
 

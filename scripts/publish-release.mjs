@@ -70,7 +70,7 @@ export async function verifyReleaseFiles({
   directory,
   version,
 }) {
-  require(/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$/.test(
+  require(/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*))?(?:-[0-9A-Za-z.-]+)?$/.test(
     version,
   ), "Invalid release version");
   const binaries = new Map([

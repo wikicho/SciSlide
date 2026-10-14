@@ -1,6 +1,8 @@
 # Troubleshooting
 
-These notes describe SciSlide **0.6.3**. Include your operating system, CPU architecture, app version, the failing action and exact error when opening a [GitHub issue](https://github.com/wikicho/SciSlide/issues). A small presentation that reproduces the problem helps; remove private content before sharing it.
+These notes describe SciSlide **0.6.3.1**. Include your operating system, CPU architecture, app version, the failing action and exact error when opening a [GitHub issue](https://github.com/wikicho/SciSlide/issues). A small presentation that reproduces the problem helps; remove private content before sharing it.
+
+**Upgrading from v0.6.3:** download and install v0.6.3.1 directly from the release page. The old update CLI accepts only three-part versions and ignores this four-part release tag. The v0.6.3.1 CLI supports both three-part and four-part versions; installer execution remains a separate step.
 
 ## Installation or launch is blocked
 
@@ -14,7 +16,9 @@ Double-click a text object, or select it and press **Enter**. **Command/Ctrl+Ent
 
 ## Local LaTeX is unavailable
 
-Compilation is supported **only on Linux**. macOS and Windows may detect TeX executables, but their compile worker is not implemented. Browser editing uses MathJax or saved vector results.
+v0.6.3.1 packages support compilation on **Linux and macOS**. Earlier v0.6.3 installers predate the macOS worker; install the new package directly. Windows may detect TeX executables, but its compile worker is not implemented. Browser editing uses MathJax or saved vector results.
+
+On macOS, check that MacTeX/BasicTeX provides `latex` or `xelatex`, `dvisvgm` and `kpsewhich`. The standard `/Library/TeX/texbin` path is checked automatically. The built-in `sandbox-exec` must pass the app’s containment probes. If macOS policy or a future OS removes or blocks it, compilation stays disabled and displays the failing check. No home package/font access or shell escape is enabled.
 
 Linux needs `latex` or `xelatex`, `dvisvgm`, `kpsewhich`, **bubblewrap 0.9.0 or later**, `prlimit` and working isolation. Ubuntu 22.04's default bubblewrap is too old for this worker. Ubuntu 24.04 is the target. For a Debian/Ubuntu setup:
 

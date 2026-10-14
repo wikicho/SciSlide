@@ -23,7 +23,7 @@ const sha = "a".repeat(40);
 const repo = "wikicho/SciSlide";
 const execute = promisify(execFile);
 
-async function fixture(t) {
+async function fixture(t, version = "0.6.0") {
   const root = await mkdtemp(path.join(os.tmpdir(), "scislide-release-test-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const directory = path.join(root, "publish");
@@ -150,6 +150,19 @@ test("release verification requires all 13 source-matching files and computes th
     verifyReleaseFiles({ ...options, version }),
     /exactly the 13/,
   );
+});
+
+test("release verification accepts four-part revisions and rejects ambiguous numeric components", async (t) => {
+  const version = "0.6.3.1";
+  const options = await fixture(t, version);
+  const files = await verifyReleaseFiles({ ...options, version });
+  assert.equal(files.size, 13);
+  assert.ok(files.has(`SciSlide-${version}-macos-arm64-unsigned.pkg`));
+  for (const invalid of ["0.6.3.01", "0.6.3.1.2", "0.06.3.1"])
+    await assert.rejects(
+      verifyReleaseFiles({ ...options, version: invalid }),
+      /Invalid release version/,
+    );
 });
 
 test("checksums cannot conceal a wrong Windows architecture and guides must match source", async (t) => {

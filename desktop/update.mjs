@@ -33,23 +33,25 @@ const requireValue = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 
-/** Strict SemVer; numeric components stay strings to avoid precision loss. */
+/** SemVer with an optional numeric revision; keep numbers as strings for precision. */
 export function parseVersion(input) {
-  if (typeof input !== "string" || input.length > 256) return null;
+  if (typeof input !== "string" || input.length > 256 || /[\r\n]/.test(input))
+    return null;
   const match = input.match(
-    /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/,
+    /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/,
   );
   if (!match) return null;
-  const prerelease = match[4]?.split(".") ?? [];
+  const prerelease = match[5]?.split(".") ?? [];
   if (prerelease.some((value) => /^\d+$/.test(value) && /^0\d/.test(value)))
     return null;
-  const core = match.slice(1, 4).join(".");
+  const core = match.slice(1, match[4] === undefined ? 4 : 5).join(".");
   return {
     major: match[1],
     minor: match[2],
     patch: match[3],
+    revision: match[4] ?? "0",
     prerelease,
-    build: match[5] ?? "",
+    build: match[6] ?? "",
     core,
     version: input.replace(/^v/, ""),
   };
@@ -68,8 +70,11 @@ function decimalCompare(a, b) {
 export function compareVersions(a, b) {
   const left = parseVersion(a),
     right = parseVersion(b);
-  requireValue(left && right, "SciSlide versions must use valid SemVer.");
-  for (const key of ["major", "minor", "patch"]) {
+  requireValue(
+    left && right,
+    "SciSlide versions must use valid SemVer with an optional numeric revision.",
+  );
+  for (const key of ["major", "minor", "patch", "revision"]) {
     const difference = decimalCompare(left[key], right[key]);
     if (difference) return difference;
   }
@@ -213,7 +218,7 @@ export function selectUpdateRelease(
 ) {
   requireValue(
     parseVersion(currentVersion),
-    "The installed SciSlide version is not valid SemVer.",
+    "The installed SciSlide version is not valid SemVer with an optional numeric revision.",
   );
   checkTarget(platform, arch);
   requireValue(
@@ -465,7 +470,7 @@ export async function checkForUpdate({
 } = {}) {
   requireValue(
     parseVersion(currentVersion),
-    "The installed SciSlide version is not valid SemVer.",
+    "The installed SciSlide version is not valid SemVer with an optional numeric revision.",
   );
   checkTarget(platform, arch);
   const releases = [];

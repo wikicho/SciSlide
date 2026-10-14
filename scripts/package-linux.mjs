@@ -24,6 +24,7 @@ const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 const run = promisify(execFile);
 const inputs = [
   "dist",
+  "dist-cli",
   "desktop",
   "third-party-licenses",
   "examples",
@@ -217,8 +218,14 @@ export async function packageLinux(options = {}, dependencies = {}) {
   const pkg = JSON.parse(
     await readFile(path.join(root, "package.json"), "utf8"),
   );
-  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$/.test(pkg.version))
-    throw new Error("The package version must be a safe semantic version.");
+  if (
+    !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$/.test(
+      pkg.version,
+    )
+  )
+    throw new Error(
+      "The package version must be a safe semantic version with an optional numeric revision.",
+    );
   const usage = await readFile(path.join(root, "desktop", "LINUX.md"));
   const icon = await readFile(path.join(root, "desktop", "linux-icon.svg"));
   const execute = dependencies.run ?? run;
@@ -262,6 +269,10 @@ export async function packageLinux(options = {}, dependencies = {}) {
       "package.json",
       "desktop/update-cli.mjs",
       "desktop/update.mjs",
+      "agent.cjs",
+      "THIRD_PARTY_NOTICES.txt",
+      "fonts/inter-400.ttf",
+      "fonts/nanum-gothic-400.ttf",
     ]) {
       const stat = await exists(
         path.join(appFolder, "resources/scislide-cli", filename),
@@ -271,6 +282,14 @@ export async function packageLinux(options = {}, dependencies = {}) {
           `The Linux app is missing its CLI runtime: ${filename}`,
         );
     }
+    const cliFonts = path.join(appFolder, "resources/scislide-cli/fonts");
+    const fontDirectory = await exists(cliFonts);
+    if (
+      !fontDirectory?.isDirectory() ||
+      fontDirectory.isSymbolicLink() ||
+      !(await readdir(cliFonts)).length
+    )
+      throw new Error("The Linux app is missing its CLI fonts runtime.");
     // Reject every source link before any README write or payload copy.
     await walkPayload(appFolder);
     const tree = path.join(stage, "package");

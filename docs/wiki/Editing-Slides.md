@@ -1,6 +1,6 @@
 # Editing slides
 
-These instructions describe SciSlide **0.6.3**. Start with [[Getting-Started]] or see [[Keyboard-Shortcuts]] for platform-specific commands.
+These instructions describe SciSlide **0.6.3.1**. Start with [[Getting-Started]] or see [[Keyboard-Shortcuts]] for platform-specific commands.
 
 ## Slides and layouts
 

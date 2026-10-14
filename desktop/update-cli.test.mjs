@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import vm from "node:vm";
 import test from "node:test";
 import { runCli } from "./update-cli.mjs";
@@ -144,13 +144,26 @@ for (const isPackaged of [true, false]) {
       process: {
         platform: "linux",
         env: {},
+        resourcesPath: "/temporary resources",
         argv: ["scislide", ...(isPackaged ? [] : ["."]), ...args],
       },
       __dirname: path.dirname(entry),
       URL,
       console,
       testImport: async (url) => {
-        assert.equal(url, new URL("./update-cli.mjs", import.meta.url).href);
+        assert.equal(
+          url,
+          isPackaged
+            ? pathToFileURL(
+                path.join(
+                  "/temporary resources",
+                  "scislide-cli",
+                  "desktop",
+                  "update-cli.mjs",
+                ),
+              ).href
+            : new URL("./update-cli.mjs", import.meta.url).href,
+        );
         return {
           runCli: async (receivedArgs, options) => {
             invocations.push({ args: [...receivedArgs], options });

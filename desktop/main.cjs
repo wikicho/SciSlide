@@ -470,12 +470,38 @@ async function createMainWindow() {
 }
 
 const cliArguments = (process.argv ?? []).slice(app.isPackaged ? 1 : 2);
-const updateCommand = cliArguments.some((argument) =>
-  ["--update", "--check-update", "--help", "-h"].includes(argument),
-);
+const updateCommand =
+  cliArguments.some((argument) =>
+    [
+      "--update",
+      "--check-update",
+      "--help",
+      "-h",
+      "--version",
+      "--cli",
+    ].includes(argument),
+  ) ||
+  [
+    "schema",
+    "create",
+    "inspect",
+    "validate",
+    "apply",
+    "unpack",
+    "pack",
+    "export",
+  ].includes(cliArguments[0]);
 if (updateCommand) {
-  // CLI checks run independently of an open editor and never create a window.
-  import(pathToFileURL(path.join(__dirname, "update-cli.mjs")).href)
+  // CLI commands run independently of an open editor and never create a window.
+  const cliEntry = app.isPackaged
+    ? path.join(
+        process.resourcesPath,
+        "scislide-cli",
+        "desktop",
+        "update-cli.mjs",
+      )
+    : path.join(__dirname, "update-cli.mjs");
+  import(pathToFileURL(cliEntry).href)
     .then(({ runCli }) =>
       runCli(cliArguments, {
         currentVersion: app.getVersion(),
@@ -487,7 +513,7 @@ if (updateCommand) {
     )
     .then((code) => app.exit(code))
     .catch((error) => {
-      console.error(`SciSlide update failed: ${error.message || error}`);
+      console.error(`SciSlide CLI failed: ${error.message || error}`);
       app.exit(1);
     });
 } else if (!app.requestSingleInstanceLock()) app.quit();

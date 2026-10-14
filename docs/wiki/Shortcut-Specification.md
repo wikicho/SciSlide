@@ -2,7 +2,7 @@
 
 The [Keyboard Shortcut Specification](https://github.com/wikicho/SciSlide/blob/main/docs/specifications/keyboard-shortcuts.md) defines SciSlide's command bindings, focus ownership, compatibility decisions, planned extensions, and acceptance criteria.
 
-Revision **0.4**, dated **2026-10-13**, uses [Apple's Keynote shortcut reference](https://support.apple.com/en-gb/guide/keynote/tanfde4a3e6d/mac) for macOS conventions. It records the **SciSlide 0.6.3** bindings, including P1 improvements, inline equation editing and the Linux compile workflow. Windows retains its PowerPoint profile and Ubuntu/Linux retains its Impress profile.
+Revision **0.4**, dated **2026-10-13**, uses [Apple's Keynote shortcut reference](https://support.apple.com/en-gb/guide/keynote/tanfde4a3e6d/mac) for macOS conventions. It records the **SciSlide 0.6.3.1** bindings, including P1 improvements, inline equation editing and the Linux compile workflow. Windows retains its PowerPoint profile and Ubuntu/Linux retains its Impress profile.
 
 ## What the specification contains
 

@@ -1,6 +1,6 @@
 # Development
 
-SciSlide uses a shared React/TypeScript editor with an Electron desktop host. This page describes the **0.6.3** development workflow and source. See [Architecture and roadmap](Architecture-and-Roadmap) for module boundaries and planned work.
+SciSlide uses a shared React/TypeScript editor with an Electron desktop host. This page describes the **0.6.3.1** development workflow and source. See [Architecture and roadmap](Architecture-and-Roadmap) for module boundaries and planned work.
 
 ## Prerequisites and setup
 
@@ -12,7 +12,7 @@ cd SciSlide
 pnpm install --frozen-lockfile
 ```
 
-To check out the exact documented release before installation, use `git checkout v0.6.3`.
+To check out the exact documented release before installation, use `git checkout v0.6.3.1`.
 
 ## Run the app
 
@@ -53,9 +53,13 @@ pnpm build
 - Web tests cover the document model, migrations, archive checksums, media validation, equation rendering, text/math layout, object editing, recovery and actual export behavior.
 - Desktop tests cover native API input validation, packaging, installed AI adapters and the Local LaTeX worker.
 - Release tests cover release inventory and publication safeguards.
-- The build includes TypeScript checks and a production Vite build.
+- The build includes TypeScript checks, a production Vite build and the standalone agent CLI bundle.
 
-Local TeX integration fixtures need Linux, installed TeX/converter tools and working bubblewrap isolation. Platform-specific tests may skip unsupported environments. Packaging and automated tests do not replace the complete editing, saving, presenting and export journey on physical desktops.
+Local TeX integration fixtures need Linux with working bubblewrap or macOS with working sandbox-exec, plus installed TeX/converter tools. Platform-specific tests may skip unsupported environments. Packaging and automated tests do not replace the complete editing, saving, presenting and export journey on physical desktops.
+
+## Headless agent CLI
+
+`pnpm build:cli` builds `dist-cli/agent.cjs`, bundled fonts and third-party notices. Use `pnpm cli schema` or run the bundle with Node.js 22 or later. Desktop packaging includes the same CLI and bundled runtime. The [agent CLI guide](https://github.com/wikicho/SciSlide/blob/v0.6.3.1/docs/AGENT_CLI.md) describes structured edits, native archives and SVG/PDF export.
 
 ## Build desktop packages
 
@@ -91,10 +95,10 @@ Separate platform workflows also exist. Workflow artifacts are retained for 30 d
 | `src/lib/ai-draft.ts`, `desktop/ai.mjs`                        | Draft validation/insertion and installed-provider adapters.            |
 | `desktop/main.cjs`, `desktop/preload.cjs`                      | Native window/file/menu handling and narrow renderer API.              |
 | `desktop/update.mjs`, `desktop/update-cli.mjs`                 | GitHub release checks, verified installer downloads and CLI launch.    |
-| `desktop/tex.mjs`                                              | Installed TeX detection and isolated Linux compiler worker.            |
+| `desktop/tex.mjs`, `desktop/tex-macos.mjs`, `desktop/tex-process.mjs` | Installed TeX detection, isolated Linux/macOS workers and process limits. |
 | `scripts/`, `.github/workflows/`, `tests/`                     | Packaging, release automation and regression tests.                    |
 
-Package version **0.6.3** and document format **0.5.0** are separate version numbers. P1 shortcuts are included in v0.6.3. Native menus receive live focus/selection/busy enabled states from the same availability rules as renderer dispatch. The optional availability bridge accepts only bounded fixed command IDs and booleans from the trusted main editor frame. Focused text retains native clipboard/history; disabled application commands do not dispatch. Physical-platform validation of native application/window roles remains required. Preserve source/archive migrations and saved-result validation when extending the model. Loading or exporting a document must not execute imported TeX source.
+Package version **0.6.3.1** and document format **0.5.0** are separate version numbers. The application and updater support three-part and four-part app versions. P1 shortcuts introduced in v0.6.3 remain available. Native menus receive live focus/selection/busy enabled states from the same availability rules as renderer dispatch. The optional availability bridge accepts only bounded fixed command IDs and booleans from the trusted main editor frame. Focused text retains native clipboard/history; disabled application commands do not dispatch. Physical-platform validation of native application/window roles remains required. Preserve source/archive migrations and saved-result validation when extending the model. Loading or exporting a document must not execute imported TeX source.
 
 ## Wiki maintenance
 

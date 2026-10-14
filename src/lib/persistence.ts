@@ -504,7 +504,11 @@ export function sanitizeSvg(source: string): string {
   )
     throw new Error("The SVG file is not a valid SVG image.");
   const fonts = inlineSvgStyles(parsed);
-  const clean = DOMPurify.sanitize(
+  // The headless CLI creates its DOM after modules are loaded. DOMPurify exports
+  // a factory when imported without a window, and an instance in the editor.
+  const purifier =
+    typeof DOMPurify.sanitize === "function" ? DOMPurify : DOMPurify(window);
+  const clean = purifier.sanitize(
     new XMLSerializer().serializeToString(parsed.documentElement),
     {
       USE_PROFILES: { svg: true, svgFilters: true },

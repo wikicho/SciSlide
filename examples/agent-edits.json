@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "operations": [
+    {
+      "op": "slide.update",
+      "slide": 1,
+      "patch": {
+        "title": "Symmetry and energy",
+        "notes": "Explain the symmetry before introducing the equation."
+      }
+    },
+    {
+      "op": "object.add",
+      "slide": 1,
+      "object": {
+        "id": "agent-title",
+        "type": "text",
+        "text": "Symmetry and energy",
+        "fontSize": 64,
+        "fontWeight": 600,
+        "transform": { "x": 96, "y": 72, "width": 1408, "height": 120 }
+      }
+    },
+    {
+      "op": "object.add",
+      "slide": 1,
+      "object": {
+        "id": "agent-body",
+        "type": "text",
+        "text": "Something about $U(1)$ in an ordinary text box.",
+        "fontSize": 40,
+        "transform": { "x": 96, "y": 246, "width": 1408, "height": 150 }
+      }
+    },
+    {
+      "op": "object.add",
+      "slide": 1,
+      "object": {
+        "id": "agent-equation",
+        "type": "equation",
+        "latex": "E=mc^2",
+        "description": "Mass–energy relation",
+        "style": { "fontSize": 72 },
+        "transform": { "x": 96, "y": 450, "width": 650, "height": 180 }
+      }
+    },
+    {
+      "op": "slide.add",
+      "id": "agent-discussion",
+      "layout": "blank",
+      "title": "Discussion"
+    },
+    {
+      "op": "object.add",
+      "slide": "agent-discussion",
+      "object": {
+        "id": "agent-discussion-title",
+        "type": "text",
+        "text": "Discussion",
+        "fontSize": 64,
+        "fontWeight": 600,
+        "transform": { "x": 96, "y": 72, "width": 1408, "height": 120 }
+      }
+    }
+  ]
+}

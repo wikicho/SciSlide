@@ -27,10 +27,12 @@ async function fixture(t) {
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const directory of [
     "dist",
+    "dist-cli",
     "desktop",
     "third-party-licenses",
     "examples",
     "node_modules/electron",
+    "public/fonts",
   ]) {
     await mkdir(path.join(root, directory), { recursive: true });
   }
@@ -49,6 +51,19 @@ async function fixture(t) {
   await writeFile(path.join(root, "desktop/main.cjs"), "// host");
   await writeFile(path.join(root, "desktop/update-cli.mjs"), "// update entry");
   await writeFile(path.join(root, "desktop/update.mjs"), "// updater");
+  await writeFile(
+    path.join(root, "dist-cli/agent.cjs"),
+    "// bundled agent CLI",
+  );
+  await writeFile(
+    path.join(root, "dist-cli/THIRD_PARTY_NOTICES.txt"),
+    "bundled dependency and font notices",
+  );
+  await writeFile(path.join(root, "public/fonts/inter-400.ttf"), "latin font");
+  await writeFile(
+    path.join(root, "public/fonts/nanum-gothic-400.ttf"),
+    "korean font",
+  );
   await writeFile(path.join(root, "desktop/host.test.cjs"), "// excluded test");
   await writeFile(path.join(root, "desktop/USAGE.md"), "Linux usage");
   await writeFile(path.join(root, "desktop/MACOS.md"), "Mac usage");
@@ -134,6 +149,9 @@ test("Mac package carries portable and installed usage/examples, metadata, and s
         await assert.rejects(lstat(path.join(stage, "desktop/host.test.cjs")), {
           code: "ENOENT",
         });
+        await assert.rejects(lstat(path.join(stage, "dist-cli")), {
+          code: "ENOENT",
+        });
         const pkg = JSON.parse(
           await readFile(path.join(stage, "package.json"), "utf8"),
         );
@@ -169,14 +187,33 @@ test("Mac package carries portable and installed usage/examples, metadata, and s
     { name: "scislide", version: "0.2.1" },
   );
   assert.deepEqual((await readdir(cli)).sort(), [
+    "THIRD_PARTY_NOTICES.txt",
+    "agent.cjs",
     "bin",
     "desktop",
+    "fonts",
     "package.json",
   ]);
   assert.deepEqual((await readdir(path.join(cli, "desktop"))).sort(), [
     "update-cli.mjs",
     "update.mjs",
   ]);
+  assert.equal(
+    await readFile(path.join(cli, "agent.cjs"), "utf8"),
+    "// bundled agent CLI",
+  );
+  assert.equal(
+    await readFile(path.join(cli, "THIRD_PARTY_NOTICES.txt"), "utf8"),
+    "bundled dependency and font notices",
+  );
+  assert.equal(
+    await readFile(path.join(cli, "fonts/inter-400.ttf"), "utf8"),
+    "latin font",
+  );
+  assert.equal(
+    await readFile(path.join(cli, "fonts/nanum-gothic-400.ttf"), "utf8"),
+    "korean font",
+  );
   for (const launcher of [
     path.join(apps[0], "bin/scislide"),
     path.join(cli, "bin/scislide"),
@@ -245,7 +282,13 @@ test("Windows x64 package carries Windows instructions and editable examples", a
     JSON.parse(await readFile(path.join(cli, "package.json"), "utf8")),
     { name: "scislide", version: "0.2.1" },
   );
-  assert.deepEqual((await readdir(cli)).sort(), ["desktop", "package.json"]);
+  assert.deepEqual((await readdir(cli)).sort(), [
+    "THIRD_PARTY_NOTICES.txt",
+    "agent.cjs",
+    "desktop",
+    "fonts",
+    "package.json",
+  ]);
   const launcher = await readFile(
     path.join(apps[0], "bin/scislide.cmd"),
     "utf8",
@@ -261,6 +304,27 @@ test("Windows x64 package carries Windows instructions and editable examples", a
     /:scislide_empty_argument\r\nif "%1"=="" goto scislide_launch\r\nshift/,
   );
   assert.match(launcher, /set "ELECTRON_RUN_AS_NODE=1"/);
+  for (const command of [
+    "schema",
+    "create",
+    "inspect",
+    "validate",
+    "apply",
+    "unpack",
+    "pack",
+    "export",
+  ]) {
+    const check = `if "%~1"=="${command}" set "scislide_cli=1"`;
+    assert.ok(launcher.includes(check));
+    assert.ok(launcher.indexOf(check) < launcher.indexOf(":scislide_scan"));
+  }
+  assert.match(launcher, /if "%~1"=="--version" set "scislide_cli=1"/);
+  assert.match(launcher, /if "%~1"=="--cli" set "scislide_cli=1"/);
+  assert.ok(
+    launcher.indexOf("if defined scislide_cli goto scislide_launch") <
+      launcher.indexOf(":scislide_scan"),
+    "recognized commands skip operand scanning before batch expansion",
+  );
   assert.match(
     launcher,
     /"%scislide_dir%\.\.\\scislide\.exe" "%scislide_dir%\.\.\\resources\\scislide-cli\\desktop\\update-cli\.mjs" %\*/,
@@ -299,6 +363,74 @@ test("missing or linked updater sources fail before creating the packaged app", 
     );
     assert.equal(packaged, false);
   }
+});
+
+test("the agent bundle and notices must be regular nonempty files before packaging", async (t) => {
+  for (const name of ["agent.cjs", "THIRD_PARTY_NOTICES.txt"]) {
+    const root = await fixture(t);
+    const bundle = path.join(root, "dist-cli", name);
+    let packaged = false;
+    const check = () =>
+      assert.rejects(
+        packageDesktop(
+          { root, platform: "linux", arch: "x64" },
+          {
+            packager: async () => {
+              packaged = true;
+              return [];
+            },
+          },
+        ),
+        /nonempty regular agent bundle/,
+      );
+    await rm(bundle);
+    await check();
+    await writeFile(bundle, "");
+    await check();
+    await rm(bundle);
+    await mkdir(bundle);
+    await check();
+    await rm(bundle, { recursive: true });
+    if (process.platform !== "win32") {
+      await symlink(path.join(root, "package.json"), bundle);
+      await check();
+    }
+    assert.equal(packaged, false);
+  }
+});
+
+test("external CLI fonts are mandatory and cannot contain symbolic links", async (t) => {
+  const root = await fixture(t);
+  const fonts = path.join(root, "public/fonts");
+  let packaged = false;
+  const check = () =>
+    assert.rejects(
+      packageDesktop(
+        { root, platform: "linux", arch: "x64" },
+        {
+          packager: async () => {
+            packaged = true;
+            return [];
+          },
+        },
+      ),
+      /regular font directory|bundled font files|links or special files/,
+    );
+  await rm(fonts, { recursive: true });
+  await check();
+  await mkdir(fonts);
+  await check();
+  if (process.platform !== "win32") {
+    await symlink(
+      path.join(root, "package.json"),
+      path.join(fonts, "linked.ttf"),
+    );
+    await check();
+    await rm(fonts, { recursive: true });
+    await symlink(path.join(root, "desktop"), fonts, "dir");
+    await check();
+  }
+  assert.equal(packaged, false);
 });
 
 const shellStub = `#!/bin/sh
@@ -394,6 +526,33 @@ for (const platform of ["linux", "darwin"]) {
           lines,
           args.map((value) => `ARG=${value}`),
         );
+        for (const command of [
+          "schema",
+          "create",
+          "inspect",
+          "validate",
+          "apply",
+          "unpack",
+          "pack",
+          "export",
+          "--version",
+          "--cli",
+        ]) {
+          const commandArgs = [command, "a path with spaces", "literal;$text"];
+          const headless = spawnSync(launcher, commandArgs, {
+            cwd: os.tmpdir(),
+            env,
+            encoding: "utf8",
+          });
+          assert.equal(headless.status, 23, headless.stderr);
+          const headlessLines = headless.stdout.trimEnd().split("\n");
+          assert.equal(headlessLines.shift(), "MODE=1");
+          assert.equal(path.resolve(headlessLines.shift().slice(4)), entry);
+          assert.deepEqual(
+            headlessLines,
+            commandArgs.map((value) => `ARG=${value}`),
+          );
+        }
         const gui = spawnSync(
           launcher,
           ["--no-sandbox", "a deck with spaces.scislide"],
@@ -403,6 +562,15 @@ for (const platform of ["linux", "darwin"]) {
         assert.equal(
           gui.stdout,
           "MODE=gui\nARG=--no-sandbox\nARG=a deck with spaces.scislide\n",
+        );
+        const ordinary = spawnSync(launcher, ["deck.scislide", "inspect"], {
+          env,
+          encoding: "utf8",
+        });
+        assert.equal(ordinary.status, 23, ordinary.stderr);
+        assert.equal(
+          ordinary.stdout,
+          "MODE=gui\nARG=deck.scislide\nARG=inspect\n",
         );
       }
     },
@@ -424,6 +592,15 @@ test("Existing unrecognized app directories and symlinks cannot be overwritten",
     /unrecognized app directory/,
   );
   assert.equal(await readFile(path.join(app, "keep.txt"), "utf8"), "keep");
+  await assert.rejects(
+    packageDesktop({
+      root,
+      platform: "linux",
+      arch: "x64",
+      out: "dist-cli/output",
+    }),
+    /outside the packaged inputs/,
+  );
   await rm(app, { recursive: true });
   const directoryLinkType = process.platform === "win32" ? "junction" : "dir";
   await symlink(path.join(root, "dist"), app, directoryLinkType);

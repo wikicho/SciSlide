@@ -175,6 +175,32 @@ test("portable ZIP contains the complete x64 app and matching SHA-256 without re
   );
 });
 
+test("portable packaging preserves the four-part application revision", async (t) => {
+  const root = await fixture(t);
+  await writeFile(
+    path.join(root, "package.json"),
+    JSON.stringify({ version: "0.6.3.1" }),
+  );
+  const result = await packageWindows(
+    { root, portableOnly: true },
+    { packageDesktop: fakeApp },
+  );
+  assert.equal(
+    path.basename(result.portable),
+    "SciSlide-0.6.3.1-windows-x64-portable.zip",
+  );
+  for (const version of ["0.6.3.01", "0.6.3.1.2", "0.06.3.1"]) {
+    await writeFile(
+      path.join(root, "package.json"),
+      JSON.stringify({ version }),
+    );
+    await assert.rejects(
+      packageWindows({ root, portableOnly: true }),
+      /safe semantic version/,
+    );
+  }
+});
+
 test("existing distributions are preserved on collision and on a failed replacement build", async (t) => {
   const root = await fixture(t);
   const first = await packageWindows(

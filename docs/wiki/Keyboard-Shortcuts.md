@@ -1,10 +1,10 @@
 # Keyboard shortcuts
 
-SciSlide **0.6.3** follows Keynote conventions on macOS, PowerPoint on Windows and LibreOffice Impress on Ubuntu/Linux for supported actions. **⌘** means Command and **Option** means Alt on macOS.
+SciSlide **0.6.3.1** follows Keynote conventions on macOS, PowerPoint on Windows and LibreOffice Impress on Ubuntu/Linux for supported actions. **⌘** means Command and **Option** means Alt on macOS.
 
 Open **Keyboard shortcuts** in the app for the full reference and compatibility aliases. Its platform tabs change the displayed reference, not the active bindings. Native menus and toolbar hints follow the detected host OS. In browsers, use the toolbar if a browser-reserved shortcut takes precedence.
 
-For the Keynote reference mapping, compatibility exceptions, focus-routing requirements, and remaining additions, see the [Shortcut specification](Shortcut-Specification). This page lists the v0.6.3 bindings.
+For the Keynote reference mapping, compatibility exceptions, focus-routing requirements, and remaining additions, see the [Shortcut specification](Shortcut-Specification). This page lists the v0.6.3.1 bindings.
 
 ## Files and common editing
 

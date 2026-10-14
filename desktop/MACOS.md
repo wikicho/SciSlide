@@ -1,4 +1,4 @@
-# SciSlide 0.6.3 — macOS development installer
+# SciSlide 0.6.3.1 — macOS development installer
 
 Choose the installer that matches your Mac: **arm64** for Apple Silicon (M1 or later), or **x64** for Intel. The installer copies SciSlide to `/Applications/SciSlide.app`. Node.js, a development server and TeX are not required for MathJax editing.
 
@@ -8,7 +8,7 @@ Quit an existing SciSlide window before installing an update. Both architectures
 
 ## Command-line update downloads
 
-v0.6.3 includes a launcher inside the installed app:
+v0.6.3.1 includes a launcher inside the installed app:
 
 ```sh
 /Applications/SciSlide.app/Contents/Resources/scislide-cli/bin/scislide --check-update
@@ -23,6 +23,12 @@ scislide --update
 ```
 
 The CLI chooses the `.pkg` matching the running app's arm64/x64 architecture, verifies SHA-256, and saves it in `~/Downloads/SciSlide-updates`. Use `--output DIR` for another destination or `--stable` to exclude development prereleases. It prints the installer path and installation command for you to run. A portable app folder also provides `bin/scislide`. The editor stays closed during the check/download, and no extra Node installation is needed. Published v0.6.2 installers predate this feature.
+
+**Upgrading from v0.6.3:** download and install v0.6.3.1 directly from the release page. The old update CLI accepts only three-part versions and ignores this four-part release tag. The v0.6.3.1 CLI supports both three-part and four-part versions; installer execution remains a separate step.
+
+## Headless agent commands
+
+v0.6.3.1 includes `schema`, `create`, `inspect`, `validate`, `apply`, `unpack`, `pack` and `export`. Run `scislide --cli schema` to discover native objects and edit operations. These commands return JSON and create/edit `.scislide` documents or export SVG/PDF without an editor window or a separate Node installation. Use the launcher path above when `scislide` is not on PATH. See the [agent CLI guide](https://github.com/wikicho/SciSlide/blob/v0.6.3.1/docs/AGENT_CLI.md) for examples and export limits.
 
 ## Use the editor
 
@@ -67,7 +73,9 @@ Bold, size and text-alignment commands apply to whole selected text objects on t
 
 New saves use native format **0.5.0**, including reversible figure crops. Versions **0.1.0–0.4.0** are migrated on opening; the original is untouched until Save. Apps that support only 0.4.0 or earlier cannot read new 0.5.0 files. Use **Save As** to preserve an older original; PDF/SVG does not downgrade editable source.
 
-MathJax equations, AMS notation and the included STIX Two, Fira Math and Latin Modern equation fonts work on macOS. **Local LaTeX compilation is currently disabled on macOS**, even when a TeX distribution is installed, until the macOS compiler sandbox is implemented. Valid vector results stored in an existing `.scislide` document can still be displayed, presented and exported without TeX.
+MathJax equations, AMS notation and the included STIX Two, Fira Math and Latin Modern equation fonts work on macOS. **v0.6.3.1 includes Local LaTeX compilation on macOS**; previously published v0.6.3 packages do not include this worker. Install MacTeX or BasicTeX with `latex` or `xelatex`, `dvisvgm`, `kpsewhich` and the packages you use. `/Library/TeX/texbin` is detected automatically. Choose **Local LaTeX · Installed packages**, enter the preamble and equation separately, then choose **Compile with LaTeX → Apply equation**.
+
+The worker uses macOS `sandbox-exec` with read-only system TeX/runtime/font paths and one writable temporary job directory. Home package/font directories, network connections, process forking and unapproved executables are denied. Startup performs actual containment probes; an unavailable sandbox leaves compilation disabled with a diagnostic. Each job has a 20-second wall timeout, a 15-second CPU limit, bounded files/open files and a parent watchdog that stops resident-memory use above 768 MiB. No Xcode tools or additional sandbox application are required. macOS marks `sandbox-exec` deprecated, so the capability probe is required on each supported system. Valid vector results stored in an existing `.scislide` document can still be displayed, presented and exported without TeX.
 
 To open bundled examples, use Finder's **Show Package Contents** on SciSlide.app and browse to `Contents/Resources/examples/`. Copy a sample presentation to your own folder before editing it. The sample data is synthetic.
 
@@ -76,7 +84,7 @@ The editor is a prototype. Modern Korean body text is supported through bundled 
 Each installer has a matching `.sha256` file. To verify a download, put the installer and checksum file in the same folder and run:
 
 ```sh
-shasum -a 256 -c SciSlide-0.6.3-macos-arm64-unsigned.pkg.sha256
+shasum -a 256 -c SciSlide-0.6.3.1-macos-arm64-unsigned.pkg.sha256
 ```
 
 Use the x64 filename for an Intel installer. This checks that the file matches its accompanying checksum; it does not certify the publisher or replace Apple's code signing and notarization.

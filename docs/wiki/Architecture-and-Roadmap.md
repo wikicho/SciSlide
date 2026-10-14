@@ -1,6 +1,6 @@
 # Architecture and roadmap
 
-SciSlide **v0.6.3** uses one React/TypeScript editor for the browser and Electron desktop application. The application is a development prototype; the sections below distinguish released behavior and planned work.
+SciSlide **v0.6.3.1** uses one React/TypeScript editor for the browser and Electron desktop application. The application is a development prototype; the sections below distinguish released behavior and planned work.
 
 ## Application structure
 
@@ -31,7 +31,7 @@ See [Development](Development) for source directories and commands.
 
 ## Native document format
 
-The application version **0.6.3** and file-format version **0.5.0** are separate. A `.scislide` file is a ZIP container:
+The application version **0.6.3.1** and file-format version **0.5.0** are separate. A `.scislide` file is a ZIP container:
 
 ```text
 presentation.scislide
@@ -59,32 +59,33 @@ Workspace recovery, unfinished equation drafts, and the personal equation librar
 - Theme chooser, editable layout galleries, and drag-and-drop slide ordering.
 - Direct text editing with inline math, drawing, flat groups, layers, smart guides, alignment, and equal spacing.
 - SVG/PNG/JPEG figures, rasterized PDF page import, reversible crop, insets, and figure replacement.
-- MathJax font/package profiles, a personal equation library, and isolated installed-package compilation on supported Linux systems.
+- MathJax font/package profiles, a personal equation library, and isolated installed-package compilation on supported Linux and macOS systems.
 - Embedded MP4/WebM video, click-triggered appear/fade builds, notes, and a separate presenter display.
 - Native save/open, PDF/SVG export, workspace recovery, and installed AI CLI drafts.
 - Platform-specific shortcuts using Keynote, PowerPoint, and Impress conventions where the corresponding action exists.
 - Inline equation popups, auto-growing text frames, and committed text size/frame inputs.
-- Update CLI checks and SHA-256-verified installer downloads; installation remains separate.
+- Update CLI checks and SHA-256-verified installer downloads, with three-part and four-part app versions; installation remains separate.
+- Headless agent CLI for native deck creation/editing, schema discovery, validation, unpack/pack and SVG/PDF export.
 - **P1 shortcuts:** shared renderer/native command metadata and live native menu availability; canvas object traversal; independent Inspector/Objects & Layers focus; macOS thumbnail reordering; focused-slide duplication; and consistent presentation key ownership/repeat policy.
 
 See [Shortcut specification](Shortcut-Specification) for remaining P2/P3 requirements. Physical-platform validation of native application/window roles remains required.
 
 ## Planned work
 
-These features are **not implemented in v0.6.3**:
+These features are **not implemented in v0.6.3.1**:
 
 | Direction            | Remaining work                                                                                                            |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | Distribution         | Signing/notarization, automatic updates, hosted APT repository, Snap distribution, and broader physical-device validation |
-| Document tooling     | Published JSON Schema, richer migration documentation, unpacked Git workflow                                              |
+| Document tooling     | Richer migration documentation and expanded Git collaboration workflows                                                  |
 | Scientific authoring | Shared deck macros, linked equation-library entries, citations/BibTeX, editable charts with units/error bars              |
 | Layout               | Linked masters, nested groups, collective group scaling/rotation, attached connectors, freehand drawing                   |
 | Figures              | Preservation of original PDF vectors and expanded provenance tools                                                        |
 | Presentation         | Advanced animation, a dedicated build-order panel, automatic monitor placement                                            |
-| Host tools           | Additional Local LaTeX isolation adapters for macOS/Windows and authorized home-installed TeX resources                   |
+| Host tools           | A Windows Local LaTeX isolation adapter and authorized home-installed TeX resources                   |
 | Interchange          | PPTX/HTML export and collaboration                                                                                        |
 | Project governance   | A selected project license and dedicated contribution/security documents                                                  |
 
-No delivery dates are promised by this list. The [project specification](https://github.com/wikicho/SciSlide/blob/v0.6.3/SciSlide-Project-Specification.md) records the broader requirements; its baseline narrative predates 0.6.2. Use this wiki, the [0.6.3 release notes](https://github.com/wikicho/SciSlide/blob/v0.6.3/docs/releases/v0.6.3.md), and source code to determine the current feature set.
+No delivery dates are promised by this list. The [project specification](https://github.com/wikicho/SciSlide/blob/v0.6.3.1/SciSlide-Project-Specification.md) records the broader requirements; its baseline narrative predates 0.6.2. Use this wiki, the [0.6.3.1 release notes](https://github.com/wikicho/SciSlide/blob/v0.6.3.1/docs/releases/v0.6.3.1.md), and source code to determine the current feature set.
 
 [Home](Home) · [Development](Development) · [Troubleshooting](Troubleshooting)

@@ -1,6 +1,6 @@
 import { before, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { cancelCompile, compileTex, detectTex } from "../desktop/tex.mjs";
@@ -177,7 +177,10 @@ test("cannot read a host file outside runtime mounts or write outside the job", 
   );
   const secretFile = path.join(directory, "private.tex");
   const marker = path.join(directory, "marker");
-  await writeFile(secretFile, "HOST_SECRET_SENTINEL");
+  await writeFile(
+    secretFile,
+    String.raw`\newcommand{\SciSlideHostSecret}{HOST_SECRET_SENTINEL}`,
+  );
   try {
     await assert.rejects(
       compileTex(request("read-host", { preamble: `\\input{${secretFile}}` })),
@@ -190,6 +193,59 @@ test("cannot read a host file outside runtime mounts or write outside the job", 
     );
     assert.match(result.svg, /<path\b/);
     await assert.rejects(readFile(marker), /ENOENT/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("cannot read a private home file or follow a host symlink to it", async (context) => {
+  if (!integration(context)) return;
+  const directory = await mkdtemp(
+    path.join(os.homedir(), ".scislide-tex-test-"),
+  );
+  const links = await mkdtemp(path.join(os.tmpdir(), "scislide-tex-links-"));
+  const secret = path.join(directory, "private.tex");
+  const link = path.join(links, "linked.tex");
+  const secretSource = String.raw`\newcommand{\SciSlidePrivateSentinel}{SCISLIDE_PRIVATE_HOME_SENTINEL}`;
+  try {
+    await writeFile(secret, secretSource);
+    await symlink(secret, link);
+    for (const [jobId, filename] of [
+      ["read-private-home", secret],
+      ["read-private-link", link],
+    ])
+      await assert.rejects(
+        compileTex(request(jobId, { preamble: `\\input{${filename}}` })),
+        /could not compile|not reading|not found|permission|operation not permitted/i,
+      );
+    assert.equal(await readFile(secret, "utf8"), secretSource);
+  } finally {
+    await rm(links, { recursive: true, force: true });
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("direct TeX output cannot overwrite a host file", async (context) => {
+  if (!integration(context)) return;
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "scislide-tex-write-"),
+  );
+  const marker = path.join(directory, "protected.txt");
+  const original = "SCISLIDE_HOST_FILE_MUST_SURVIVE";
+  try {
+    await writeFile(marker, original);
+    await assert.rejects(
+      compileTex(
+        request("direct-host-write", {
+          preamble:
+            String.raw`\newwrite\hostoutput` +
+            `\\immediate\\openout\\hostoutput=${marker} ` +
+            String.raw`\immediate\write\hostoutput{OVERWRITTEN}\immediate\closeout\hostoutput`,
+        }),
+      ),
+      /could not compile|not writing|openout|permission|operation not permitted/i,
+    );
+    assert.equal(await readFile(marker, "utf8"), original);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -219,4 +275,32 @@ test("cancels a running isolated process and rejects duplicate job IDs", async (
   await rejection;
   assert.equal(cancelCompile("cancelled"), false);
   assert.equal(cancelCompile("never-existed"), false);
+});
+
+test("bounds concurrent jobs and recovers after both active jobs are cancelled", async (context) => {
+  if (!integration(context)) return;
+  const ids = ["concurrent-a", "concurrent-b"];
+  const attempts = ids.map((jobId) =>
+    compileTex(request(jobId, { source: String.raw`\loop\iftrue\repeat` })),
+  );
+  const rejected = attempts.map((attempt) =>
+    assert.rejects(attempt, /cancelled/),
+  );
+  try {
+    await assert.rejects(
+      compileTex(request("concurrent-third", { source: "x+y" })),
+      /two.*already running|concurrent|try again/i,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    for (const id of ids) assert.equal(cancelCompile(id), true);
+    await Promise.all(rejected);
+    for (const id of ids) assert.equal(cancelCompile(id), false);
+    const recovered = await compileTex(
+      request("after-concurrent-cancel", { source: "x+y" }),
+    );
+    assert.match(recovered.svg, /<path\b/);
+  } finally {
+    for (const id of ids) cancelCompile(id);
+    await Promise.allSettled(attempts);
+  }
 });

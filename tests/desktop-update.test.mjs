@@ -162,6 +162,59 @@ test("SemVer comparisons preserve release ordering, build equivalence and large 
   assert.throws(() => compareVersions("broken", "1.2.3"), /SemVer/);
 });
 
+test("numeric revisions sort after the base release and retain strict, precise ordering", () => {
+  const ordered = [
+    "0.6.3",
+    "0.6.3.1-alpha.1",
+    "0.6.3.1-beta",
+    "0.6.3.1",
+    "0.6.3.2",
+    "0.6.3.10",
+    "0.6.4-alpha",
+    "0.6.4",
+  ];
+  for (let index = 1; index < ordered.length; index++)
+    assert.equal(compareVersions(ordered[index - 1], ordered[index]), -1);
+  assert.equal(compareVersions("0.6.3", "0.6.3.0"), 0);
+  assert.equal(compareVersions("0.6.3-alpha", "0.6.3.0-alpha"), 0);
+  assert.equal(compareVersions("v0.6.3.1+build.a", "0.6.3.1+build.b"), 0);
+  assert.equal(
+    compareVersions("0.6.3.9007199254740993", "0.6.3.9007199254740992"),
+    1,
+  );
+  assert.equal(parseVersion("v0.6.3.1-linux-dev.3").core, "0.6.3.1");
+  assert.equal(parseVersion("0.6.3").revision, "0");
+  for (const invalid of [
+    "0.6.3.01",
+    "0.6.3.-1",
+    "0.6.3.1.2",
+    "0.6.3.1-alpha.01",
+    "0.6.3.1\n",
+  ])
+    assert.equal(parseVersion(invalid), null);
+});
+
+test("revision release installers are offered from the previous base version on every target", () => {
+  for (const [platform, arch] of [
+    ["darwin", "arm64"],
+    ["darwin", "x64"],
+    ["linux", "x64"],
+    ["win32", "x64"],
+  ]) {
+    const entry = release({ version: "0.6.3.1", platform, arch });
+    const options = { currentVersion: "0.6.3", platform, arch };
+    const update = selectUpdateRelease([entry], options);
+    assert.equal(update.status, "available");
+    assert.equal(update.latestVersion, "0.6.3.1");
+    assert.equal(update.asset.name, entry.assets[0].name);
+    assert.equal(
+      selectUpdateRelease([entry], { ...options, currentVersion: "0.6.3.1" })
+        .status,
+      "current",
+    );
+  }
+});
+
 test("selects the newest compatible published tag instead of /releases/latest or API order", () => {
   const entries = [
     release({ version: "0.6.3" }),

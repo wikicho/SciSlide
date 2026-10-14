@@ -5,6 +5,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   realpath,
   rm,
   writeFile,
@@ -36,9 +37,14 @@ scislide_dir=$(CDPATH= cd -P -- "$(dirname "$scislide_launcher")" && pwd)
 function unixLaunchBody(binary, entry) {
   return `scislide_binary=${binary}
 scislide_entry=${entry}
+case "\${1:-}" in
+  schema|create|inspect|validate|apply|unpack|pack|export)
+    ELECTRON_RUN_AS_NODE=1 exec "$scislide_binary" "$scislide_entry" "$@"
+    ;;
+esac
 for scislide_argument in "$@"; do
   case "$scislide_argument" in
-    --update|--check-update|--help|-h)
+    --update|--check-update|--help|-h|--version|--cli)
       ELECTRON_RUN_AS_NODE=1 exec "$scislide_binary" "$scislide_entry" "$@"
       ;;
   esac
@@ -77,12 +83,26 @@ const windowsLauncher = [
   "setlocal EnableExtensions DisableDelayedExpansion",
   'set "scislide_dir=%~dp0"',
   'set "scislide_cli="',
+  ...[
+    "schema",
+    "create",
+    "inspect",
+    "validate",
+    "apply",
+    "unpack",
+    "pack",
+    "export",
+  ].map((command) => `if "%~1"=="${command}" set "scislide_cli=1"`),
+  "if defined scislide_cli goto scislide_launch",
   ":scislide_scan",
   'if "%~1"=="" goto scislide_empty_argument',
   'if "%~1"=="--update" set "scislide_cli=1"',
   'if "%~1"=="--check-update" set "scislide_cli=1"',
   'if "%~1"=="--help" set "scislide_cli=1"',
   'if "%~1"=="-h" set "scislide_cli=1"',
+  'if "%~1"=="--version" set "scislide_cli=1"',
+  'if "%~1"=="--cli" set "scislide_cli=1"',
+  "if defined scislide_cli goto scislide_launch",
   "shift",
   "goto scislide_scan",
   ":scislide_empty_argument",
@@ -109,9 +129,45 @@ async function cliSources(root) {
       throw new Error(
         `Desktop CLI requires a regular source file: desktop/${name}`,
       );
+    files[`desktop/${name}`] = await readFile(filename);
+  }
+  for (const name of ["agent.cjs", "THIRD_PARTY_NOTICES.txt"]) {
+    const filename = path.join(root, "dist-cli", name);
+    const stat = await exists(filename);
+    if (!stat?.isFile() || stat.isSymbolicLink() || !stat.size)
+      throw new Error(
+        `Desktop CLI requires a nonempty regular agent bundle file: dist-cli/${name}. Build the agent CLI before packaging.`,
+      );
     files[name] = await readFile(filename);
   }
+  await readCliFonts(path.join(root, "public", "fonts"), files);
   return files;
+}
+
+async function readCliFonts(directory, files, relative = "fonts") {
+  const stat = await exists(directory);
+  if (!stat?.isDirectory() || stat.isSymbolicLink())
+    throw new Error(
+      "Desktop CLI requires a regular font directory: public/fonts",
+    );
+  const entries = await readdir(directory, { withFileTypes: true });
+  if (!entries.length)
+    throw new Error("Desktop CLI requires bundled font files: public/fonts");
+  for (const entry of entries) {
+    const filename = path.join(directory, entry.name);
+    const key = `${relative}/${entry.name}`;
+    if (entry.isDirectory()) await readCliFonts(filename, files, key);
+    else if (entry.isFile()) {
+      const font = await lstat(filename);
+      if (!font.isFile() || font.isSymbolicLink() || !font.size)
+        throw new Error(`Desktop CLI requires regular nonempty fonts: ${key}`);
+      files[key] = await readFile(filename);
+    } else {
+      throw new Error(
+        `Desktop CLI fonts cannot contain links or special files: ${key}`,
+      );
+    }
+  }
 }
 
 async function installCli(app, platform, pkg, files) {
@@ -125,8 +181,10 @@ async function installCli(app, platform, pkg, files) {
     path.join(cli, "package.json"),
     JSON.stringify({ name: pkg.name, version: pkg.version }),
   );
-  for (const [name, contents] of Object.entries(files))
-    await writeFile(path.join(cli, "desktop", name), contents);
+  for (const [name, contents] of Object.entries(files)) {
+    await mkdir(path.dirname(path.join(cli, name)), { recursive: true });
+    await writeFile(path.join(cli, name), contents);
+  }
   const bin = path.join(app, "bin");
   await mkdir(bin, { recursive: true });
   if (platform === "win32") {
@@ -210,13 +268,16 @@ export async function packageDesktop(options = {}, dependencies = {}) {
   if (typeof target.overwrite !== "boolean") {
     throw new Error("overwrite must be a boolean.");
   }
+  const cliPayload = await cliSources(root);
   const requestedOutput = path.resolve(root, target.out ?? "release");
   for (const input of [
     "dist",
+    "dist-cli",
     "desktop",
     "third-party-licenses",
     "examples",
     "node_modules",
+    "public",
   ]) {
     if (isWithin(path.join(root, input), requestedOutput)) {
       throw new Error(
@@ -228,10 +289,12 @@ export async function packageDesktop(options = {}, dependencies = {}) {
   const output = await realpath(requestedOutput);
   for (const input of [
     "dist",
+    "dist-cli",
     "desktop",
     "third-party-licenses",
     "examples",
     "node_modules",
+    "public",
   ]) {
     const source = await realpath(path.join(root, input));
     if (isWithin(source, output)) {
@@ -287,7 +350,6 @@ export async function packageDesktop(options = {}, dependencies = {}) {
       "utf8",
     ),
   );
-  const updateSources = await cliSources(root);
   const usage = path.join(
     root,
     "desktop",
@@ -335,7 +397,7 @@ export async function packageDesktop(options = {}, dependencies = {}) {
       prune: false,
     });
     for (const app of apps) {
-      await installCli(app, target.platform, pkg, updateSources);
+      await installCli(app, target.platform, pkg, cliPayload);
       await cp(usage, path.join(app, "README.md"));
       await cp(path.join(root, "examples"), path.join(app, "examples"), {
         recursive: true,

@@ -54,6 +54,7 @@ async function fixture(t) {
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const directory of [
     "dist",
+    "dist-cli",
     "desktop",
     "third-party-licenses",
     "examples",
@@ -93,6 +94,9 @@ async function fakeApp(options, main = elf()) {
     recursive: true,
   });
   await mkdir(path.join(directory, "bin"), { recursive: true });
+  await mkdir(path.join(directory, "resources/scislide-cli/fonts"), {
+    recursive: true,
+  });
   await writeFile(
     path.join(directory, "resources/scislide-cli/package.json"),
     JSON.stringify({ name: "scislide", version: "0.3.0" }),
@@ -104,6 +108,22 @@ async function fakeApp(options, main = elf()) {
   await writeFile(
     path.join(directory, "resources/scislide-cli/desktop/update.mjs"),
     "// updater\n",
+  );
+  await writeFile(
+    path.join(directory, "resources/scislide-cli/agent.cjs"),
+    "// bundled agent CLI\n",
+  );
+  await writeFile(
+    path.join(directory, "resources/scislide-cli/THIRD_PARTY_NOTICES.txt"),
+    "bundled dependency and font notices",
+  );
+  await writeFile(
+    path.join(directory, "resources/scislide-cli/fonts/inter-400.ttf"),
+    "latin font",
+  );
+  await writeFile(
+    path.join(directory, "resources/scislide-cli/fonts/nanum-gothic-400.ttf"),
+    "korean font",
   );
   await writeFile(path.join(directory, "bin/scislide"), "#!/bin/sh\nexit 0\n", {
     mode: 0o755,
@@ -190,6 +210,36 @@ test("ELF validation rejects ARM64, 32-bit, big-endian, and malformed executable
 });
 
 test(
+  "Debian packaging preserves four-part revisions and refuses ambiguous versions",
+  actualDeb,
+  async (t) => {
+    const root = await fixture(t);
+    const metadata = JSON.parse(
+      await readFile(path.join(root, "package.json"), "utf8"),
+    );
+    await writeFile(
+      path.join(root, "package.json"),
+      JSON.stringify({ ...metadata, version: "0.6.3.1" }),
+    );
+    const result = await packageLinux({ root }, { packageDesktop: fakeApp });
+    assert.equal(path.basename(result.deb), "SciSlide-0.6.3.1-linux-x64.deb");
+    const { stdout } = await run("dpkg-deb", [
+      "--field",
+      result.deb,
+      "Version",
+    ]);
+    assert.equal(stdout.trim(), "0.6.3.1");
+    for (const version of ["0.6.3.01", "0.6.3.1.2", "0.06.3.1"]) {
+      await writeFile(
+        path.join(root, "package.json"),
+        JSON.stringify({ ...metadata, version }),
+      );
+      await assert.rejects(packageLinux({ root }), /safe semantic version/);
+    }
+  },
+);
+
+test(
   "the Debian package contains the complete x64 app, launcher, documentation, and matching checksum",
   actualDeb,
   async (t) => {
@@ -267,6 +317,33 @@ test(
         "utf8",
       ),
       "// CLI entry\n",
+    );
+    assert.equal(
+      await readFile(
+        path.join(extracted, "opt/scislide/resources/scislide-cli/agent.cjs"),
+        "utf8",
+      ),
+      "// bundled agent CLI\n",
+    );
+    assert.equal(
+      await readFile(
+        path.join(
+          extracted,
+          "opt/scislide/resources/scislide-cli/THIRD_PARTY_NOTICES.txt",
+        ),
+        "utf8",
+      ),
+      "bundled dependency and font notices",
+    );
+    assert.equal(
+      await readFile(
+        path.join(
+          extracted,
+          "opt/scislide/resources/scislide-cli/fonts/inter-400.ttf",
+        ),
+        "utf8",
+      ),
+      "latin font",
     );
     const launcher = await readFile(
       path.join(extracted, "usr/share/applications/scislide.desktop"),
@@ -357,8 +434,33 @@ exit 19
       WAYLAND_DISPLAY: "",
     };
     delete env.ELECTRON_RUN_AS_NODE;
-    for (const flag of ["--update", "--check-update", "--help", "-h"]) {
+    for (const flag of [
+      "--update",
+      "--check-update",
+      "--help",
+      "-h",
+      "--version",
+      "--cli",
+    ]) {
       const args = ["an argument with spaces", flag, "literal;$text"];
+      const result = spawnSync(launcher, args, { env, encoding: "utf8" });
+      assert.equal(result.status, 19, result.stderr);
+      assert.equal(
+        result.stdout,
+        `MODE=1\nARG=${app}/resources/scislide-cli/desktop/update-cli.mjs\n${args.map((value) => `ARG=${value}\n`).join("")}`,
+      );
+    }
+    for (const command of [
+      "schema",
+      "create",
+      "inspect",
+      "validate",
+      "apply",
+      "unpack",
+      "pack",
+      "export",
+    ]) {
+      const args = [command, "a path with spaces", "literal;$text"];
       const result = spawnSync(launcher, args, { env, encoding: "utf8" });
       assert.equal(result.status, 19, result.stderr);
       assert.equal(
@@ -383,27 +485,55 @@ test(
   "a Linux package without its external CLI runtime is rejected before building",
   linuxOnly,
   async (t) => {
-    const root = await fixture(t);
-    await assert.rejects(
-      packageLinux(
-        { root },
-        {
-          run: guardRun,
-          packageDesktop: async (options) => {
-            const apps = await fakeApp(options);
-            await rm(
-              path.join(apps[0], "resources/scislide-cli/desktop/update.mjs"),
-            );
-            return apps;
+    for (const broken of [
+      "missing updater",
+      "missing bundle",
+      "empty bundle",
+      "linked bundle",
+      "missing notices",
+      "empty notices",
+      "linked notices",
+      "missing Latin font",
+      "missing Korean font",
+    ]) {
+      const root = await fixture(t);
+      await assert.rejects(
+        packageLinux(
+          { root },
+          {
+            run: guardRun,
+            packageDesktop: async (options) => {
+              const apps = await fakeApp(options);
+              const file = path.join(
+                apps[0],
+                "resources/scislide-cli",
+                broken === "missing updater"
+                  ? "desktop/update.mjs"
+                  : broken.endsWith("notices")
+                    ? "THIRD_PARTY_NOTICES.txt"
+                    : broken === "missing Latin font"
+                      ? "fonts/inter-400.ttf"
+                      : broken === "missing Korean font"
+                        ? "fonts/nanum-gothic-400.ttf"
+                        : "agent.cjs",
+              );
+              await rm(file);
+              if (broken.startsWith("empty")) await writeFile(file, "");
+              if (broken.startsWith("linked"))
+                await symlink(path.join(root, "package.json"), file);
+              return apps;
+            },
           },
-        },
-      ),
-      /missing its CLI runtime/,
-    );
-    await assert.rejects(
-      lstat(path.join(root, "release/linux-deb/SciSlide-0.3.0-linux-x64.deb")),
-      { code: "ENOENT" },
-    );
+        ),
+        /missing its CLI runtime/,
+      );
+      await assert.rejects(
+        lstat(
+          path.join(root, "release/linux-deb/SciSlide-0.3.0-linux-x64.deb"),
+        ),
+        { code: "ENOENT" },
+      );
+    }
   },
 );
 
@@ -463,6 +593,7 @@ test(
     let called = false;
     for (const out of [
       "dist/output",
+      "dist-cli/output",
       "desktop/output",
       "third-party-licenses/output",
       "examples/output",
