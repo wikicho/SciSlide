@@ -12,6 +12,7 @@ import type {
 } from "../src/lib/desktop";
 import { shapeFromDrag } from "../src/lib/drawing";
 import { exportDeckPdf, exportSlideSvg } from "../src/lib/export";
+import { exportDeckPptx } from "../src/lib/export-pptx";
 import { createBlankSlide, createDemoDeck } from "../src/lib/model";
 import type { Deck } from "../src/lib/model";
 import {
@@ -50,6 +51,9 @@ vi.mock("../src/lib/workspace-recovery", async (original) => ({
 vi.mock("../src/lib/export", () => ({
   exportDeckPdf: vi.fn(),
   exportSlideSvg: vi.fn(),
+}));
+vi.mock("../src/lib/export-pptx", () => ({
+  exportDeckPptx: vi.fn(),
 }));
 
 function existingDeck(): Deck {
@@ -138,6 +142,13 @@ describe("OS-specific keyboard commands in the editor", () => {
     vi.mocked(exportSlideSvg)
       .mockReset()
       .mockResolvedValue(new Blob(["SVG"], { type: "image/svg+xml" }));
+    const powerpoint = new Blob([new Uint8Array([0x50, 0x4b, 3, 4])], {
+      type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    });
+    Object.defineProperty(powerpoint, "arrayBuffer", {
+      value: async () => new Uint8Array([0x50, 0x4b, 3, 4]).buffer,
+    });
+    vi.mocked(exportDeckPptx).mockReset().mockResolvedValue(powerpoint);
     saved = undefined;
     host = document.createElement("div");
     document.body.append(host);
@@ -211,6 +222,7 @@ describe("OS-specific keyboard commands in the editor", () => {
       cancelCompile: vi.fn().mockResolvedValue(undefined),
       openDocument: vi.fn().mockResolvedValue(null),
       saveDocument: vi.fn().mockResolvedValue(null),
+      saveExport: vi.fn().mockResolvedValue(null),
       onCommand: (callback: (command: DesktopCommand) => void) => {
         nativeBridge.command = callback;
         return () => {
@@ -402,6 +414,91 @@ describe("OS-specific keyboard commands in the editor", () => {
       expect(buildDeckArchive).toHaveBeenCalledExactlyOnceWith(deck);
     },
   );
+
+  it("downloads every slide as PowerPoint and captures pending inline text", async () => {
+    deck.slides.push({ ...createBlankSlide(), title: "Second slide" });
+    await render("Linux x86_64");
+    await click("Text");
+    const editor = host.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Edit text on slide"]',
+    )!;
+    await changeField(editor, "Pending scientific text 한글");
+    await click("Export");
+    await click("PowerPoint (.pptx)All slides · editable text and shapes");
+    expect(exportDeckPptx).toHaveBeenCalledOnce();
+    const snapshot = vi.mocked(exportDeckPptx).mock.calls[0][0];
+    expect(snapshot.slides).toHaveLength(2);
+    expect(snapshot.slides[0].objects.at(-1)).toMatchObject({
+      type: "text",
+      text: "Pending scientific text 한글",
+    });
+    expect(host.querySelector(".inline-text-editor")).toBeNull();
+    expect(host.querySelector(".dropdown")).toBeNull();
+    expect(downloadBlob).toHaveBeenCalledExactlyOnceWith(
+      expect.any(Blob),
+      "Keyboard integration.pptx",
+    );
+    expect(host.textContent).toContain("PPTX 다운로드를 시작했습니다.");
+    expect(buildDeckArchive).not.toHaveBeenCalled();
+    expect(exportDeckPdf).not.toHaveBeenCalled();
+    expect(exportSlideSvg).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])(
+    "saves PowerPoint through the native dialog and reports success only after writing (saved: %s)",
+    async (saved) => {
+      const bridge = enableDesktop();
+      let finish!: (result: { path: string; name: string } | null) => void;
+      bridge.saveExport.mockImplementationOnce(
+        () => new Promise((resolve) => (finish = resolve)),
+      );
+      await render("MacIntel");
+      await command("exportPptx");
+      expect(exportDeckPptx).toHaveBeenCalledExactlyOnceWith(deck);
+      expect(bridge.saveExport).toHaveBeenCalledExactlyOnceWith({
+        bytes: new Uint8Array([0x50, 0x4b, 3, 4]),
+        suggestedName: "Keyboard integration.pptx",
+        kind: "pptx",
+      });
+      expect(button("Export").disabled).toBe(true);
+      expect(host.textContent).not.toContain("PPTX 파일을 저장했습니다.");
+      await act(async () =>
+        finish(saved ? { path: "/tmp/deck.pptx", name: "deck.pptx" } : null),
+      );
+      expect(host.textContent?.includes("PPTX 파일을 저장했습니다.")).toBe(
+        saved,
+      );
+      expect(button("Export").disabled).toBe(false);
+      expect(downloadBlob).not.toHaveBeenCalled();
+      expect(await persist()).toEqual(deck);
+    },
+  );
+
+  it("blocks duplicate PowerPoint work and restores export after a failure", async () => {
+    const bridge = enableDesktop();
+    let reject!: (error: Error) => void;
+    vi.mocked(exportDeckPptx).mockImplementationOnce(
+      () => new Promise((_resolve, rejectExport) => (reject = rejectExport)),
+    );
+    await render("MacIntel");
+    await command("exportPptx");
+    expect(host.textContent).toContain("Preparing PowerPoint");
+    expect(bridge.setCommandAvailability.mock.calls.at(-1)?.[0]).toMatchObject({
+      exportPptx: false,
+      exportPdf: false,
+      save: false,
+    });
+    await command("exportPptx");
+    expect(exportDeckPptx).toHaveBeenCalledOnce();
+    await act(async () => reject(new Error("Slide 1: missing figure")));
+    expect(host.textContent).toContain("Slide 1: missing figure");
+    expect(bridge.saveExport).not.toHaveBeenCalled();
+    expect(button("Export").disabled).toBe(false);
+    expect(bridge.setCommandAvailability.mock.calls.at(-1)?.[0]).toMatchObject({
+      exportPptx: true,
+      exportPdf: true,
+    });
+  });
 
   it("duplicates the current slide when nothing is selected, with one undo step", async () => {
     await render("Linux x86_64");
@@ -1673,6 +1770,7 @@ describe("OS-specific keyboard commands in the editor", () => {
       open: true,
       showShortcuts: true,
       save: false,
+      exportPptx: false,
       present: false,
       toggleInspector: false,
       toggleObjectList: false,
@@ -1680,6 +1778,7 @@ describe("OS-specific keyboard commands in the editor", () => {
     await click("Resume previous work");
     expect(states()).toMatchObject({
       save: true,
+      exportPptx: true,
       copy: false,
       undo: false,
       lock: false,
@@ -1719,6 +1818,7 @@ describe("OS-specific keyboard commands in the editor", () => {
       save: false,
       copy: false,
       present: false,
+      exportPptx: false,
       toggleInspector: false,
     });
     await click("Close slide templates");
@@ -1739,6 +1839,7 @@ describe("OS-specific keyboard commands in the editor", () => {
       copy: false,
       undo: false,
       present: false,
+      exportPptx: false,
       toggleInspector: false,
       toggleObjectList: false,
       showShortcuts: true,
@@ -1755,6 +1856,7 @@ describe("OS-specific keyboard commands in the editor", () => {
       copy: false,
       undo: false,
       present: false,
+      exportPptx: false,
       toggleInspector: false,
       toggleObjectList: false,
     });

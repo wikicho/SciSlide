@@ -105,6 +105,51 @@ export const DECK_THEMES = [
       line: "#dedede",
     },
   },
+  {
+    id: "geometric",
+    name: "Geometric",
+    description: "Confident color and simple shapes.",
+    detail: "A bold cobalt accent and clean blocks frame your ideas.",
+    layout: "title",
+    palette: {
+      background: "#f8f9fc",
+      ink: "#17223b",
+      muted: "#526179",
+      accent: "#2859b8",
+      surface: "#e5ebf7",
+      line: "#c5d2e8",
+    },
+  },
+  {
+    id: "dune",
+    name: "Dune",
+    description: "Warm, calm and understated.",
+    detail: "Sand tones and a terracotta accent make a welcoming canvas.",
+    layout: "title",
+    palette: {
+      background: "#f8f2e9",
+      ink: "#332b28",
+      muted: "#705d50",
+      accent: "#995032",
+      surface: "#ebded0",
+      line: "#d8c5b2",
+    },
+  },
+  {
+    id: "ocean",
+    name: "Ocean",
+    description: "A fresh, cool blue canvas.",
+    detail: "Deep blue and aqua accents bring a crisp, focused mood.",
+    layout: "title",
+    palette: {
+      background: "#0b3045",
+      ink: "#f5fbfc",
+      muted: "#c1dce2",
+      accent: "#78d1cf",
+      surface: "#16475a",
+      line: "#346a79",
+    },
+  },
 ] as const satisfies readonly {
   id: string;
   name: string;
@@ -252,6 +297,108 @@ export function createThemedSlide(id: DeckSlideLayoutId, deck: Deck): Slide {
   return theme ? applyPalette(slide, theme.palette) : slide;
 }
 
+/** Original cover designs use ordinary, independently editable slide objects. */
+function createBasicCover(deck: Deck, definition: DeckThemeDefinition): Slide {
+  const { palette, id } = definition;
+  const slide = createThemedSlide("title", deck);
+  const shape = (
+    name: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    fill: string,
+    kind: ShapeObject["shape"] = "rect",
+  ): ShapeObject => ({
+    id: newId(),
+    type: "shape",
+    name,
+    transform: { x, y, width, height, rotation: 0 },
+    opacity: 1,
+    visible: true,
+    locked: false,
+    metadata: {},
+    shape: kind,
+    fill,
+    stroke: "none",
+    strokeWidth: 0,
+  });
+  const label = (
+    name: string,
+    value: string,
+    y: number,
+    size: number,
+    color: string,
+    weight: number,
+  ): TextObject => ({
+    id: newId(),
+    type: "text",
+    name,
+    transform: { x: 110, y, width: 960, height: size * 2.6, rotation: 0 },
+    opacity: 1,
+    visible: true,
+    locked: false,
+    metadata: {},
+    text: value,
+    fontFamily: deck.theme.fontFamily,
+    fontSize: size,
+    fontWeight: weight,
+    color,
+    align: "left",
+  });
+  const decoration =
+    id === "geometric"
+      ? [
+          shape("Color block", 1170, 0, 430, 900, palette.accent),
+          shape("Light block", 1050, 560, 290, 220, palette.surface),
+        ]
+      : id === "dune"
+        ? [
+            shape(
+              "Sand circle",
+              1050,
+              125,
+              470,
+              470,
+              palette.surface,
+              "ellipse",
+            ),
+            shape(
+              "Terracotta circle",
+              1210,
+              420,
+              300,
+              300,
+              palette.accent,
+              "ellipse",
+            ),
+          ]
+        : [
+            shape("Ocean panel", 1110, 0, 490, 900, palette.surface),
+            shape(
+              "Aqua circle",
+              1190,
+              160,
+              290,
+              290,
+              palette.accent,
+              "ellipse",
+            ),
+            shape("Ocean line", 1100, 600, 390, 6, palette.accent),
+          ];
+  slide.objects = [
+    ...decoration,
+    shape("Title accent", 110, 140, 75, 7, palette.accent),
+    label("Title", "Your presentation\ntitle", 250, 80, palette.ink, 600),
+    label("Subtitle", "A clear idea starts here.", 510, 32, palette.muted, 400),
+    label("Author and date", "Your name · Date", 690, 26, palette.ink, 500),
+  ];
+  slide.title = "Title";
+  slide.notes =
+    "Replace the title, subtitle, author and date. All shapes are editable.";
+  return slide;
+}
+
 /** A new presentation has one editable title slide and no demo assets. */
 export function createThemeDeck(id: DeckThemeId): Deck {
   const definition = DECK_THEMES.find((theme) => theme.id === id);
@@ -280,6 +427,10 @@ export function createThemeDeck(id: DeckThemeId): Deck {
     slides: [],
     assets: [],
   };
-  deck.slides = [createThemedSlide(definition.layout, deck)];
+  deck.slides = [
+    ["geometric", "dune", "ocean"].includes(id)
+      ? createBasicCover(deck, definition)
+      : createThemedSlide(definition.layout, deck),
+  ];
   return deck;
 }

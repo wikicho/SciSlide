@@ -12,6 +12,7 @@ const commands = new Set([
   "presenterView",
   "exportPdf",
   "exportSvg",
+  "exportPptx",
   "cut",
   "copy",
   "paste",

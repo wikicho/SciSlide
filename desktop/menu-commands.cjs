@@ -91,7 +91,10 @@ function buildMenuTemplate(
 ) {
   const profile = keyboardPlatform(platform);
   const definitions = new Map(
-    registry.commands.map((entry) => [entry.action, entry]),
+    [...registry.commands, ...registry.menuCommands].map((entry) => [
+      entry.action,
+      entry,
+    ]),
   );
   const menus = registry.menus.map((menu) => ({
     label: menu.label,

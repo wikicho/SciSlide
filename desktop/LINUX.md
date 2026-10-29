@@ -1,4 +1,4 @@
-# SciSlide 0.6.3.1 — Linux x64
+# SciSlide 0.6.4 — Linux x64
 
 The Debian package contains SciSlide and its Electron runtime for **x64 (Intel/AMD 64-bit)** Linux. Debian calls this architecture **amd64**. Ubuntu 24.04 x64 is the packaging target; other Debian/Ubuntu releases need separate desktop validation. MathJax editing uses bundled fonts and equation resources without Node.js, TeX or a development server.
 
@@ -6,13 +6,13 @@ Version **0.6.3.1** adds the headless agent CLI and four-part update version sup
 
 ## Install, launch and remove
 
-Download the `.deb` and its matching `.sha256` from the [v0.6.3.1 development prerelease](https://github.com/wikicho/SciSlide/releases/tag/v0.6.3.1), or download a Linux workflow artifact and extract it first. Keep Linux Debian distribution files in `release/linux-deb/` when working in the source checkout. A local source build uses that directory by default.
+Download the `.deb` and its matching `.sha256` from the [v0.6.4 development prerelease](https://github.com/wikicho/SciSlide/releases/tag/v0.6.4), or download a Linux workflow artifact and extract it first. Keep Linux Debian distribution files in `release/linux-deb/` when working in the source checkout. A local source build uses that directory by default.
 
 From the folder containing both files:
 
 ```sh
-sha256sum -c SciSlide-0.6.3.1-linux-x64.deb.sha256
-sudo apt install ./SciSlide-0.6.3.1-linux-x64.deb
+sha256sum -c SciSlide-0.6.4-linux-x64.deb.sha256
+sudo apt install ./SciSlide-0.6.4-linux-x64.deb
 scislide
 ```
 
@@ -57,8 +57,8 @@ The command builds the editor and creates:
 
 ```text
 release/linux-deb/SciSlide-linux-x64/
-release/linux-deb/SciSlide-0.6.3.1-linux-x64.deb
-release/linux-deb/SciSlide-0.6.3.1-linux-x64.deb.sha256
+release/linux-deb/SciSlide-0.6.4-linux-x64.deb
+release/linux-deb/SciSlide-0.6.4-linux-x64.deb.sha256
 release/linux-deb/LINUX-INSTALL.md
 ```
 
@@ -68,8 +68,8 @@ Verify and install a current local build with:
 
 ```sh
 cd release/linux-deb
-sha256sum -c SciSlide-0.6.3.1-linux-x64.deb.sha256
-sudo apt install ./SciSlide-0.6.3.1-linux-x64.deb
+sha256sum -c SciSlide-0.6.4-linux-x64.deb.sha256
+sudo apt install ./SciSlide-0.6.4-linux-x64.deb
 scislide
 ```
 

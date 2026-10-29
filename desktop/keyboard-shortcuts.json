@@ -1,5 +1,19 @@
 {
   "schemaVersion": 1,
+  "menuCommands": [
+    {
+      "action": "exportPptx",
+      "native": {
+        "command": "exportPptx",
+        "label": "Export PowerPoint (.pptx)…"
+      },
+      "platforms": {
+        "mac": { "nativeMenu": true, "nativeAccelerator": false },
+        "windows": { "nativeMenu": true, "nativeAccelerator": false },
+        "linux": { "nativeMenu": true, "nativeAccelerator": false }
+      }
+    }
+  ],
   "menus": [
     {
       "label": "File",
@@ -9,6 +23,7 @@
         "save",
         "saveAs",
         "separator",
+        "exportPptx",
         "exportPdf",
         "exportSvg",
         "separator",

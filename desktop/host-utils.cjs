@@ -160,8 +160,10 @@ function validateSaveDocument(value) {
 function validateSaveExport(value) {
   assertRecord(value, "Export request");
   assertKeys(value, ["bytes", "suggestedName", "kind"], "Export request");
-  if (!["pdf", "svg", "json"].includes(value.kind))
-    throw new Error("Choose PDF, SVG or equation-library JSON export.");
+  if (!["pdf", "svg", "pptx", "json"].includes(value.kind))
+    throw new Error(
+      "Choose PDF, SVG, PowerPoint or equation-library JSON export.",
+    );
   const bytes = checkedBytes(value.bytes, MAX_EXPORT_BYTES, "Export");
   if (
     value.kind === "pdf" &&
@@ -173,6 +175,14 @@ function validateSaveExport(value) {
     !/<svg[\s>]/i.test(bytes.subarray(0, 4096).toString("utf8"))
   )
     throw new Error("Invalid SVG export.");
+  if (
+    value.kind === "pptx" &&
+    (bytes[0] !== 0x50 ||
+      bytes[1] !== 0x4b ||
+      bytes[2] !== 0x03 ||
+      bytes[3] !== 0x04)
+  )
+    throw new Error("Invalid PowerPoint export.");
   if (value.kind === "json") {
     if (bytes.byteLength > 8 * 1024 * 1024)
       throw new Error("Equation library exceeds the 8 MB limit.");

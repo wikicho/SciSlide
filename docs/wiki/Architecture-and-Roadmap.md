@@ -15,15 +15,15 @@ React editor
        └─ Electron preload → native files, menus, presenter, host tools
 ```
 
-| Area           | Current implementation                                                |
-| -------------- | --------------------------------------------------------------------- |
-| User interface | React 19 and TypeScript; SVG scene with HTML editing controls         |
-| Mathematics    | Bundled MathJax 4 profiles with Modern, STIX Two, and Fira Math fonts |
-| Installed TeX  | Explicit compile/apply workflow through a Linux isolation adapter     |
-| Persistence    | Versioned ZIP/JSON `.scislide` archives with embedded resources       |
-| Export         | jsPDF and svg2pdf.js for PDF; current-slide SVG                       |
-| Desktop        | Electron with a narrow isolated preload bridge                        |
-| Packaging      | macOS arm64/x64 PKG, Windows x64 setup/portable ZIP, Linux x64 DEB    |
+| Area           | Current implementation                                                                         |
+| -------------- | ---------------------------------------------------------------------------------------------- |
+| User interface | React 19 and TypeScript; SVG scene with HTML editing controls                                  |
+| Mathematics    | Bundled MathJax 4 profiles with Modern, STIX Two, and Fira Math fonts                          |
+| Installed TeX  | Explicit compile/apply workflow through a Linux isolation adapter                              |
+| Persistence    | Versioned ZIP/JSON `.scislide` archives with embedded resources                                |
+| Export         | PowerPoint with editable text/shapes and graphics; jsPDF/svg2pdf.js for PDF; current-slide SVG |
+| Desktop        | Electron with a narrow isolated preload bridge                                                 |
+| Packaging      | macOS arm64/x64 PKG, Windows x64 setup/portable ZIP, Linux x64 DEB                             |
 
 The renderer does not import Node.js or Electron APIs directly. The desktop host validates structured requests and keeps file destinations selected through native dialogs. Opening a presentation does not run its equation source or host commands. Local LaTeX compilation and AI generation require explicit user actions.
 
@@ -61,7 +61,7 @@ Workspace recovery, unfinished equation drafts, and the personal equation librar
 - SVG/PNG/JPEG figures, rasterized PDF page import, reversible crop, insets, and figure replacement.
 - MathJax font/package profiles, a personal equation library, and isolated installed-package compilation on supported Linux and macOS systems.
 - Embedded MP4/WebM video, click-triggered appear/fade builds, notes, and a separate presenter display.
-- Native save/open, PDF/SVG export, workspace recovery, and installed AI CLI drafts.
+- Native save/open, PowerPoint/PDF/SVG export, workspace recovery, and installed AI CLI drafts.
 - Platform-specific shortcuts using Keynote, PowerPoint, and Impress conventions where the corresponding action exists.
 - Inline equation popups, auto-growing text frames, and committed text size/frame inputs.
 - Update CLI checks and SHA-256-verified installer downloads, with three-part and four-part app versions; installation remains separate.
@@ -77,13 +77,13 @@ These features are **not implemented in v0.6.3.1**:
 | Direction            | Remaining work                                                                                                            |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | Distribution         | Signing/notarization, automatic updates, hosted APT repository, Snap distribution, and broader physical-device validation |
-| Document tooling     | Richer migration documentation and expanded Git collaboration workflows                                                  |
+| Document tooling     | Richer migration documentation and expanded Git collaboration workflows                                                   |
 | Scientific authoring | Shared deck macros, linked equation-library entries, citations/BibTeX, editable charts with units/error bars              |
 | Layout               | Linked masters, nested groups, collective group scaling/rotation, attached connectors, freehand drawing                   |
 | Figures              | Preservation of original PDF vectors and expanded provenance tools                                                        |
 | Presentation         | Advanced animation, a dedicated build-order panel, automatic monitor placement                                            |
-| Host tools           | A Windows Local LaTeX isolation adapter and authorized home-installed TeX resources                   |
-| Interchange          | PPTX/HTML export and collaboration                                                                                        |
+| Host tools           | A Windows Local LaTeX isolation adapter and authorized home-installed TeX resources                                       |
+| Interchange          | PPTX import, editable Office equations/media/animations, standalone HTML export and collaboration                         |
 | Project governance   | A selected project license and dedicated contribution/security documents                                                  |
 
 No delivery dates are promised by this list. The [project specification](https://github.com/wikicho/SciSlide/blob/v0.6.3.1/SciSlide-Project-Specification.md) records the broader requirements; its baseline narrative predates 0.6.2. Use this wiki, the [0.6.3.1 release notes](https://github.com/wikicho/SciSlide/blob/v0.6.3.1/docs/releases/v0.6.3.1.md), and source code to determine the current feature set.

@@ -81,6 +81,7 @@ import {
 } from "./lib/persistence";
 import { renderEquation, FONT_OPTIONS } from "./lib/equations";
 import { exportDeckPdf, exportSlideSvg } from "./lib/export";
+import { exportDeckPptx } from "./lib/export-pptx";
 import {
   maxBuildStep,
   nextBuildStep,
@@ -1741,20 +1742,28 @@ export default function App() {
       setBusy("");
     }
   };
-  const runExport = async (kind: "pdf" | "svg") => {
+  const runExport = async (kind: "pdf" | "svg" | "pptx") => {
     if (busy) return;
     finishTextEditing();
     setExportMenu(false);
-    setBusy(kind === "pdf" ? "Preparing vector PDF" : "Preparing SVG");
+    setBusy(
+      kind === "pdf"
+        ? "Preparing vector PDF"
+        : kind === "pptx"
+          ? "Preparing PowerPoint"
+          : "Preparing SVG",
+    );
     try {
       const snapshot = cloneDeck(deckRef.current),
         blob =
-          kind === "pdf"
-            ? await exportDeckPdf(snapshot)
-            : await exportSlideSvg(
-                snapshot,
-                snapshot.slides.find((s) => s.id === slide.id)!,
-              );
+          kind === "pptx"
+            ? await exportDeckPptx(snapshot)
+            : kind === "pdf"
+              ? await exportDeckPdf(snapshot)
+              : await exportSlideSvg(
+                  snapshot,
+                  snapshot.slides.find((s) => s.id === slide.id)!,
+                );
       const suggestedName = `${snapshot.title}${kind === "svg" ? "-" + (slideIndex + 1) : ""}.${kind}`;
       if (desktop) {
         const result = await desktop.saveExport({
@@ -2208,7 +2217,10 @@ export default function App() {
   useEffect(() => {
     if (!desktop?.setCommandAvailability) return;
     const syncMenu = () => {
-      const states: Partial<Record<DesktopCommand, boolean>> = {};
+      const states: Partial<Record<DesktopCommand, boolean>> = {
+        exportPptx:
+          !busy && !hasEditorDialog && !presenting && !showThemeChooser,
+      };
       const state = shortcutAvailability();
       const editing = isTextInput(document.activeElement);
       const inline = !!document.activeElement?.matches(".inline-text-editor");
@@ -2251,6 +2263,10 @@ export default function App() {
   useEffect(() =>
     desktop?.onCommand((command) => {
       if (hasEditorDialog || presenting) return;
+      if (command === "exportPptx") {
+        if (!showThemeChooser) void runExport("pptx");
+        return;
+      }
       const action = command === "showShortcuts" ? "help" : command;
       if (!isShortcutAvailable(action, keyboardPlatform)) return;
       if (
@@ -3108,6 +3124,16 @@ export default function App() {
             </button>
             {exportMenu && (
               <div className="dropdown">
+                <button
+                  title="Export PowerPoint (.pptx)"
+                  onClick={() => void runExport("pptx")}
+                >
+                  <Presentation size={15} />
+                  <span>
+                    PowerPoint (.pptx)
+                    <small>All slides · editable text and shapes</small>
+                  </span>
+                </button>
                 <button
                   title={shortcutTitle("Export PDF", "exportPdf")}
                   onClick={() => void runExport("pdf")}

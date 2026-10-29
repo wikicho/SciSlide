@@ -44,6 +44,7 @@ export type DesktopCommand =
   | "presenterView"
   | "exportPdf"
   | "exportSvg"
+  | "exportPptx"
   | "cut"
   | "copy"
   | "paste"
@@ -122,7 +123,7 @@ export interface DesktopApi {
   saveExport(request: {
     bytes: Uint8Array;
     suggestedName: string;
-    kind: "pdf" | "svg" | "json";
+    kind: "pdf" | "svg" | "pptx" | "json";
   }): Promise<{ path: string; name: string } | null>;
   clearDocument(): Promise<void>;
   detectTex(): Promise<TexCapabilities>;

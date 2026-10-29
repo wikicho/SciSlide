@@ -1,6 +1,6 @@
 {
   "name": "scislide",
-  "version": "0.6.3.1",
+  "version": "0.6.4",
   "private": true,
   "type": "module",
   "scripts": {
@@ -32,6 +32,7 @@
     "jszip": "^3.10.1",
     "lucide-react": "^0.468.0",
     "pdfjs-dist": "6.4.299",
+    "pptxgenjs": "^4.0.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "svg2pdf.js": "^2.5.0"

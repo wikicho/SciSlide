@@ -258,10 +258,18 @@ function registerIpc() {
         title:
           request.kind === "json"
             ? "Export equation library"
-            : `Export ${request.kind.toUpperCase()}`,
+            : request.kind === "pptx"
+              ? "Export PowerPoint"
+              : `Export ${request.kind.toUpperCase()}`,
         defaultPath: request.suggestedName,
         filters: [
-          { name: request.kind.toUpperCase(), extensions: [request.kind] },
+          {
+            name:
+              request.kind === "pptx"
+                ? "PowerPoint"
+                : request.kind.toUpperCase(),
+            extensions: [request.kind],
+          },
         ],
         properties: ["createDirectory", "showOverwriteConfirmation"],
       });

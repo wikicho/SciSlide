@@ -1,21 +1,28 @@
 # Export and presenting
 
-SciSlide 0.6.3.1 exports **all slides as PDF** or **the current slide as SVG**. Save a `.scislide` file as well if you need to continue editing: PDF and SVG exports do not preserve the native editable deck.
+SciSlide exports **all slides as PowerPoint (.pptx) or PDF**, or **the current slide as SVG**. Save a `.scislide` file as well to preserve LaTeX sources, assets and all native editing settings.
 
 ## Export formats
 
-Open **Export** in the toolbar, then choose **PDF presentation** or the current-slide SVG option. Electron uses a native save dialog; the browser starts a download. A desktop save completes only after the native file write succeeds.
+Open **Export** in the toolbar, then choose **PowerPoint (.pptx)**, **PDF presentation** or the current-slide SVG option. The desktop **File** menu offers the same formats. Electron uses a native save dialog; the browser starts a download. A desktop save completes only after the native file write succeeds.
 
-| Output                        | Contents and behavior                                                                                                                            |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| PDF                           | One page per slide at the deck's dimensions; vector equations and supported SVG figures; embedded raster images; selectable supported body text. |
-| SVG                           | The current slide, with vector equations, supported SVG figures, embedded raster figures and bundled body-font data.                             |
-| `.scislide`                   | Editable source, embedded assets and successful Local LaTeX vector results. Use **Save / Save As**, rather than Export.                          |
-| PPTX, standalone HTML, Beamer | No deck exporter is implemented in 0.6.3.                                                                                                        |
+| Output                  | Contents and behavior                                                                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| PowerPoint (`.pptx`)    | All slides with editable text and shapes, embedded equation/figure graphics, speaker notes and page numbers.                                     |
+| PDF                     | One page per slide at the deck's dimensions; vector equations and supported SVG figures; embedded raster images; selectable supported body text. |
+| SVG                     | The current slide, with vector equations, supported SVG figures, embedded raster figures and bundled body-font data.                             |
+| `.scislide`             | Editable source, embedded assets and successful Local LaTeX vector results. Use **Save / Save As**, rather than Export.                          |
+| Standalone HTML, Beamer | No deck exporter is implemented.                                                                                                                 |
 
 The built web app in `dist/` is the editor application; it is not a standalone HTML export of your presentation.
 
-## What static exports preserve
+## PowerPoint editing and compatibility
+
+PowerPoint export preserves slide order, deck dimensions, object position/rotation and the final click-build state. Text and shapes remain editable in PowerPoint. Inline mathematics is split into editable prose and separate equation graphics. Standalone equations and scientific figures are also exported as graphics; equation graphics are not editable Office equations. Speaker notes are included.
+
+PPTX references the deck's text fonts without embedding them. Install those fonts on the computer opening the presentation to avoid substitution and text-layout changes. Native PowerPoint text uses regular or bold weights: SciSlide weights 400/500 export as regular and 600/700 as bold. Equation and figure graphics include a raster fallback for viewers without SVG support. Videos become labeled static placeholders, and click builds do not become PowerPoint animations. PPTX import and round-trip preservation of SciSlide editing settings are not implemented.
+
+## What PDF and SVG preserve
 
 - The final click-build state: all ordinarily visible objects appear together. One-page-per-build export is not implemented.
 - Deck-wide page numbers, figure crops, insets, shapes and object transforms.

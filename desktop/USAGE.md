@@ -1,4 +1,4 @@
-# SciSlide 0.6.3.1 — Linux x64 standalone app
+# SciSlide 0.6.4 — Linux x64 standalone app
 
 Run the `scislide` executable in this folder. Keep the Electron runtime files together. Node.js, TeX and a development server are not required for MathJax editing.
 
@@ -6,7 +6,7 @@ Run the `scislide` executable in this folder. Keep the Electron runtime files to
 ./scislide
 ```
 
-For system installation, the separate `SciSlide-0.6.3.1-linux-x64.deb` adds a desktop launcher and icon. Install it with `sudo apt install ./SciSlide-0.6.3.1-linux-x64.deb`, then launch `scislide`. Ubuntu 24.04 x64 is the packaging target; Debian calls the architecture `amd64`. No SciSlide APT repository or Snap package is currently provided.
+For system installation, the separate `SciSlide-0.6.4-linux-x64.deb` adds a desktop launcher and icon. Install it with `sudo apt install ./SciSlide-0.6.4-linux-x64.deb`, then launch `scislide`. Ubuntu 24.04 x64 is the packaging target; Debian calls the architecture `amd64`. No SciSlide APT repository or Snap package is currently provided.
 
 ## Update CLI
 
@@ -28,7 +28,7 @@ Press **Ctrl+Shift+M** in canvas or Inspector text to insert/edit an inline equa
 
 With the canvas focused, **Tab / Shift+Tab** selects eligible objects/groups in stacking order and follows normal UI focus order at the boundaries. **Ctrl+Alt+I / Ctrl+Shift+L** toggle and focus Inspector / Objects & Layers independently. Duplicate targets the focused thumbnail even with a retained canvas selection. Text fields, dialogs and playback retain their input; native menu availability follows focus, selection and busy state.
 
-**Open / Save / Save As** use native dialogs. Save updates the selected source file; **Export** saves all slides as PDF or the current slide as SVG. Copy bundled examples to your documents folder before editing them. `examples/inline-math.scislide` demonstrates English/Korean inline formulas, `examples/keynote-white-theme.scislide` contains all fifteen layouts, and `examples/electron-local-latex.scislide` includes a saved Local LaTeX result. Scientific demonstration data is synthetic.
+**Open / Save / Save As** use native dialogs. Save updates the selected source file; **Export** saves all slides as PowerPoint (`.pptx`) or PDF, or the current slide as SVG. PowerPoint keeps editable ordinary text and shapes, speaker notes and page numbers; equations and figures become graphics, videos become static placeholders, and click builds show their final state. PPTX does not embed text fonts or create editable Office equations. Copy bundled examples to your documents folder before editing them. `examples/inline-math.scislide` demonstrates English/Korean inline formulas, `examples/keynote-white-theme.scislide` contains all fifteen layouts, and `examples/electron-local-latex.scislide` includes a saved Local LaTeX result. Scientific demonstration data is synthetic.
 
 ## Figures and object layout
 
@@ -58,6 +58,6 @@ For selected objects, **Ctrl++ / Ctrl+-** move one layer forward / backward, and
 
 New saves use native format **0.5.0**, including reversible figure crops. Formats **0.1.0–0.4.0** migrate on opening; the original changes only when saved. Apps that read only 0.4.0 or earlier cannot open new 0.5.0 files. Use **Save As** to retain an older original; PDF/SVG does not downgrade editable source.
 
-Modern Korean body text uses bundled Nanum Gothic; unsupported body-text glyphs still produce a PDF export error. PPTX/HTML export, signed distribution and automatic updates remain future work. Packaging checks do not establish complete installed-desktop validation.
+Modern Korean body text uses bundled Nanum Gothic; unsupported body-text glyphs still produce a PDF export error. Install the referenced fonts in PowerPoint to prevent text substitution in PPTX. HTML export, signed distribution and automatic updates remain future work. Packaging checks do not establish complete installed-desktop validation.
 
 Electron/Chromium notices are in `LICENSE` and `LICENSES.chromium.html`. App dependency notices are in `resources/app.asar` under `third-party-licenses/`. A license for the new SciSlide source has not yet been selected.

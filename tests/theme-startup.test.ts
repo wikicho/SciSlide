@@ -211,6 +211,9 @@ describe("theme selection at presentation startup", () => {
       "Minimal Black",
       "Navy",
       "Keynote White",
+      "Geometric",
+      "Dune",
+      "Ocean",
     ]);
     expect(
       themes.filter((theme) => theme.getAttribute("aria-checked") === "true"),

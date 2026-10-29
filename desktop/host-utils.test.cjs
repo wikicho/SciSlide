@@ -76,6 +76,7 @@ for (const platform of ["darwin", "linux", "win32"]) {
     const mac = platform === "darwin";
     const primary = platform === "darwin" ? "Command" : "Control";
     const expected = [
+      ["Export PowerPoint (.pptx)…", undefined, "exportPptx"],
       ...[
         ["New presentation", "N", "new"],
         ["Open…", "O", "open"],
@@ -583,7 +584,7 @@ test("the sandbox preload and host allowlists forward all platform menu actions 
       if (typeof item.click === "function") item.click();
   }
   const expectedCommands = new Set(received);
-  assert.equal(expectedCommands.size, 43);
+  assert.equal(expectedCommands.size, 44);
   assert.deepEqual(expectedCommands, COMMANDS);
   const types = await fs.readFile(
     path.join(__dirname, "../src/lib/desktop.ts"),
@@ -839,6 +840,40 @@ test("save requests expose no arbitrary path or write operation", () => {
       bytes: new TextEncoder().encode("hello"),
       suggestedName: "deck",
       kind: "exe",
+    }),
+  );
+});
+
+test("PowerPoint export accepts bounded ZIP bytes with a safe .pptx filename", () => {
+  const bytes = new Uint8Array([0x50, 0x4b, 3, 4, 20, 0]);
+  const value = validateSaveExport({
+    bytes,
+    kind: "pptx",
+    suggestedName: "../Scientific talk.pdf",
+  });
+  assert.equal(value.kind, "pptx");
+  assert.equal(value.suggestedName, "_Scientific talk.pdf.pptx");
+  assert.deepEqual(value.bytes, Buffer.from(bytes));
+  for (const invalid of [
+    new Uint8Array([0x50, 0x4b]),
+    new Uint8Array([0x50, 0x4b, 0, 0]),
+    new TextEncoder().encode("<svg></svg>"),
+  ])
+    assert.throws(
+      () =>
+        validateSaveExport({
+          bytes: invalid,
+          suggestedName: "deck",
+          kind: "pptx",
+        }),
+      /Invalid PowerPoint/,
+    );
+  assert.throws(() =>
+    validateSaveExport({
+      bytes,
+      kind: "pptx",
+      suggestedName: "deck",
+      path: "/tmp/arbitrary.pptx",
     }),
   );
 });

@@ -19,18 +19,46 @@ vi.mock("../src/lib/equation-renderer", () => ({
 }));
 
 describe("presentation starter themes", () => {
-  it("offers five themes including separate white layout families", () => {
+  it("offers the existing themes and three basic styles", () => {
     expect(DECK_THEMES.map((theme) => theme.id)).toEqual([
       "scientific",
       "minimal-white",
       "minimal-black",
       "navy",
       "keynote-white",
+      "geometric",
+      "dune",
+      "ocean",
     ]);
     expect(
       new Set(DECK_THEMES.map((theme) => theme.palette.background)).size,
-    ).toBe(4);
+    ).toBe(7);
   });
+
+  it.each(["geometric", "dune", "ocean"] as const)(
+    "creates an editable $0 cover that survives saving and supports themed layouts",
+    (id) => {
+      const deck = validateDeck(
+        JSON.parse(JSON.stringify(createThemeDeck(id))),
+      );
+      const cover = deck.slides[0];
+      expect(cover.objects.some((object) => object.type === "shape")).toBe(
+        true,
+      );
+      expect(
+        cover.objects.some(
+          (object) => object.type === "text" && object.name === "Title",
+        ),
+      ).toBe(true);
+      expect(
+        cover.objects.every((object) => object.visible && !object.locked),
+      ).toBe(true);
+      expect(getDeckThemeId(deck)).toBe(id);
+      expect(createThemedSlide("content", deck).background).toBe(
+        cover.background,
+      );
+    },
+  );
 
   it.each(DECK_THEMES)(
     "creates a valid, fresh $name deck without demo content",
@@ -235,13 +263,15 @@ describe("full-screen theme chooser", () => {
     );
   }
 
-  it("shows five editable slide previews and creates only after an explicit choice", async () => {
+  it("shows editable slide previews and creates only after an explicit choice", async () => {
     await render();
     expect(host.querySelector("h1")?.textContent).toBe("Choose your theme.");
-    expect(host.querySelectorAll("[role=radio]")).toHaveLength(5);
+    expect(host.querySelectorAll("[role=radio]")).toHaveLength(
+      DECK_THEMES.length,
+    );
     expect(
       host.querySelectorAll(".theme-chooser-preview .slide-scene"),
-    ).toHaveLength(5);
+    ).toHaveLength(DECK_THEMES.length);
     expect(button("Scientific").getAttribute("aria-checked")).toBe("true");
     expect(document.activeElement).toBe(button("Scientific"));
     await click(button("Minimal Black"));
@@ -257,10 +287,10 @@ describe("full-screen theme chooser", () => {
     await render();
     for (const [name, key, next] of [
       ["Scientific", "ArrowRight", "Minimal White"],
-      ["Minimal White", "End", "Keynote White"],
-      ["Keynote White", "ArrowRight", "Scientific"],
-      ["Scientific", "ArrowLeft", "Keynote White"],
-      ["Keynote White", "Home", "Scientific"],
+      ["Minimal White", "End", "Ocean"],
+      ["Ocean", "ArrowRight", "Scientific"],
+      ["Scientific", "ArrowLeft", "Ocean"],
+      ["Ocean", "Home", "Scientific"],
     ]) {
       const event = new KeyboardEvent("keydown", {
         key,

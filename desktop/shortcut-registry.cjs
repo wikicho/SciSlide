@@ -42,7 +42,7 @@ function getNativeAccelerator(definition, platform) {
 // Fixed declaration data is the only source of IPC command IDs. It cannot be
 // extended by document contents, renderer payloads, or preferences.
 const COMMANDS = new Set(
-  registry.commands
+  [...registry.commands, ...registry.menuCommands]
     .filter((definition) => definition.native)
     .map((definition) => definition.native.command),
 );
