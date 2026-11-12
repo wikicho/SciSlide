@@ -61,7 +61,7 @@ sudo apt install ./SciSlide-0.6.4-linux-x64.deb
 scislide
 ```
 
-The package installs in `/opt/scislide`, provides `/usr/bin/scislide` and adds a desktop-menu entry. Do not run the editor as root. Use **Open** inside SciSlide to open presentations; file-manager associations and command-line document opening are not implemented.
+The package installs in `/opt/scislide`, provides `/usr/bin/scislide` and registers `.scislide` files with the desktop. Double-click a presentation, choose **Open With → SciSlide**, or run `scislide "/path/to/deck.scislide"`. Files open in the existing editor when it is already running. Do not run the editor as root.
 
 Quit SciSlide before installing a newer `.deb`. Remove the application with:
 

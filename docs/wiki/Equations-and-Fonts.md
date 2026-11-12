@@ -47,11 +47,14 @@ Write `$...$` or `\(...\)` inside a text box:
 ```text
 The field $\chi$ has mass $m_\chi$.
 암흑물질 $\chi$의 질량은 $m_\chi$입니다.
+Constraining $U(1)_{L_\mu - L_\tau}$ Model with Dark Matter Using Relic Density and $N_\mathrm{eff}$ Bounds
 ```
 
-Formulas use the deck's equation font and the text box's size/color. They share the text baseline and wrap with surrounding words; tall formulas expand line spacing. Editing shows the original syntax, which is preserved in the source file. PDF/SVG retains vector formulas and selectable ordinary text.
+Only the delimited parts become formulas; surrounding words remain ordinary text. Use `_` for subscripts inside formulas, without Markdown escapes (`\_`) or emphasis markers (`*`). Match each opening `{` with a closing `}`.
 
-Use `\$` for a literal dollar sign. Empty/unmatched delimiters and standalone `$$...$$` spans remain literal; use an Equation object for display mathematics. Invalid inline formulas show a diagnostic and prevent PDF/SVG export with the object's name. Installed LaTeX packages apply only to separate Local LaTeX equation objects.
+Formulas use the deck's equation font and the text box's size/color. They share the text baseline and wrap with surrounding words; tall formulas expand line spacing. Left, center and right alignment apply to the entire mixed line. While editing on the canvas, the rendered result stays in its slide position and an editable source field appears below it (or above near the bottom of the slide). The source is preserved in the file; finish with **⌘+Enter** on macOS or **Ctrl+Enter** on Windows/Linux. PDF/SVG retains vector formulas and selectable ordinary text.
+
+Use `\$` for a literal dollar sign. Empty/unmatched delimiters and standalone `$$...$$` spans remain literal; use an Equation object for display mathematics. An invalid formula appears as red source with a diagnostic; surrounding prose and valid formulas continue rendering. Double-click the failed formula to correct it. Invalid formulas prevent PDF/SVG export with the object's name. Installed LaTeX packages apply only to separate Local LaTeX equation objects.
 
 ## System-installed LaTeX on Linux and macOS
 
@@ -77,7 +80,7 @@ XeLaTeX preamble example using an installed OpenType math font:
 \setmathfont{Latin Modern Math}
 ```
 
-The app converts DVI/XDV output to outlined SVG. pdfLaTeX and LuaLaTeX execution are not provided. System TeX/font paths are read-only inside the worker; `~/texmf` and personal package/font directories are not mounted. Packages requiring external programs or shell escape are unsupported, and not every package combination is guaranteed.
+The app converts DVI/XDV output to outlined SVG. pdfLaTeX and LuaLaTeX execution are not provided. On Linux, detection searches PATH and common TeX Live locations; **Choose TeX folder…** selects and remembers another binary directory, and **Check again** refreshes detection. System TeX/font paths and selected custom TeX Live distributions are read-only inside the worker; personal `~/texmf` packages and personal font directories are not automatically mounted. Packages requiring external programs or shell escape are unsupported, and not every package combination is guaranteed.
 
 Compilation happens only on explicit request. Opening, presenting and exporting do not execute equation source. Changes to source, preamble, engine, font size, color or display mode require recompilation; position/rotation reuse the saved result.
 

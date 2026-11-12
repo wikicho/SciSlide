@@ -59,6 +59,13 @@ export function SlideList({
     return stopScrolling;
   }, [deck.id, disabled, cancel, stopScrolling]);
 
+  useEffect(() => {
+    const card = Array.from(
+      list.current?.querySelectorAll<HTMLElement>("[data-slide-id]") ?? [],
+    ).find((element) => element.dataset.slideId === activeSlideId);
+    card?.scrollIntoView?.({ block: "nearest" });
+  }, [activeSlideId]);
+
   const currentDrag = () => {
     const source = drag.current;
     return !disabled &&
@@ -186,7 +193,12 @@ export function SlideList({
   });
 
   return (
-    <div className="slide-list" ref={list}>
+    <div
+      className="slide-list"
+      ref={list}
+      role="navigation"
+      aria-label="Slides"
+    >
       {deck.slides.map((slide, index) => (
         <button
           className={`slide-card ${slide.id === activeSlideId ? "selected" : ""} ${slide.id === draggingId ? "dragging" : ""} ${position?.slideId === slide.id ? `drop-${position.edge}` : ""}`}
@@ -196,7 +208,7 @@ export function SlideList({
           data-reorderable={!disabled && deck.slides.length > 1}
           aria-label={`Slide ${index + 1}: ${slide.title || "Untitled slide"}`}
           aria-current={slide.id === activeSlideId ? "true" : undefined}
-          title="Drag to reorder slide"
+          title={`Slide ${index + 1}: ${slide.title || "Untitled slide"} · Drag to reorder`}
           draggable={false}
           onDragStart={(event) => event.preventDefault()}
           onClick={(event) => {
@@ -207,14 +219,9 @@ export function SlideList({
             onSelect(slide.id);
           }}
           onPointerDown={(event) => {
-            if (
-              disabled ||
-              deck.slides.length < 2 ||
-              drag.current ||
-              event.button !== 0 ||
-              !event.isPrimary
-            )
-              return;
+            if (disabled || event.button !== 0 || !event.isPrimary) return;
+            event.currentTarget.focus();
+            if (deck.slides.length < 2 || drag.current) return;
             suppressClick.current = false;
             drag.current = {
               deckId: deck.id,

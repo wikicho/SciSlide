@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { URL as NodeURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createDemoDeck, type Deck, type TextObject } from "../src/lib/model";
 import {
@@ -142,7 +142,9 @@ describe("Korean PDF and SVG typography", () => {
     vi.stubGlobal("fetch", async (url: URL) => {
       const filename = url.pathname.split("/").pop()!;
       fetched.push(filename);
-      const bytes = await readFile(resolve("public/fonts", filename));
+      const bytes = await readFile(
+        new NodeURL(`../public/fonts/${filename}`, import.meta.url),
+      );
       return {
         ok: true,
         arrayBuffer: async () => Uint8Array.from(bytes).buffer,

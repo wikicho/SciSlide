@@ -1,6 +1,14 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { TextObject } from "../lib/model";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import type { Deck, TextObject } from "../lib/model";
 import { wrapText } from "../lib/layout";
+import { hasInlineMath, inlineTextLayoutKey } from "../lib/inline-math";
+import { InlineMathText } from "./InlineMathText";
 import { exportTextFontFamily, exportTextFontWeight } from "../lib/text-fonts";
 import {
   getKeyboardPlatform,
@@ -26,10 +34,12 @@ export function InlineTextEditor({
   object,
   editing,
   onHeightChange,
+  deck,
 }: {
   object: TextObject;
   editing: CanvasTextEditing;
   onHeightChange?: (height: number) => void;
+  deck?: Deck;
 }) {
   const platform = editing.platform ?? getKeyboardPlatform(desktop?.platform);
   const field = useRef<HTMLTextAreaElement>(null);
@@ -47,6 +57,36 @@ export function InlineTextEditor({
   const { x, y, width, height, rotation } = object.transform;
   const minimumHeight = Math.max(height, object.fontSize * 1.6);
   const [editorHeight, setEditorHeight] = useState(minimumHeight);
+  const previewObject = { ...object, text: editing.value };
+  const showPreview = !!deck && hasInlineMath(editing.value);
+  const previewKey = deck ? inlineTextLayoutKey(previewObject, deck) : "";
+  const [previewMetrics, setPreviewMetrics] = useState<{
+    key: string;
+    height: number;
+  }>();
+  const previewHeight = Math.max(
+    minimumHeight,
+    previewMetrics?.key === previewKey
+      ? previewMetrics.height
+      : object.fontSize * 1.3,
+  );
+  const reportPreviewMetrics = useCallback(
+    (_id: string, key: string, contentHeight: number) =>
+      setPreviewMetrics((current) =>
+        current?.key === key && current.height === contentHeight
+          ? current
+          : { key, height: contentHeight },
+      ),
+    [],
+  );
+  // Keep the rendered text in its slide position. Its source field floats below
+  // it (or above near the slide's bottom), without changing stored geometry.
+  const sourceY = showPreview
+    ? y + previewHeight + 28 + editorHeight > deck.slideSize.height &&
+      y >= editorHeight + 28
+      ? -editorHeight - 28
+      : previewHeight + 28
+    : 0;
   const heightCallback = useRef(onHeightChange);
   heightCallback.current = onHeightChange;
 
@@ -70,7 +110,7 @@ export function InlineTextEditor({
       textarea.style.height = "100%";
       const nextHeight = Math.max(minimumHeight, Math.ceil(contentHeight));
       setEditorHeight(nextHeight);
-      heightCallback.current?.(nextHeight);
+      if (!showPreview) heightCallback.current?.(nextHeight);
     };
     measure();
 
@@ -93,7 +133,11 @@ export function InlineTextEditor({
     object.fontSize,
     object.fontFamily,
     object.fontWeight,
+    showPreview,
   ]);
+  useLayoutEffect(() => {
+    if (showPreview) heightCallback.current?.(previewHeight);
+  }, [showPreview, previewHeight, previewKey]);
 
   return (
     <g
@@ -102,7 +146,42 @@ export function InlineTextEditor({
       onPointerDown={(event) => event.stopPropagation()}
       onDoubleClick={(event) => event.stopPropagation()}
     >
-      <foreignObject width={width} height={editorHeight}>
+      {showPreview && (
+        <>
+          <g
+            data-inline-text-preview={object.id}
+            opacity={object.opacity}
+            pointerEvents="none"
+          >
+            <InlineMathText
+              object={previewObject}
+              deck={deck}
+              onMetrics={reportPreviewMetrics}
+            />
+          </g>
+          <rect
+            x={-6}
+            y={sourceY - 24}
+            width={width + 12}
+            height={editorHeight + 30}
+            rx={4}
+            fill="#ffffff"
+            stroke="rgb(107 114 128 / 45%)"
+            vectorEffect="non-scaling-stroke"
+          />
+          <text
+            x={0}
+            y={sourceY - 8}
+            fill="#6b7280"
+            fontSize={12}
+            fontFamily="Inter, sans-serif"
+            pointerEvents="none"
+          >
+            Text source · $...$ inline math
+          </text>
+        </>
+      )}
+      <foreignObject y={sourceY} width={width} height={editorHeight}>
         <textarea
           ref={field}
           aria-label="Edit text on slide"
@@ -112,7 +191,7 @@ export function InlineTextEditor({
           maxLength={100_000}
           spellCheck={false}
           style={{
-            color: object.color,
+            color: showPreview ? "#253347" : object.color,
             fontFamily: `${exportTextFontFamily(editing.value, object.fontFamily)}, sans-serif`,
             fontSize: object.fontSize,
             fontWeight: exportTextFontWeight(
@@ -121,7 +200,7 @@ export function InlineTextEditor({
               object.fontWeight,
             ),
             textAlign: object.align,
-            opacity: object.opacity,
+            opacity: showPreview ? 1 : object.opacity,
           }}
           onChange={(event) => editing.onChange(event.target.value)}
           onCompositionStart={() => {

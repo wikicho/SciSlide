@@ -18,7 +18,7 @@ scislide
 
 Use the exact version in your download's filenames. The `./` tells APT to install a local file and resolve its declared system-library dependencies. No TeX distribution or AI CLI is installed with SciSlide. A matching checksum detects file changes; it does not authenticate the publisher.
 
-The package installs the full application in `/opt/scislide`, adds `/usr/bin/scislide`, and adds **SciSlide** to the desktop application menu with its icon. Open saved `.scislide` documents through the app's **Open** action; file-manager associations and command-line document opening are not implemented. Editable examples are in `/opt/scislide/examples`; copy one to your documents folder before editing it. The package retains Electron's sandbox and does not add `--no-sandbox` to its launcher.
+The package installs the full application in `/opt/scislide`, adds `/usr/bin/scislide`, and registers `.scislide` presentations with the file manager. Double-click a presentation, use **Open With → SciSlide**, or run `scislide "/path/to/deck.scislide"`. Files open in the existing editor when SciSlide is already running. If another application is the default, choose SciSlide in the file's **Properties → Open With** settings. Editable examples are in `/opt/scislide/examples`; copy one to your documents folder before editing it. The package retains Electron's sandbox and does not add `--no-sandbox` to its launcher.
 
 Quit SciSlide before installing a newer `.deb` with the same command. To remove the application:
 
@@ -133,7 +133,9 @@ sudo apt install texlive-latex-extra texlive-fonts-recommended texlive-science t
 
 Select one visible, unlocked equation in **Local LaTeX** mode and use **Ctrl+Shift+Enter** from the canvas or equation Inspector, including source and preamble, to run **Compile with LaTeX** when TeX is ready and the editor is idle. This updates the draft preview; **Apply equation** remains a separate action. Browser/MathJax mode, notes, inline text, media, thumbnails, dialogs, playback, IME composition and held-key repetition do not trigger compilation.
 
-SciSlide checks whether isolation actually works before enabling compilation. Home-installed TeX packages such as `~/texmf` are not currently mounted into its compile environment. Valid local vector renders saved in a presentation remain viewable and exportable without the original compiler.
+SciSlide searches PATH and TeX Live installations under `/usr/local/texlive`, `/opt/texlive` and `~/texlive`, including their versioned `bin/*-linux` directories. The Local LaTeX panel displays the detected engine path. For another installation, use **Choose TeX folder…** and select the directory containing `latex` or `xelatex` (for example `/data/texlive/2026/bin/x86_64-linux`). The app remembers that folder across launches. **Check again** refreshes detection after installing tools. A terminal launch can also specify `SCISLIDE_TEX_BIN=/path/to/bin scislide`.
+
+SciSlide checks whether isolation actually works before enabling compilation. Custom TeX Live distributions and their system TeX trees are mounted read-only in the compile worker; the rest of the user's home directory remains inaccessible. Personal packages in `~/texmf` are not automatically included. Valid local vector renders saved in a presentation remain viewable and exportable without the original compiler.
 
 **AI draft** uses compatible installed Codex CLI, Claude Code or Gemini CLI. Install and authenticate the provider CLI separately, then explicitly generate and review a draft. Detection alone does not verify authentication. See the repository README for the tested adapters, restrictions and provider behavior.
 

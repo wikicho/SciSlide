@@ -32,6 +32,8 @@ v0.6.3.1 includes `schema`, `create`, `inspect`, `validate`, `apply`, `unpack`, 
 
 ## Use the editor
 
+Double-click a `.scislide` presentation in Finder or choose **Open With → SciSlide**. Finder requests are retained while the editor starts and also open in an already running app. If Finder has another default application, use **Get Info → Open with → SciSlide → Change All…**. Install the updated app in Applications so macOS can register its document type.
+
 Start by choosing **Scientific**, **Minimal White**, **Minimal Black**, **Navy** or **Keynote White**, then **Create presentation**. Keynote White has fifteen coordinated white/black layouts; the other themes retain the fourteen Scientific/Keynote-inspired layouts. **New slide** or **+** opens the theme's picker, including **Blank slide**. Layouts insert after the current slide and can be undone. **Open / Save / Save As** use native file dialogs; **Export** saves the whole presentation as PDF or the current slide as SVG.
 
 Drag a slide thumbnail above or below another thumbnail to reorder slides. A teal insertion line shows the destination, and the list scrolls when dragging near its edges. The current slide and object selection stay active; **⌘+Z / ⌘+Shift+Z** undo/redo the move. **Escape** cancels a drag.

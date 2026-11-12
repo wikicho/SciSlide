@@ -1,7 +1,6 @@
 /** Installed TeX compilation. Every untrusted TeX job requires OS isolation. */
 import { createHash } from "node:crypto";
 import {
-  access,
   mkdtemp,
   mkdir,
   open,
@@ -15,6 +14,12 @@ import os from "node:os";
 import path from "node:path";
 import { runTexProcess as run } from "./tex-process.mjs";
 import { macosSandboxInvocation, prepareMacosSandbox } from "./tex-macos.mjs";
+import {
+  discoverTexBinaries,
+  linuxTexRuntimeMounts,
+  linuxTexPath,
+  texProbeEnvironment,
+} from "./tex-discovery.mjs";
 
 const MAX_SOURCE_BYTES = 64 * 1024;
 const MAX_PREAMBLE_BYTES = 32 * 1024;
@@ -40,59 +45,7 @@ const cleanVersion = (text) =>
 const within = (candidate, root) =>
   candidate === root || candidate.startsWith(`${root}${path.sep}`);
 
-async function executable(name) {
-  const directories =
-    process.platform === "win32"
-      ? (process.env.PATH || "").split(path.delimiter)
-      : [
-          "/usr/bin",
-          "/bin",
-          "/usr/local/bin",
-          ...(process.platform === "darwin"
-            ? ["/Library/TeX/texbin", "/opt/homebrew/bin"]
-            : []),
-          ...(process.env.PATH || "").split(path.delimiter),
-        ];
-  for (const directory of [...new Set(directories.filter(Boolean))]) {
-    const filename = path.resolve(
-      directory,
-      process.platform === "win32" ? `${name}.exe` : name,
-    );
-    try {
-      await access(filename, constants.X_OK);
-      return filename;
-    } catch {
-      /* Try the next installed binary. */
-    }
-  }
-  return undefined;
-}
-
-async function runtimeMounts() {
-  const candidates = [
-    "/usr",
-    "/bin",
-    "/lib",
-    "/lib64",
-    "/etc/ld.so.cache",
-    "/etc/fonts",
-    "/etc/texmf",
-    "/var/lib/texmf",
-    "/var/cache/fontconfig",
-  ];
-  const mounts = [];
-  for (const candidate of candidates) {
-    try {
-      await access(candidate);
-      mounts.push(candidate);
-    } catch {
-      /* Optional runtime directory. */
-    }
-  }
-  return mounts;
-}
-
-function bubblewrapArgs(mounts, directory, command, args) {
+export function bubblewrapArgs(mounts, directory, command, args, paths = {}) {
   const options = [
     "--unshare-all",
     "--unshare-user",
@@ -117,7 +70,7 @@ function bubblewrapArgs(mounts, directory, command, args) {
   if (directory) options.push("--bind", directory, "/work", "--chdir", "/work");
   else options.push("--dir", "/work", "--chdir", "/work");
   const environment = {
-    PATH: "/usr/bin:/bin:/usr/local/bin",
+    PATH: linuxTexPath(paths),
     LANG: "C.UTF-8",
     LC_ALL: "C.UTF-8",
     HOME: "/work/home",
@@ -142,24 +95,24 @@ function bubblewrapArgs(mounts, directory, command, args) {
   return options;
 }
 
-async function inspectInstallation() {
-  const [latex, xelatex, converter, bwrap, prlimit, kpsewhich] =
-    await Promise.all(
-      ["latex", "xelatex", "dvisvgm", "bwrap", "prlimit", "kpsewhich"].map(
-        executable,
-      ),
-    );
-  let mounts = await runtimeMounts();
+async function inspectInstallation(options = {}) {
+  const paths = await discoverTexBinaries(options);
+  const { converter, bwrap, prlimit, kpsewhich } = paths;
+  const probeEnv = texProbeEnvironment(paths);
+  let mounts =
+    process.platform === "linux" ? await linuxTexRuntimeMounts(paths, run) : [];
   let macos;
   const engines = [];
-  const paths = { latex, xelatex, converter, bwrap, prlimit, kpsewhich };
   for (const [id, label] of [
     ["latex", "LaTeX (DVI)"],
     ["xelatex", "XeLaTeX (Unicode / system fonts)"],
   ]) {
     if (!paths[id]) continue;
     try {
-      const version = await run(paths[id], ["--version"], { timeout: 3_000 });
+      const version = await run(paths[id], ["--version"], {
+        timeout: 3_000,
+        env: probeEnv,
+      });
       if (version.code === 0)
         engines.push({ id, label, version: cleanVersion(version.output) });
     } catch {
@@ -169,7 +122,10 @@ async function inspectInstallation() {
   let converterInfo;
   if (converter) {
     try {
-      const result = await run(converter, ["--version"], { timeout: 3_000 });
+      const result = await run(converter, ["--version"], {
+        timeout: 3_000,
+        env: probeEnv,
+      });
       if (result.code === 0)
         converterInfo = { version: cleanVersion(result.output) };
     } catch {
@@ -185,7 +141,7 @@ async function inspectInstallation() {
     try {
       const result = await run(
         bwrap,
-        bubblewrapArgs(mounts, undefined, "/bin/true", []),
+        bubblewrapArgs(mounts, undefined, "/bin/true", [], paths),
         { timeout: 3_000 },
       );
       sandbox =
@@ -231,6 +187,7 @@ async function inspectInstallation() {
       try {
         const result = await run(kpsewhich, [`${name}.sty`], {
           timeout: 3_000,
+          env: probeEnv,
         });
         if (result.code === 0 && result.output.trim()) packages.push(name);
       } catch {
@@ -246,6 +203,12 @@ async function inspectInstallation() {
       engines,
       ...(converterInfo ? { converter: converterInfo } : {}),
       packages,
+      paths: {
+        latex: paths.latex,
+        xelatex: paths.xelatex,
+        converter,
+        kpsewhich,
+      },
       sandbox,
       ...(!available
         ? {
@@ -264,8 +227,8 @@ async function inspectInstallation() {
 }
 
 /** Inspect installed binaries and actually probe the OS sandbox. */
-export async function detectTex() {
-  detection = await inspectInstallation();
+export async function detectTex(options = {}) {
+  detection = await inspectInstallation(options);
   return structuredClone(detection.result);
 }
 
@@ -360,7 +323,13 @@ async function sandboxRun(installation, directory, command, args, job) {
       "--core=0",
       "--",
       installation.paths.bwrap,
-      ...bubblewrapArgs(installation.mounts, directory, command, args),
+      ...bubblewrapArgs(
+        installation.mounts,
+        directory,
+        command,
+        args,
+        installation.paths,
+      ),
     ],
     { job },
   );
@@ -439,16 +408,19 @@ async function dependencies(installation, directory, recorder, job) {
   }
   if (installation.engine === "xelatex") {
     // XeTeX's recorder omits native font files, but XDV embeds their resolved paths.
-    // Only mounted system files can become dependency records.
+    // Only mounted runtime files can become dependency records, including custom TeX roots.
     const xdv = await readRegularFile(
       path.join(directory, "equation.xdv"),
       MAX_INTERMEDIATE_BYTES,
     );
-    for (const match of xdv
-      .toString("utf8")
-      .matchAll(
-        /\/(?:usr|var|opt|Library|System\/Library)\/[^\x00-\x1f]*?\.(?:otf|ttf|ttc|pfb)/g,
-      ))
+    const fontRoots = installation.mounts
+      .map((root) => root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("|");
+    const fontPaths = new RegExp(
+      `(?:${fontRoots})/[^\\x00-\\x1f]*?\\.(?:otf|ttf|ttc|pfb)`,
+      "g",
+    );
+    for (const match of xdv.toString("utf8").matchAll(fontPaths))
       await include(match[0]);
   }
   for (const filename of [
@@ -626,7 +598,9 @@ export async function compileTex(request) {
         jobId: undefined,
         template: TEMPLATE_REVISION,
         engineVersion: engine.version,
+        enginePath: installation.paths[request.engine],
         converterVersion: installation.result.converter.version,
+        converterPath: installation.paths.converter,
       }),
     );
     const cached = cache.get(key);

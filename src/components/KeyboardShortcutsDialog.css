@@ -10,7 +10,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  color: #203447;
+  color: var(--ui-ink);
   background: #fff;
   border: 1px solid #d8e3e9;
   border-radius: 16px;
@@ -30,7 +30,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #42776d;
+  color: var(--ui-ink);
   font-size: 11px;
   margin: 0 0 8px;
 }
@@ -61,7 +61,7 @@
 }
 
 .keyboard-shortcuts-close:hover {
-  color: #203447;
+  color: var(--ui-ink);
   background: #f0f4f6;
 }
 
@@ -84,9 +84,9 @@
 }
 
 .keyboard-shortcuts-tabs button[aria-selected="true"] {
-  color: #286c60;
-  background: #edf6f2;
-  border-color: #cee5da;
+  color: var(--ui-ink);
+  background: var(--ui-selected);
+  border-color: var(--ui-border-strong);
 }
 
 .keyboard-shortcuts-tabs span {
@@ -97,7 +97,7 @@
 
 .keyboard-shortcuts-dialog button:focus-visible,
 .keyboard-shortcuts-body:focus-visible {
-  outline: 2px solid #3d8a78;
+  outline: 2px solid var(--ui-accent);
   outline-offset: 2px;
 }
 
@@ -149,7 +149,7 @@
   font-family: inherit;
   font-size: 10px;
   font-weight: 500;
-  color: #203447;
+  color: var(--ui-ink);
   background: #f6f8fa;
   border: 1px solid #e5ecef;
   border-radius: 4px;
@@ -188,7 +188,7 @@
   border-radius: 7px;
   background: #fff;
   padding: 8px 19px;
-  color: #203447;
+  color: var(--ui-ink);
   font-size: 12px;
 }
 

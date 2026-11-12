@@ -20,12 +20,16 @@ export interface InlineTextRun {
   text: string;
   x: number;
   width: number;
+  /** A failed formula stays editable without hiding neighboring formulas. */
+  equation?: InlineMathSpan & { error: string };
 }
 
 export interface InlineEquationRun {
   type: "math";
   latex: string;
   source: string;
+  start: number;
+  end: number;
   svg: string;
   x: number;
   /** Absolute top edge within the text object's local coordinates. */
@@ -46,6 +50,7 @@ export interface InlineTextLayout {
   fontFamily: string;
   fontWeight: number;
   height: number;
+  errors?: string[];
 }
 
 /** Inputs that determine the displayed inline layout, excluding frame height. */
@@ -184,7 +189,7 @@ export function inlinePlainText(source: string): string {
     .join("");
 }
 
-type PreparedText = { type: "text"; text: string; width: number };
+type PreparedText = Omit<InlineTextRun, "x">;
 type PreparedMath = Omit<InlineEquationRun, "x" | "y"> & {
   baseline: number;
 };
@@ -246,11 +251,13 @@ function inlineEquationMetrics(
 export async function layoutInlineText(
   object: TextObject,
   deck: Deck,
+  { tolerateErrors = false }: { tolerateErrors?: boolean } = {},
 ): Promise<InlineTextLayout> {
   if (object.text.length > MAX_INLINE_TEXT_LENGTH)
     throw new Error("Inline text is too long (maximum 100,000 characters).");
   const tokens = parseInlineMath(object.text);
   const math = tokens.filter((token) => token.type === "math");
+  const spans = getInlineMathSpans(object.text);
   if (math.length > MAX_INLINE_MATH_SPANS)
     throw new Error(
       `A text box can contain at most ${MAX_INLINE_MATH_SPANS} inline equations.`,
@@ -276,7 +283,7 @@ export async function layoutInlineText(
   const [, rendered] = await Promise.all([
     document.fonts?.load?.(css, `${prose || "M"}x`),
     Promise.all(
-      math.map(async (token): Promise<RenderedEquation> => {
+      math.map(async (token): Promise<RenderedEquation | { error: string }> => {
         try {
           return await renderEquation(
             token.latex,
@@ -286,9 +293,9 @@ export async function layoutInlineText(
             false,
           );
         } catch (error) {
-          throw new Error(
-            `Inline equation ${JSON.stringify(token.latex)}: ${error instanceof Error ? error.message : String(error)}`,
-          );
+          const message = `Inline equation ${JSON.stringify(token.latex)}: ${error instanceof Error ? error.message : String(error)}`;
+          if (tolerateErrors) return { error: message };
+          throw new Error(message);
         }
       }),
     ),
@@ -306,16 +313,25 @@ export async function layoutInlineText(
     word = [];
   };
   let mathIndex = 0;
+  const errors: string[] = [];
   for (const token of tokens) {
+    let equationError: InlineTextRun["equation"];
     if (token.type === "math") {
+      const span = spans[mathIndex];
       const equation = rendered[mathIndex++];
-      word.push({
-        ...token,
-        ...inlineEquationMetrics(equation, proseXHeight),
-      });
-      continue;
+      if (!("error" in equation)) {
+        word.push({
+          ...token,
+          start: span.start,
+          end: span.end,
+          ...inlineEquationMetrics(equation, proseXHeight),
+        });
+        continue;
+      }
+      errors.push(equation.error);
+      equationError = { ...span, error: equation.error };
     }
-    for (const match of token.text
+    for (const match of (token.type === "math" ? token.source : token.text)
       .normalize("NFC")
       .replace(/\r\n?/g, "\n")
       .matchAll(/\n|[^\S\n]+|[^\s]+/gu)) {
@@ -326,7 +342,13 @@ export async function layoutInlineText(
       } else if (/^\s/u.test(value)) {
         flushWord();
         pieces.push({ type: "space" });
-      } else word.push({ type: "text", text: value, width: measure(value) });
+      } else
+        word.push({
+          type: "text",
+          text: value,
+          width: measure(value),
+          ...(equationError ? { equation: equationError } : {}),
+        });
     }
   }
   flushWord();
@@ -366,6 +388,8 @@ export async function layoutInlineText(
               type: "math" as const,
               latex: run.latex,
               source: run.source,
+              start: run.start,
+              end: run.end,
               svg: run.svg,
               x,
               y: baseline - run.baseline,
@@ -417,17 +441,22 @@ export async function layoutInlineText(
             lineWidth + measure(candidate) > width &&
             (line.length || chunk)
           ) {
-            if (chunk)
-              add({ type: "text", text: chunk, width: measure(chunk) });
+            if (chunk) add({ ...run, text: chunk, width: measure(chunk) });
             finishLine();
             chunk = character;
           } else chunk = candidate;
         }
-        if (chunk) add({ type: "text", text: chunk, width: measure(chunk) });
+        if (chunk) add({ ...run, text: chunk, width: measure(chunk) });
       }
     }
     pendingSpace = false;
   }
   finishLine();
-  return { lines, fontFamily, fontWeight, height: totalHeight };
+  return {
+    lines,
+    fontFamily,
+    fontWeight,
+    height: totalHeight,
+    ...(errors.length ? { errors } : {}),
+  };
 }

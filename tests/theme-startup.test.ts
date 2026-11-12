@@ -184,7 +184,7 @@ describe("theme selection at presentation startup", () => {
     await render();
     await click("Keynote White");
     await click("Create presentation");
-    await click("Add slide");
+    await click("Choose slide layout");
     const layout = KEYNOTE_WHITE_LAYOUTS.find((item) => item.id === id)!;
     await click(`Use ${layout.name} layout`);
     return structuredClone((await persist())!);
@@ -257,7 +257,7 @@ describe("theme selection at presentation startup", () => {
     expect(initial.slides).toHaveLength(1);
     expect(initial.slides[0].background).toBe("#ffffff");
 
-    await click("Add slide");
+    await click("Choose slide layout");
     const cards = [
       ...host.querySelectorAll<HTMLButtonElement>(".template-card"),
     ];
@@ -303,7 +303,7 @@ describe("theme selection at presentation startup", () => {
     expect(chooserHeading()).toBeTruthy();
     await click("Resume previous work");
     expect(await persist()).toEqual(inserted);
-    await click("Add slide");
+    await click("Choose slide layout");
     expect(host.querySelectorAll(".template-card")).toHaveLength(15);
     await click("Close slide templates");
     expect(await persist()).toEqual(inserted);

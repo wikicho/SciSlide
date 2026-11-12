@@ -19,6 +19,7 @@ import {
   buildDeckArchive,
   downloadBlob,
   loadRecovery,
+  readDeckArchive,
 } from "../src/lib/persistence";
 import {
   loadWorkspaceRecovery,
@@ -30,6 +31,7 @@ import {
 const nativeBridge = vi.hoisted(() => ({
   api: undefined as DesktopApi | undefined,
   command: undefined as ((command: DesktopCommand) => void) | undefined,
+  document: undefined as (() => void) | undefined,
 }));
 vi.mock("../src/lib/desktop", async (original) => ({
   ...(await original<typeof import("../src/lib/desktop")>()),
@@ -42,6 +44,7 @@ vi.mock("../src/lib/persistence", async (original) => ({
   loadRecovery: vi.fn(),
   buildDeckArchive: vi.fn(),
   downloadBlob: vi.fn(),
+  readDeckArchive: vi.fn(),
 }));
 vi.mock("../src/lib/workspace-recovery", async (original) => ({
   ...(await original<typeof import("../src/lib/workspace-recovery")>()),
@@ -100,6 +103,7 @@ describe("OS-specific keyboard commands in the editor", () => {
   beforeEach(() => {
     nativeBridge.api = undefined;
     nativeBridge.command = undefined;
+    nativeBridge.document = undefined;
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     vi.stubGlobal(
@@ -136,6 +140,7 @@ describe("OS-specific keyboard commands in the editor", () => {
       .mockReset()
       .mockResolvedValue(new Blob(["deck archive"]));
     vi.mocked(downloadBlob).mockReset();
+    vi.mocked(readDeckArchive).mockReset();
     vi.mocked(exportDeckPdf)
       .mockReset()
       .mockResolvedValue(new Blob(["PDF"], { type: "application/pdf" }));
@@ -221,6 +226,17 @@ describe("OS-specific keyboard commands in the editor", () => {
         .mockResolvedValue(compiledEquation),
       cancelCompile: vi.fn().mockResolvedValue(undefined),
       openDocument: vi.fn().mockResolvedValue(null),
+      takeOpenDocument: vi.fn().mockResolvedValue(null),
+      clearDocument: vi.fn().mockResolvedValue(undefined),
+      chooseTexDirectory: vi
+        .fn<() => Promise<TexCapabilities | null>>()
+        .mockResolvedValue(null),
+      onOpenDocument: (callback: () => void) => {
+        nativeBridge.document = callback;
+        return () => {
+          nativeBridge.document = undefined;
+        };
+      },
       saveDocument: vi.fn().mockResolvedValue(null),
       saveExport: vi.fn().mockResolvedValue(null),
       onCommand: (callback: (command: DesktopCommand) => void) => {
@@ -243,6 +259,122 @@ describe("OS-specific keyboard commands in the editor", () => {
     });
     return bridge;
   }
+
+  it("opens a launch document after workspace recovery finishes and dismisses the theme chooser", async () => {
+    const bridge = enableDesktop("linux");
+    const loaded = { ...existingDeck(), title: "Opened from the file manager" };
+    let finishRecovery!: (value: null) => void;
+    vi.mocked(loadWorkspaceRecovery).mockReturnValue(
+      new Promise((resolve) => {
+        finishRecovery = resolve;
+      }),
+    );
+    bridge.takeOpenDocument.mockResolvedValueOnce({
+      bytes: new Uint8Array([0x50, 0x4b]),
+      name: "Research.scislide",
+      path: "/tmp/Research.scislide",
+    });
+    vi.mocked(readDeckArchive).mockResolvedValue(loaded);
+    await render("Linux x86_64", false);
+    expect(bridge.takeOpenDocument).not.toHaveBeenCalled();
+    await act(async () => finishRecovery(null));
+    expect(vi.mocked(readDeckArchive)).toHaveBeenCalledOnce();
+    expect(bridge.openDocument).not.toHaveBeenCalled();
+    expect(host.querySelector(".theme-chooser")).toBeNull();
+    expect(
+      host.querySelector<HTMLInputElement>('[aria-label="Presentation title"]')
+        ?.value,
+    ).toBe(loaded.title);
+    expect(host.textContent).toContain("Research.scislide");
+    expect(await persist()).toEqual(loaded);
+  });
+
+  it("opens file-manager notifications while running and continues after an invalid archive", async () => {
+    const bridge = enableDesktop("darwin");
+    await render("MacIntel");
+    const loaded = { ...existingDeck(), title: "Finder document" };
+    bridge.takeOpenDocument
+      .mockResolvedValueOnce({
+        bytes: new Uint8Array([0x50, 0x4b]),
+        name: "Broken.scislide",
+      })
+      .mockResolvedValueOnce({
+        bytes: new Uint8Array([0x50, 0x4b]),
+        name: "Valid.scislide",
+      });
+    vi.mocked(readDeckArchive)
+      .mockRejectedValueOnce(new Error("Invalid archive"))
+      .mockResolvedValueOnce(loaded);
+    await act(async () => nativeBridge.document?.());
+    expect(bridge.clearDocument).toHaveBeenCalledOnce();
+    expect(vi.mocked(readDeckArchive)).toHaveBeenCalledTimes(2);
+    expect(bridge.openDocument).not.toHaveBeenCalled();
+    expect(host.textContent).toContain("Valid.scislide");
+    expect(await persist()).toEqual(loaded);
+  });
+
+  it("blocks saving while an external document is still being read", async () => {
+    const bridge = enableDesktop("linux");
+    await render("Linux x86_64");
+    let finishRead!: (value: { bytes: Uint8Array; name: string }) => void;
+    bridge.takeOpenDocument.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishRead = resolve;
+        }),
+    );
+    const loaded = { ...existingDeck(), title: "Read from disk" };
+    vi.mocked(readDeckArchive).mockResolvedValue(loaded);
+    await act(async () => nativeBridge.document?.());
+    expect(button("Save .scislide").matches(":disabled")).toBe(true);
+    await command("save");
+    expect(bridge.saveDocument).not.toHaveBeenCalled();
+    await act(async () =>
+      finishRead({
+        bytes: new Uint8Array([0x50, 0x4b]),
+        name: "Read.scislide",
+      }),
+    );
+    expect(button("Save .scislide").matches(":disabled")).toBe(false);
+    expect(await persist()).toEqual(loaded);
+  });
+
+  it("retains a file-manager request while a dialog is open", async () => {
+    const bridge = enableDesktop("linux");
+    await render("Linux x86_64");
+    await command("showShortcuts");
+    const calls = bridge.takeOpenDocument.mock.calls.length;
+    const loaded = { ...existingDeck(), title: "Queued behind the dialog" };
+    bridge.takeOpenDocument.mockResolvedValueOnce({
+      bytes: new Uint8Array([0x50, 0x4b]),
+      name: "Queued.scislide",
+    });
+    vi.mocked(readDeckArchive).mockResolvedValue(loaded);
+    await act(async () => nativeBridge.document?.());
+    expect(bridge.takeOpenDocument).toHaveBeenCalledTimes(calls);
+    await click("Close keyboard shortcuts");
+    expect(host.textContent).toContain("Queued.scislide");
+    expect(await persist()).toEqual(loaded);
+  });
+
+  it("refreshes the detected Ubuntu TeX path after choosing a custom folder", async () => {
+    const bridge = enableDesktop("linux");
+    addEquation();
+    await render("Linux x86_64");
+    await click("Select Local equation");
+    await click("Edit equation");
+    bridge.chooseTexDirectory.mockResolvedValue({
+      available: true,
+      engines: [{ id: "latex", label: "LaTeX", version: "custom" }],
+      sandbox: { available: true },
+      paths: { latex: "/opt/custom tex/bin/latex" },
+    });
+    await click("Choose TeX folder…");
+    expect(host.textContent).toContain("/opt/custom tex/bin/latex");
+    expect(button("Compile with LaTeX").disabled).toBe(false);
+    await click("Check again");
+    expect(bridge.detectTex).toHaveBeenCalledTimes(2);
+  });
 
   function addEquation(renderer: "mathjax" | "local-latex" = "local-latex") {
     const equation = structuredClone(
@@ -655,6 +787,74 @@ describe("OS-specific keyboard commands in the editor", () => {
     }
   });
 
+  it("separates downloaded files from local recovery and marks later edits as unsaved", async () => {
+    await render("Linux x86_64");
+    const status = () =>
+      host.querySelector('[aria-label="Document save status"]')?.textContent;
+    expect(status()).toBe("Unsaved changes");
+    await key("s", { ctrlKey: true });
+    expect(downloadBlob).toHaveBeenCalledOnce();
+    expect(status()).toBe("Downloaded .scislide");
+    await click("Toggle speaker notes");
+    await changeField(
+      host.querySelector<HTMLTextAreaElement>('[aria-label="Speaker notes"]')!,
+      "An edit after download",
+    );
+    expect(status()).toBe("Unsaved changes");
+  });
+
+  it("recognizes an undo back to the saved file without confusing it with recovery", async () => {
+    const bridge = enableDesktop();
+    const archive = new Blob(["archive"]);
+    Object.defineProperty(archive, "arrayBuffer", {
+      value: async () => new Uint8Array([1]).buffer,
+    });
+    vi.mocked(buildDeckArchive).mockResolvedValue(archive);
+    bridge.saveDocument.mockResolvedValue({ name: "Saved.scislide" });
+    await render("MacIntel");
+    await command("save");
+    const status = () =>
+      host.querySelector('[aria-label="Document save status"]')?.textContent;
+    expect(status()).toBe("Saved to file");
+    await click("Toggle speaker notes");
+    await changeField(
+      host.querySelector<HTMLTextAreaElement>('[aria-label="Speaker notes"]')!,
+      "An edit after save",
+    );
+    expect(status()).toBe("Unsaved changes");
+    await key("z", { metaKey: true });
+    expect(await persist()).toEqual(deck);
+    expect(status()).toBe("Saved to file");
+  });
+
+  it("keeps changes made during file packaging marked as unsaved", async () => {
+    const bridge = enableDesktop();
+    let finish!: (archive: Blob) => void;
+    vi.mocked(buildDeckArchive).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    bridge.saveDocument.mockResolvedValue({ name: "Saved.scislide" });
+    await render("MacIntel");
+    await click("Toggle speaker notes");
+    await command("save");
+    await changeField(
+      host.querySelector<HTMLTextAreaElement>('[aria-label="Speaker notes"]')!,
+      "Edited while saving",
+    );
+    const archive = new Blob(["archive"]);
+    Object.defineProperty(archive, "arrayBuffer", {
+      value: async () => new Uint8Array([1]).buffer,
+    });
+    await act(async () => finish(archive));
+    expect(
+      host.querySelector('[aria-label="Document save status"]')?.textContent,
+    ).toBe("Unsaved changes");
+    expect((await persist()).slides[0].notes).toBe("Edited while saving");
+  });
+
   it("routes native New, Open and Save As without replacing a deck on cancellation", async () => {
     const bridge = enableDesktop();
     const archive = new Blob(["native archive"]);
@@ -722,6 +922,7 @@ describe("OS-specific keyboard commands in the editor", () => {
       latex: "E = mc^2",
       transform: { width: 160, height: 80 },
     });
+    await click("Close equation editor");
     await key("z", { metaKey: true });
     expect(await persist()).toEqual(deck);
   });
@@ -1034,6 +1235,7 @@ describe("OS-specific keyboard commands in the editor", () => {
         type: "equation",
         latex: "E = mc^2",
       });
+      await click("Close equation editor");
       await key("z", { ctrlKey: true });
       expect(await persist()).toEqual(deck);
     },
@@ -1388,6 +1590,46 @@ describe("OS-specific keyboard commands in the editor", () => {
     },
   );
 
+  it("copies, pastes and cuts focused slides through native menus despite a lingering object selection", async () => {
+    const bridge = enableDesktop("linux");
+    const second = {
+      ...createBlankSlide(),
+      title: "Second",
+      notes: "Copy these notes",
+    };
+    deck.slides.push(second);
+    await render("Linux x86_64");
+    await click("Select Research panel");
+    await act(async () => button("Slide 2: Second").focus());
+    const states = () => bridge.setCommandAvailability.mock.calls.at(-1)?.[0];
+    expect(states()).toMatchObject({ copy: true, cut: true, paste: false });
+    await command("copy");
+    expect(states()).toMatchObject({ paste: true });
+    await command("paste");
+    let current = await persist();
+    expect(current.slides.map((slide) => slide.title)).toEqual([
+      "First slide",
+      "Second",
+      "Second",
+    ]);
+    expect(current.slides[2].notes).toBe(second.notes);
+    expect(current.slides[0].objects).toEqual(deck.slides[0].objects);
+    await command("undo");
+    expect(await persist()).toEqual(deck);
+    await act(async () => button("Slide 2: Second").focus());
+    await command("cut");
+    current = await persist();
+    expect(current.slides).toHaveLength(1);
+    expect(states()).toMatchObject({ copy: true, cut: false, paste: true });
+    await command("cut");
+    expect(await persist()).toEqual(current);
+    await command("paste");
+    expect((await persist()).slides.map((slide) => slide.title)).toEqual([
+      "First slide",
+      "Second",
+    ]);
+  });
+
   it("reorders Mac thumbnails by one step or to either end without stealing text or canvas keys", async () => {
     deck.slides.push(
       { ...createBlankSlide(), title: "Second" },
@@ -1526,7 +1768,7 @@ describe("OS-specific keyboard commands in the editor", () => {
     expect(selectedNames()).toEqual(["Front"]);
   });
 
-  it("reveals a hidden Inspector and focuses LaTeX source when an equation is double-clicked on the canvas", async () => {
+  it("opens the equation popup with focused LaTeX source while the Inspector stays hidden when an equation is double-clicked on the canvas", async () => {
     const equation = structuredClone(
       createDemoDeck().slides[0].objects.find(
         (object) => object.type === "equation",
@@ -1558,7 +1800,8 @@ describe("OS-specific keyboard commands in the editor", () => {
         new MouseEvent("dblclick", { bubbles: true, cancelable: true }),
       ),
     );
-    expect(inspector.hidden).toBe(false);
+    expect(inspector.hidden).toBe(true);
+    expect(host.querySelector(".equation-editor-dialog")).toBeTruthy();
     await act(async () => vi.advanceTimersByTimeAsync(0));
     const source = host.querySelector<HTMLTextAreaElement>(
       'textarea[aria-label="LaTeX source"]',
@@ -1572,7 +1815,7 @@ describe("OS-specific keyboard commands in the editor", () => {
     expect(await persist()).toEqual(deck);
   });
 
-  it("toggles Inspector and objects independently by keyboard, toolbar and native menu with usable focus", async () => {
+  it("switches Format and Layers by keyboard, toolbar and native menu with usable focus", async () => {
     enableDesktop();
     await render("Linux x86_64");
     const inspector = host.querySelector<HTMLElement>(
@@ -1585,14 +1828,18 @@ describe("OS-specific keyboard commands in the editor", () => {
       '[aria-label="Slide canvas"]',
     )!;
     expect(inspector.hidden).toBe(false);
-    expect(objects.hidden).toBe(false);
+    expect(objects.hidden).toBe(true);
     expect(
       (await key("i", { metaKey: true, altKey: true })).defaultPrevented,
     ).toBe(true);
     expect(inspector.hidden).toBe(true);
-    expect(objects.hidden).toBe(false);
+    expect(objects.hidden).toBe(true);
     expect(document.activeElement).toBe(canvas);
     await key("L", { metaKey: true, shiftKey: true }, canvas);
+    expect(objects.hidden).toBe(false);
+    expect(inspector.hidden).toBe(true);
+    expect(document.activeElement).toBe(objects);
+    await key("L", { metaKey: true, shiftKey: true }, objects);
     expect(objects.hidden).toBe(true);
     expect(host.querySelector<HTMLElement>("aside.inspector")?.hidden).toBe(
       true,
@@ -1603,8 +1850,13 @@ describe("OS-specific keyboard commands in the editor", () => {
     expect(document.activeElement).toBe(inspector);
     await command("toggleObjectList");
     expect(objects.hidden).toBe(false);
+    expect(inspector.hidden).toBe(true);
     expect(document.activeElement).toBe(objects);
     await command("toggleInspector");
+    expect(inspector.hidden).toBe(false);
+    expect(objects.hidden).toBe(true);
+    expect(document.activeElement).toBe(inspector);
+    await key("i", { metaKey: true, altKey: true }, canvas);
     expect(inspector.hidden).toBe(true);
     expect(document.activeElement).toBe(canvas);
     await key("i", { metaKey: true, altKey: true }, canvas);
@@ -1626,6 +1878,7 @@ describe("OS-specific keyboard commands in the editor", () => {
     const notes = host.querySelector<HTMLTextAreaElement>(
       'textarea[aria-label="Speaker notes"]',
     )!;
+    await click("Toggle speaker notes");
     await act(async () => notes.focus());
     expect(
       (await key("i", { metaKey: true, altKey: true }, notes)).defaultPrevented,
@@ -1637,7 +1890,7 @@ describe("OS-specific keyboard commands in the editor", () => {
     await command("toggleInspector");
     await command("toggleObjectList");
     expect(inspector.hidden).toBe(false);
-    expect(objects.hidden).toBe(false);
+    expect(objects.hidden).toBe(true);
     await act(async () => notes.blur());
     await key("N", { metaKey: true, shiftKey: true });
     const dialog = host.querySelector('[role="dialog"]')!;
@@ -1645,7 +1898,7 @@ describe("OS-specific keyboard commands in the editor", () => {
     await key("L", { metaKey: true, shiftKey: true }, dialog);
     await command("toggleInspector");
     expect(inspector.hidden).toBe(false);
-    expect(objects.hidden).toBe(false);
+    expect(objects.hidden).toBe(true);
     expect(button("Toggle Inspector").disabled).toBe(true);
     expect(button("Toggle objects and layers").disabled).toBe(true);
     await click("Close slide templates");
@@ -1667,7 +1920,7 @@ describe("OS-specific keyboard commands in the editor", () => {
     await command("toggleInspector");
     await command("toggleObjectList");
     expect(inspector.hidden).toBe(false);
-    expect(objects.hidden).toBe(false);
+    expect(objects.hidden).toBe(true);
     await act(async () => finish(new Blob(["archive"])));
     expect(host.querySelector(".app-shell")?.getAttribute("aria-busy")).toBe(
       "false",
@@ -1873,7 +2126,7 @@ describe("OS-specific keyboard commands in the editor", () => {
     ["Alt+Shift+E", "E", { altKey: true, shiftKey: true, code: "KeyE" }],
     ["Ctrl+Alt+=", "=", { ctrlKey: true, altKey: true, code: "Equal" }],
   ] as const)(
-    "reveals the Inspector and focuses LaTeX source after Linux equation insertion with %s",
+    "opens the popup and focuses LaTeX source after Linux equation insertion with %s",
     async (_label, value, options) => {
       enableLocalLatex();
       const equations = await import("../src/lib/equations");
@@ -1895,24 +2148,124 @@ describe("OS-specific keyboard commands in the editor", () => {
       await act(async () => canvas.focus());
       expect((await key(value, options, canvas)).defaultPrevented).toBe(true);
       await act(async () => vi.advanceTimersByTimeAsync(0));
-      expect(inspector.hidden).toBe(false);
+      expect(inspector.hidden).toBe(true);
       expect(document.activeElement).toBe(equationField());
       expect(equationField().value).toBe("E = mc^2");
       expect((await persist()).slides[0].objects.at(-1)).toMatchObject({
         type: "equation",
         latex: "E = mc^2",
       });
+      await click("Close equation editor");
       await act(async () => canvas.focus());
       await key("z", { ctrlKey: true }, canvas);
       expect(await persist()).toEqual(deck);
     },
   );
 
+  it.each(["MacIntel", "Win32", "Linux x86_64"])(
+    "keeps popup drafts on close and applies with one undo step on %s",
+    async (platform) => {
+      const equation = addEquation("mathjax");
+      const equations = await import("../src/lib/equations");
+      vi.spyOn(equations, "renderEquation").mockResolvedValue({
+        svg: '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0H20" /></svg>',
+        width: 160,
+        height: 80,
+      });
+      await render(platform);
+      await click("Select Local equation");
+      expect(host.querySelector('[aria-label="LaTeX source"]')).toBeNull();
+      await click("Edit equation");
+      const source = equationField();
+      expect(document.activeElement).toBe(source);
+      expect(source.closest('[role="dialog"]')).toBeTruthy();
+      const nextSource = String.raw`x = \frac{1}{2}`;
+      await changeField(source, nextSource);
+      await key("Escape", {}, source);
+      expect(host.querySelector(".equation-editor-dialog")).toBeNull();
+      expect(await persist()).toEqual(deck);
+      await click("Edit equation");
+      expect(equationField().value).toBe(nextSource);
+      await act(async () => vi.advanceTimersByTimeAsync(230));
+      expect(button("Apply equation").disabled).toBe(false);
+      await key(
+        "Enter",
+        { metaKey: platform === "MacIntel", ctrlKey: platform !== "MacIntel" },
+        equationField(),
+      );
+      expect(host.querySelector(".equation-editor-dialog")).toBeNull();
+      expect(
+        (await persist()).slides[0].objects.find(
+          (object) => object.id === equation.id,
+        ),
+      ).toMatchObject({ latex: nextSource });
+      await key("z", {
+        metaKey: platform === "MacIntel",
+        ctrlKey: platform !== "MacIntel",
+      });
+      expect(await persist()).toEqual(deck);
+    },
+  );
+
+  it("cancels a pending local compile on popup close and ignores its late result", async () => {
+    const bridge = enableLocalLatex();
+    addEquation();
+    let finishCompile!: (result: TexResult) => void;
+    bridge.compileTex.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishCompile = resolve;
+        }),
+    );
+    await render("Linux x86_64");
+    await click("Select Local equation");
+    await click("Edit equation");
+    await command("compileEquation");
+    const jobId = bridge.compileTex.mock.calls[0][0].jobId;
+    await click("Close equation editor");
+    expect(bridge.cancelCompile).toHaveBeenCalledWith(jobId);
+    await act(async () => finishCompile(compiledEquation));
+    await click("Edit equation");
+    expect(button("Apply equation").disabled).toBe(true);
+    expect(host.querySelector(".equation-preview path")).toBeNull();
+    expect(await persist()).toEqual(deck);
+  });
+
+  it("keeps native text clipboard commands inside the equation popup and blocks canvas commands", async () => {
+    const bridge = enableLocalLatex();
+    addEquation();
+    Object.defineProperty(document, "execCommand", {
+      value: vi.fn().mockReturnValue(true),
+      configurable: true,
+    });
+    await render("Linux x86_64");
+    await click("Select Local equation");
+    await click("Edit equation");
+    for (const action of [
+      "copy",
+      "cut",
+      "paste",
+      "undo",
+      "redo",
+      "selectAll",
+    ] as const)
+      await command(action);
+    expect(
+      vi.mocked(document.execCommand).mock.calls.map(([action]) => action),
+    ).toEqual(["copy", "cut", "paste", "undo", "redo", "selectAll"]);
+    await command("save");
+    await key("F5", {}, equationField());
+    expect(bridge.saveDocument).not.toHaveBeenCalled();
+    expect(host.querySelector(".presentation-view")).toBeNull();
+    expect(await persist()).toEqual(deck);
+  });
+
   it("compiles the Linux equation draft with Ctrl+Shift+Enter and changes the deck only after Apply", async () => {
     const bridge = enableLocalLatex();
     const equation = addEquation();
     await render("MacIntel");
     await click("Select Local equation");
+    await click("Edit equation");
     const source = equationField();
     const preamble = equationField("LaTeX preamble");
     const nextSource = String.raw`\chi = \mathbb{R}`;
@@ -1967,6 +2320,7 @@ describe("OS-specific keyboard commands in the editor", () => {
     addEquation();
     await render("Linux x86_64");
     await click("Select Local equation");
+    await click("Edit equation");
     const states = (): Partial<Record<DesktopCommand, boolean>> =>
       bridge.setCommandAvailability.mock.calls.at(-1)?.[0] ?? {};
     const source = equationField();
@@ -1998,7 +2352,7 @@ describe("OS-specific keyboard commands in the editor", () => {
     expect(await persist()).toEqual(deck);
   });
 
-  it("compiles the selected Linux equation from the canvas and reveals a hidden Inspector through keyboard or native menu", async () => {
+  it("compiles the selected Linux equation from the canvas and opens the equation popup through keyboard or native menu", async () => {
     const bridge = enableLocalLatex();
     addEquation();
     await render("Linux x86_64");
@@ -2014,12 +2368,14 @@ describe("OS-specific keyboard commands in the editor", () => {
     expect(document.activeElement).toBe(canvas);
     await key("Enter", { ctrlKey: true, shiftKey: true }, canvas);
     expect(bridge.compileTex).toHaveBeenCalledOnce();
-    expect(inspector.hidden).toBe(false);
-    await click("Toggle Inspector");
+    expect(inspector.hidden).toBe(true);
+    expect(host.querySelector(".equation-editor-dialog")).toBeTruthy();
+    await click("Close equation editor");
     expect(inspector.hidden).toBe(true);
     await command("compileEquation");
     expect(bridge.compileTex).toHaveBeenCalledTimes(2);
-    expect(inspector.hidden).toBe(false);
+    expect(inspector.hidden).toBe(true);
+    expect(host.querySelector(".equation-editor-dialog")).toBeTruthy();
     expect(button("Undo").disabled).toBe(true);
     expect(await persist()).toEqual(deck);
   });
@@ -2036,6 +2392,7 @@ describe("OS-specific keyboard commands in the editor", () => {
     });
     await render("Linux x86_64");
     await click("Select Local equation");
+    await click("Edit equation");
     const source = equationField();
     await act(async () => source.focus());
     await key("Enter", { ctrlKey: true, shiftKey: true }, source);
@@ -2057,6 +2414,7 @@ describe("OS-specific keyboard commands in the editor", () => {
     addEquation();
     await render("Linux x86_64");
     await click("Select Local equation");
+    await click("Edit equation");
     const source = equationField();
     await act(async () => source.focus());
     for (const options of [
@@ -2158,6 +2516,7 @@ describe("OS-specific keyboard commands in the editor", () => {
     );
     await render("Linux x86_64");
     await click("Select Local equation");
+    await click("Edit equation");
     const source = equationField();
     await act(async () => source.focus());
     // Both dispatches arrive before React updates compileBusy. The active job
@@ -2190,7 +2549,11 @@ describe("OS-specific keyboard commands in the editor", () => {
           finishSave = resolve;
         }),
     );
-    await key("s", { ctrlKey: true }, source);
+    await click("Close equation editor");
+    const canvas = host.querySelector<HTMLElement>(
+      '[aria-label="Slide canvas"]',
+    )!;
+    await key("s", { ctrlKey: true }, canvas);
     expect(host.querySelector(".app-shell")?.getAttribute("aria-busy")).toBe(
       "true",
     );
@@ -2267,6 +2630,7 @@ describe("OS-specific keyboard commands in the editor", () => {
       addEquation();
       await render("Linux x86_64");
       await click("Select Local equation");
+      await click("Edit equation");
       const source = equationField();
       await act(async () => source.focus());
       expect(

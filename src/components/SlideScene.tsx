@@ -347,6 +347,10 @@ export function SlideScene({
             t = o.transform;
           const line = o.type === "shape" && isLineShape(o);
           const editable = !o.locked && !o.groupId;
+          const selectionColor =
+            o.type === "text"
+              ? "rgb(107 114 128 / 45%)"
+              : "var(--ui-accent, #5268c8)";
           const m =
               o.type === "equation"
                 ? (localMetrics[o.id] ?? metrics[o.id])
@@ -380,6 +384,14 @@ export function SlideScene({
               onPointerDown={(e) => onPointer?.(e, o)}
               onDoubleClick={() => onEdit?.(o)}
             >
+              {onPointer && editingObject?.id !== o.id && o.type === "text" && (
+                <rect
+                  width={w}
+                  height={h}
+                  fill="transparent"
+                  pointerEvents="all"
+                />
+              )}
               {o.type === "text" &&
                 editingObject?.id !== o.id &&
                 (hasInlineMath(o.text) ? (
@@ -458,6 +470,7 @@ export function SlideScene({
                 })()}
               {onPointer &&
                 editingObject?.id !== o.id &&
+                o.type !== "text" &&
                 (line && o.type === "shape" ? (
                   <path
                     data-line-hit="true"
@@ -488,7 +501,7 @@ export function SlideScene({
                           return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
                         })()}
                         fill="none"
-                        stroke="#0f9f87"
+                        stroke={selectionColor}
                         strokeWidth="1"
                         vectorEffect="non-scaling-stroke"
                         pointerEvents="none"
@@ -502,7 +515,7 @@ export function SlideScene({
                             cy={point.y}
                             r="7"
                             fill="white"
-                            stroke="#0f9f87"
+                            stroke={selectionColor}
                             strokeWidth="2"
                             vectorEffect="non-scaling-stroke"
                             className="endpoint-handle"
@@ -520,7 +533,7 @@ export function SlideScene({
                       width={w}
                       height={h}
                       fill="none"
-                      stroke="#0f9f87"
+                      stroke={selectionColor}
                       strokeWidth="2"
                       vectorEffect="non-scaling-stroke"
                       pointerEvents="none"
@@ -543,7 +556,7 @@ export function SlideScene({
                         width="12"
                         height="12"
                         fill="white"
-                        stroke="#0f9f87"
+                        stroke={selectionColor}
                         strokeWidth="2"
                         vectorEffect="non-scaling-stroke"
                         className={i === 3 ? "resize-handle" : ""}
@@ -596,6 +609,7 @@ export function SlideScene({
           key={editingObject.id}
           object={editingObject}
           editing={textEditing}
+          deck={deck}
           onHeightChange={reportEditingHeight}
         />
       )}

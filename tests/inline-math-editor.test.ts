@@ -411,6 +411,104 @@ describe("inline mathematics inside editable slide text", () => {
     expect(visibleText()).not.toContain(String.raw`$\chi$`);
   });
 
+  it("renders the title at its slide position while keeping a native source caret and cancellation", async () => {
+    const object = textObject({ text: "Original title", align: "center" });
+    const deck = textDeck(object);
+    const source = String.raw`Constraining $U(1)_{L_\mu - L_\tau}$ Model with Dark Matter Using Relic Density and $N_\mathrm{eff}$ Bounds`;
+    const onFinish = vi.fn();
+    const onChange = vi.fn();
+    await act(async () =>
+      root.render(
+        createElement(SlideScene, {
+          deck,
+          slide: deck.slides[0],
+          textEditing: {
+            objectId: object.id,
+            value: source,
+            onChange,
+            onFinish,
+          },
+        }),
+      ),
+    );
+    await settle(
+      () =>
+        host.querySelectorAll(
+          "[data-inline-text-preview] [data-inline-math-fragment] path",
+        ).length > 1,
+    );
+    const field = editor();
+    const preview = host.querySelector("[data-inline-text-preview]")!;
+    expect(field.value).toBe(source);
+    expect(document.activeElement).toBe(field);
+    await act(async () => field.setSelectionRange(15, 15));
+    expect(visibleText(preview)).not.toMatch(/\$|\\mathrm|\\mu/);
+    expect(
+      preview.querySelectorAll("[data-inline-math-fragment]"),
+    ).toHaveLength(2);
+    expect(
+      Number(field.closest("foreignObject")!.getAttribute("y")),
+    ).toBeGreaterThan(0);
+    expect(object.text).toBe("Original title");
+    expect(onFinish).not.toHaveBeenCalled();
+    expect(field.selectionStart).toBe(15);
+    await key("Escape", {}, field);
+    expect(onFinish).toHaveBeenCalledExactlyOnceWith(false);
+  });
+
+  it("edits the correct formula after a failed fragment and keeps the hit area behind the text", async () => {
+    const source = String.raw`Bad $U(1)*{L\_{*\mu} - L\_\tau}}$ good $N_\mathrm{eff}$ Bounds`;
+    const object = textObject({ text: source });
+    const deck = textDeck(object);
+    const onEdit = vi.fn();
+    const onEditInlineEquation = vi.fn();
+    await act(async () =>
+      root.render(
+        createElement(SlideScene, {
+          deck,
+          slide: deck.slides[0],
+          onPointer: vi.fn(),
+          onEdit,
+          onEditInlineEquation,
+        }),
+      ),
+    );
+    await settle(
+      () =>
+        !!host.querySelector("[data-inline-math-invalid]") &&
+        !!host.querySelector("[data-inline-math-fragment] path"),
+    );
+    const math = host.querySelector("[data-inline-math-fragment]")!;
+    const failed = host.querySelector("[data-inline-math-invalid]")!;
+    expect(math.getAttribute("data-inline-math-fragment")).toBe(
+      String.raw`N_\mathrm{eff}`,
+    );
+    const hit = host.querySelector(
+      '.canvas-object > rect[fill="transparent"]',
+    )!;
+    expect(
+      hit.compareDocumentPosition(math) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    await act(async () =>
+      math.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })),
+    );
+    const start = source.indexOf("$N_");
+    expect(onEditInlineEquation).toHaveBeenLastCalledWith(
+      object,
+      start,
+      start + String.raw`$N_\mathrm{eff}$`.length,
+    );
+    await act(async () =>
+      failed.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })),
+    );
+    expect(onEditInlineEquation).toHaveBeenLastCalledWith(
+      object,
+      source.indexOf("$U(1)"),
+      source.indexOf("$ good") + 1,
+    );
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+
   it("never replaces a newer edit with a late typesetting result", async () => {
     const oldResult = await actualMath.renderEquation(
       "x",

@@ -163,6 +163,212 @@ describe("editor convenience flows", () => {
     );
   }
 
+  it.each([
+    ["Linux x86_64", { ctrlKey: true }],
+    ["Win32", { ctrlKey: true }],
+    ["MacIntel", { metaKey: true }],
+  ])(
+    "copies and repeatedly pastes the focused slide on %s, with undo and redo",
+    async (platform, modifiers) => {
+      vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
+      const locked = rectangle("Locked background");
+      locked.locked = true;
+      const deck = deckWith([locked]);
+      deck.slides[0].notes = "Keep my notes";
+      deck.slides[0].background = "#123456";
+      await render(deck);
+      const source = button("Slide 1: Source");
+      await act(async () => source.focus());
+      await key("c", modifiers, source);
+      expect(await persist()).toEqual(deck);
+      const destination = button("Slide 2: Destination");
+      await act(async () => destination.focus());
+      await key("v", modifiers, destination);
+      let current = await persist();
+      expect(current.slides.map((item) => item.title)).toEqual([
+        "Source",
+        "Destination",
+        "Source",
+      ]);
+      expect(current.slides[2]).toMatchObject({
+        notes: "Keep my notes",
+        background: "#123456",
+      });
+      expect(current.slides[2].objects[0].transform).toEqual(locked.transform);
+      expect(current.slides[2].objects[0].id).not.toBe(locked.id);
+      expect(current.slides[2].objects[0].locked).toBe(true);
+      expect(document.activeElement?.getAttribute("data-slide-id")).toBe(
+        current.slides[2].id,
+      );
+      await key("v", modifiers, document.activeElement!);
+      current = await persist();
+      expect(current.slides).toHaveLength(4);
+      expect(current.slides[3].objects[0].id).not.toBe(
+        current.slides[2].objects[0].id,
+      );
+      await key("z", modifiers);
+      expect((await persist()).slides).toHaveLength(3);
+      await key("z", modifiers);
+      expect(await persist()).toEqual(deck);
+      await key(platform === "MacIntel" ? "Z" : "y", {
+        ...modifiers,
+        shiftKey: platform === "MacIntel",
+      });
+      expect((await persist()).slides).toHaveLength(3);
+    },
+  );
+
+  it("cuts a complete slide, restores pruned media on paste and undoes each edit", async () => {
+    const asset = createDemoDeck().assets[0];
+    const figure: FigureObject = {
+      ...rectangle("Plot"),
+      type: "figure",
+      assetId: asset.id,
+      alt: "plot",
+    };
+    const deck = deckWith([figure], [asset]);
+    await render(deck);
+    const source = button("Slide 1: Source");
+    await act(async () => source.focus());
+    await key("x", { ctrlKey: true }, source);
+    let current = await persist();
+    expect(current.slides.map((item) => item.title)).toEqual(["Destination"]);
+    expect(current.assets).toEqual([]);
+    const remaining = button("Slide 1: Destination");
+    await key("x", { ctrlKey: true }, remaining);
+    expect(await persist()).toEqual(current);
+    await key("v", { ctrlKey: true }, remaining);
+    current = await persist();
+    expect(current.slides.map((item) => item.title)).toEqual([
+      "Destination",
+      "Source",
+    ]);
+    expect(current.assets[0].dataUrl).toBe(asset.dataUrl);
+    await key("z", { ctrlKey: true });
+    expect((await persist()).slides).toHaveLength(1);
+    await key("z", { ctrlKey: true });
+    expect(await persist()).toEqual(deck);
+  });
+
+  it("exposes slide copy and paste buttons and keeps object clipboard actions separate", async () => {
+    const deck = deckWith([rectangle("Plot")]);
+    await render(deck);
+    expect(button("Paste copied slide").disabled).toBe(true);
+    await click("Copy slide");
+    expect(button("Paste copied slide").disabled).toBe(false);
+    await slide(1);
+    await click("Paste copied slide");
+    expect((await persist()).slides.map((item) => item.title)).toEqual([
+      "Source",
+      "Destination",
+      "Source",
+    ]);
+    await click("Select Plot");
+    await act(async () =>
+      host.querySelector<HTMLElement>('[aria-label="Slide canvas"]')!.focus(),
+    );
+    await key("c", { ctrlKey: true });
+    expect(button("Paste copied slide").disabled).toBe(true);
+    await key("v", { ctrlKey: true });
+    const current = await persist();
+    expect(current.slides).toHaveLength(3);
+    expect(current.slides[2].objects).toHaveLength(2);
+  });
+
+  it("adds slides immediately, repeats the last chosen layout and records one undo step per insertion", async () => {
+    const deck = deckWith([]);
+    await render(deck);
+    await click("New slide");
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    let current = await persist();
+    expect(current.slides.map((slide) => slide.title)).toEqual([
+      "Source",
+      "Key findings",
+      "Destination",
+    ]);
+    await key("z", { ctrlKey: true });
+    expect(await persist()).toEqual(deck);
+    await click("Choose slide layout");
+    await click("Blank slide");
+    const afterLayout = await persist();
+    await click("New slide");
+    current = await persist();
+    expect(current.slides).toHaveLength(4);
+    expect(current.slides[2].objects).toEqual([]);
+    expect(current.slides[2].id).not.toBe(current.slides[1].id);
+    await key("z", { ctrlKey: true });
+    expect(await persist()).toEqual(afterLayout);
+  });
+
+  it("collapses notes without losing slide content and resizes notes without editing the deck", async () => {
+    const deck = deckWith([]);
+    deck.slides[0].notes = "A source reminder";
+    await render(deck);
+    expect(button("Toggle speaker notes").getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+    await click("Toggle speaker notes");
+    const notes = host.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Speaker notes"]',
+    )!;
+    expect(notes.value).toBe("A source reminder");
+    const handle = host.querySelector<HTMLElement>(
+      '[aria-label="Resize speaker notes"]',
+    )!;
+    await key("ArrowUp", {}, handle);
+    expect(handle.getAttribute("aria-valuenow")).toBe("150");
+    await click("Toggle speaker notes");
+    await click("Toggle speaker notes");
+    expect(notes.value).toBe("A source reminder");
+    await slide(1);
+    expect(notes.value).toBe("");
+    await slide(0);
+    expect(notes.value).toBe("A source reminder");
+    expect(await persist()).toEqual(deck);
+  });
+
+  it("shows one Format tab at a time and changes panel width without adding document history", async () => {
+    const deck = deckWith([rectangle("Plot")]);
+    await render(deck);
+    const inspector = host.querySelector<HTMLElement>(
+      '[aria-label="Inspector panel"]',
+    )!;
+    const layers = host.querySelector<HTMLElement>(
+      '[aria-label="Objects and layers panel"]',
+    )!;
+    expect(inspector.hidden).toBe(false);
+    expect(layers.hidden).toBe(true);
+    await click("Layers");
+    expect(inspector.hidden).toBe(true);
+    expect(layers.hidden).toBe(false);
+    await click("Style");
+    await click("Select Plot");
+    expect(
+      host.querySelector<HTMLElement>('[data-inspector-section="style"]')!
+        .hidden,
+    ).toBe(false);
+    await click("Arrange");
+    expect(
+      host.querySelector<HTMLElement>('[data-inspector-section="style"]')!
+        .hidden,
+    ).toBe(true);
+    expect(
+      host.querySelector<HTMLElement>('[data-inspector-section="arrange"]')!
+        .hidden,
+    ).toBe(false);
+    await click("Document");
+    expect(
+      host.querySelector<HTMLElement>('[data-inspector-section="document"]')!
+        .hidden,
+    ).toBe(false);
+    const handle = host.querySelector<HTMLElement>(
+      '[aria-label="Resize Format panel"]',
+    )!;
+    await key("ArrowLeft", {}, handle);
+    expect(handle.getAttribute("aria-valuenow")).toBe("318");
+    expect(await persist()).toEqual(deck);
+  });
+
   it("selects unlocked visible units, cuts complete groups, pastes across slides after media pruning and undoes both edits", async () => {
     const asset = createDemoDeck().assets[0];
     const figure: FigureObject = {

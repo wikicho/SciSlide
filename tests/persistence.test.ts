@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { webcrypto } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { URL as NodeURL } from "node:url";
 import JSZip from "jszip";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createDemoDeck } from "../src/lib/model";
@@ -214,7 +215,10 @@ describe("safe SVG figures and browser recovery", () => {
 
   it("imports SciSlide's actual exported SVG fonts and preserves them through native save/reopen", async () => {
     const exported = await readFile(
-      "examples/scientific-equation-template.svg",
+      new NodeURL(
+        "../examples/scientific-equation-template.svg",
+        import.meta.url,
+      ),
       "utf8",
     );
     const expectedFonts = [...exported.matchAll(/@font-face\{/g)].length;

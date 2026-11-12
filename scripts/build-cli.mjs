@@ -146,14 +146,17 @@ export async function buildAgentCli({
           builder.onResolve(
             { filter: /\?raw$/ },
             ({ path: filename, resolveDir }) => ({
-              path: path.resolve(resolveDir, filename.slice(0, -4)),
+              path: path.relative(
+                root,
+                path.resolve(resolveDir, filename.slice(0, -4)),
+              ),
               namespace: "cli-text",
             }),
           );
           builder.onLoad(
             { filter: /.*/, namespace: "cli-text" },
             async ({ path: filename }) => ({
-              contents: await readFile(filename, "utf8"),
+              contents: await readFile(path.resolve(root, filename), "utf8"),
               loader: "text",
             }),
           );

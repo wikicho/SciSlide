@@ -392,6 +392,31 @@ export async function packageDesktop(options = {}, dependencies = {}) {
       electronVersion: electron.version,
       appBundleId: "com.scislide.app",
       appCategoryType: "public.app-category.productivity",
+      ...(target.platform === "darwin"
+        ? {
+            extendInfo: {
+              CFBundleDocumentTypes: [
+                {
+                  CFBundleTypeName: "SciSlide presentation",
+                  CFBundleTypeRole: "Editor",
+                  LSHandlerRank: "Owner",
+                  LSItemContentTypes: ["com.scislide.presentation"],
+                },
+              ],
+              UTExportedTypeDeclarations: [
+                {
+                  UTTypeIdentifier: "com.scislide.presentation",
+                  UTTypeDescription: "SciSlide presentation",
+                  UTTypeConformsTo: ["public.data", "public.content"],
+                  UTTypeTagSpecification: {
+                    "public.filename-extension": ["scislide"],
+                    "public.mime-type": "application/x-scislide",
+                  },
+                },
+              ],
+            },
+          }
+        : {}),
       overwrite: target.overwrite,
       asar: true,
       prune: false,

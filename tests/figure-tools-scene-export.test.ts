@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { URL as NodeURL } from "node:url";
 import { inflateSync } from "node:zlib";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -76,7 +76,10 @@ describe("figure crop tools and consistent scenes", () => {
     );
     vi.stubGlobal("fetch", async (url: URL) => {
       const bytes = await readFile(
-        resolve("public/fonts", url.pathname.split("/").pop()!),
+        new NodeURL(
+          `../public/fonts/${url.pathname.split("/").pop()!}`,
+          import.meta.url,
+        ),
       );
       return {
         ok: true,

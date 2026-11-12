@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { URL as NodeURL } from "node:url";
 import { inflateSync } from "node:zlib";
 import { jsPDF } from "jspdf";
 import { act, createElement } from "react";
@@ -85,7 +85,10 @@ describe("vector drawing scenes and export", () => {
     );
     vi.stubGlobal("fetch", async (url: URL) => {
       const bytes = await readFile(
-        resolve("public/fonts", url.pathname.split("/").pop()!),
+        new NodeURL(
+          `../public/fonts/${url.pathname.split("/").pop()!}`,
+          import.meta.url,
+        ),
       );
       return {
         ok: true,
@@ -307,7 +310,9 @@ describe("vector drawing scenes and export", () => {
     const metrics = new jsPDF({ unit: "px", hotfixes: ["px_scaling"] });
     for (const weight of [400, 500, 600, 700]) {
       const name = `inter-${weight}.ttf`;
-      const bytes = await readFile(resolve("public/fonts", name));
+      const bytes = await readFile(
+        new NodeURL(`../public/fonts/${name}`, import.meta.url),
+      );
       metrics.addFileToVFS(name, bytes.toString("base64"));
       metrics.addFont(
         name,

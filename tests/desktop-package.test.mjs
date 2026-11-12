@@ -132,6 +132,24 @@ test("Mac package carries portable and installed usage/examples, metadata, and s
           "public.app-category.productivity",
         );
         assert.equal(options.executableName, "scislide");
+        assert.equal(
+          options.extendInfo.CFBundleDocumentTypes[0].CFBundleTypeRole,
+          "Editor",
+        );
+        assert.deepEqual(
+          options.extendInfo.CFBundleDocumentTypes[0].LSItemContentTypes,
+          ["com.scislide.presentation"],
+        );
+        const declaration = options.extendInfo.UTExportedTypeDeclarations[0];
+        assert.equal(declaration.UTTypeIdentifier, "com.scislide.presentation");
+        assert.deepEqual(
+          declaration.UTTypeTagSpecification["public.filename-extension"],
+          ["scislide"],
+        );
+        assert.equal(
+          declaration.UTTypeTagSpecification["public.mime-type"],
+          "application/x-scislide",
+        );
         assert.equal(options.asar, true);
         assert.equal(options.prune, false);
         assert.equal(options.electronVersion, "44.5.1");

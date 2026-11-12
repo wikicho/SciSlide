@@ -10,7 +10,7 @@ const {
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
-const { pathToFileURL } = require("node:url");
+const { pathToFileURL, fileURLToPath } = require("node:url");
 const {
   COMMANDS,
   MAX_DOCUMENT_BYTES,
@@ -61,6 +61,31 @@ let fileOperations = Promise.resolve();
 let texModule;
 let aiModule;
 let quittingAfterCleanup = false;
+let desktopInitialized = false;
+const pendingDocuments = [];
+
+function queueDocuments(arguments_, workingDirectory = process.cwd()) {
+  for (let filename of arguments_) {
+    if (typeof filename !== "string" || filename.startsWith("-")) continue;
+    try {
+      if (filename.startsWith("file:")) filename = fileURLToPath(filename);
+      if (path.extname(filename).toLowerCase() !== ".scislide") continue;
+      filename = path.resolve(workingDirectory, filename);
+      if (!pendingDocuments.includes(filename)) pendingDocuments.push(filename);
+    } catch {
+      // Ignore malformed launch arguments; document contents are checked on read.
+    }
+  }
+  if (mainWindow && !mainWindow.isDestroyed())
+    mainWindow.webContents.send("scislide:document-requested");
+}
+
+async function focusEditor() {
+  if (!mainWindow || mainWindow.isDestroyed()) await createMainWindow();
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -104,6 +129,24 @@ function compiler() {
 function aiHost() {
   aiModule ||= import(pathToFileURL(path.join(__dirname, "ai.mjs")).href);
   return aiModule;
+}
+
+async function detectInstalledTex(binDirectory) {
+  const configuration = path.join(app.getPath("userData"), "tex-path.json");
+  if (binDirectory === undefined) {
+    try {
+      binDirectory = JSON.parse(
+        await fs.readFile(configuration, "utf8"),
+      ).binDirectory;
+      if (typeof binDirectory !== "string" || !path.isAbsolute(binDirectory))
+        binDirectory = undefined;
+    } catch {
+      /* Use automatic discovery until a folder has been selected. */
+    }
+  }
+  return (await compiler()).detectTex({
+    ...(binDirectory ? { binDirectory } : {}),
+  });
 }
 
 function validateSender(event) {
@@ -206,6 +249,18 @@ async function chosenDestination(selectedPath, extension) {
 
 function registerIpc() {
   ipc(
+    "scislide:take-open-document",
+    () =>
+      withFileOperation(async () => {
+        const selectedPath = pendingDocuments.shift();
+        if (!selectedPath) return null;
+        const bytes = await readDocument(selectedPath);
+        documentPath = selectedPath;
+        return { bytes, name: path.basename(selectedPath), path: selectedPath };
+      }),
+    { editorOnly: true },
+  );
+  ipc(
     "scislide:set-command-availability",
     (states) => {
       setMenuCommandAvailability(Menu.getApplicationMenu(), states);
@@ -283,7 +338,33 @@ function registerIpc() {
       return { path: destination, name: path.basename(destination) };
     });
   });
-  ipc("scislide:detect-tex", async () => (await compiler()).detectTex());
+  ipc("scislide:detect-tex", () => detectInstalledTex());
+  ipc("scislide:choose-tex-directory", async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: "Choose the folder containing latex or xelatex",
+      properties: ["openDirectory"],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    const binDirectory = result.filePaths[0];
+    const capabilities = await detectInstalledTex(binDirectory);
+    if (
+      !capabilities.engines.some(
+        ({ id }) => path.dirname(capabilities.paths[id] || "") === binDirectory,
+      )
+    ) {
+      // Restore detection for the previously saved choice after an invalid selection.
+      await detectInstalledTex();
+      throw new Error(
+        "No working latex or xelatex executable was found in this folder.",
+      );
+    }
+    await fs.mkdir(app.getPath("userData"), { recursive: true });
+    await writeAtomically(
+      path.join(app.getPath("userData"), "tex-path.json"),
+      JSON.stringify({ binDirectory }),
+    );
+    return capabilities;
+  });
   ipc("scislide:compile-tex", async (value) => {
     const request = validateCompile(value);
     if (runningJobs.has(request.jobId))
@@ -526,11 +607,16 @@ if (updateCommand) {
     });
 } else if (!app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on("second-instance", () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
+  // Finder can deliver this event before ready, IPC registration, or the editor mounts.
+  app.on("open-file", (event, filename) => {
+    event.preventDefault();
+    queueDocuments([filename]);
+    if (desktopInitialized) void focusEditor().catch(console.error);
+  });
+  queueDocuments(cliArguments);
+  app.on("second-instance", (_event, arguments_, workingDirectory) => {
+    queueDocuments(arguments_.slice(app.isPackaged ? 1 : 2), workingDirectory);
+    if (desktopInitialized) void focusEditor().catch(console.error);
   });
   app
     .whenReady()
@@ -538,6 +624,7 @@ else {
       await configureSession();
       registerIpc();
       installMenu();
+      desktopInitialized = true;
       await createMainWindow();
     })
     .catch((error) => {

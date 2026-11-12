@@ -4,10 +4,11 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
-import type { PointerEvent, ReactNode } from "react";
+import type { CSSProperties, PointerEvent, ReactNode } from "react";
 import {
   Atom,
   ArrowDown,
@@ -29,7 +30,6 @@ import {
   Layers,
   LockKeyhole,
   Maximize2,
-  MoreHorizontal,
   Plus,
   Presentation,
   Redo2,
@@ -97,6 +97,11 @@ import {
   pasteObjectClipboard,
 } from "./lib/object-clipboard";
 import type { ObjectClipboard } from "./lib/object-clipboard";
+import {
+  captureSlideClipboard,
+  pasteSlideClipboard,
+  type SlideClipboard,
+} from "./lib/slide-clipboard";
 import { ObjectLayers } from "./components/ObjectLayers";
 import { traverseObjects } from "./lib/object-traversal";
 import { matchPlaybackShortcut } from "./lib/playback-shortcuts";
@@ -135,6 +140,12 @@ import { snapMove, snapResize, type SmartGuide } from "./lib/smart-guides";
 import { SlideScene } from "./components/SlideScene";
 import { CommitNumberInput } from "./components/CommitNumberInput";
 import { InlineEquationDialog } from "./components/InlineEquationDialog";
+import { EquationEditorDialog } from "./components/EquationEditorDialog";
+import { ToolbarMenu } from "./components/ToolbarMenu";
+import { SpeakerNotes } from "./components/SpeakerNotes";
+import { InspectorTabs, type InspectorTab } from "./components/InspectorTabs";
+import { PanelResizeHandle } from "./components/PanelResizeHandle";
+import "./components/EditorChrome.css";
 import {
   applyInlineEquationEdit,
   getInlineEquationEdit,
@@ -158,6 +169,7 @@ import type { ShortcutAction } from "./lib/shortcuts";
 import {
   createThemeDeck,
   createThemedSlide,
+  getDeckLayouts,
   getDeckTheme,
 } from "./lib/deck-themes";
 import type { DeckSlideLayoutId, DeckThemeId } from "./lib/deck-themes";
@@ -313,18 +325,62 @@ export default function App() {
     start: number;
     end: number;
   } | null>(null);
-  const [inspectorVisible, setInspectorVisible] = useState(true);
-  const [objectListVisible, setObjectListVisible] = useState(true);
+  const [inspectorVisible, setInspectorVisible] = useState(
+    () => typeof window === "undefined" || window.innerWidth > 1000,
+  );
+  const [objectListVisible, setObjectListVisible] = useState(false);
+  const [inspectorTab, setInspectorTab] =
+    useState<Exclude<InspectorTab, "layers">>("style");
+  const [inspectorWidth, setInspectorWidth] = useState(308);
+  const lastSlideLayout = useRef<{
+    deckId: string;
+    id: DeckSlideLayoutId;
+  } | null>(null);
+  const [lastFileSave, setLastFileSave] = useState<{
+    deck: Deck;
+    kind: "saved" | "downloaded" | "opened";
+  } | null>(null);
+  const fileMatchesSaved = useMemo(() => {
+    if (!lastFileSave) return false;
+    if (lastFileSave.deck === deck) return true;
+    const { assets, ...document } = deck;
+    const { assets: savedAssets, ...savedDocument } = lastFileSave.deck;
+    return (
+      assets.length === savedAssets.length &&
+      assets.every((asset, index) => {
+        const saved = savedAssets[index];
+        return (
+          asset.id === saved.id &&
+          asset.name === saved.name &&
+          asset.mime === saved.mime &&
+          asset.width === saved.width &&
+          asset.height === saved.height &&
+          asset.dataUrl === saved.dataUrl
+        );
+      }) &&
+      JSON.stringify(document) === JSON.stringify(savedDocument)
+    );
+  }, [deck, lastFileSave]);
   const paneFocus = useRef<"inspector" | "objects" | null>(null);
   const textEditingRef = useRef<TextEdit | null>(null);
   const textContentComposing = useRef(false);
   const [recoveryLoaded, setRecoveryLoaded] = useState(false);
   const [showEquationLibrary, setShowEquationLibrary] = useState(false);
+  const [equationEditorId, setEquationEditorId] = useState<string | null>(null);
+  const [equationApplying, setEquationApplying] = useState(false);
+  const equationApplyingRef = useRef(false);
   const [pdfFigure, setPdfFigure] = useState<PdfFigureRequest | null>(null);
   const closePdfFigure = useCallback(() => setPdfFigure(null), []);
-  const [hasClipboard, setHasClipboard] = useState(false);
+  const [clipboardKind, setClipboardKind] = useState<
+    "objects" | "slide" | null
+  >(null);
+  const hasClipboard = clipboardKind !== null;
   const [presenterUrl, setPresenterUrl] = useState<string | null>(null);
-  const clipboard = useRef<ObjectClipboard | null>(null);
+  const clipboard = useRef<
+    | { kind: "objects"; value: ObjectClipboard }
+    | { kind: "slide"; value: SlideClipboard }
+    | null
+  >(null);
   const pasteSequence = useRef({ deckId: "", slideId: "", count: 0 });
   const recoveryWritable = useRef(false);
   const recoveredDrafts = useRef<RecoveredEquationDraft[]>([]);
@@ -397,8 +453,22 @@ export default function App() {
     [texDetectionError, setTexDetectionError] = useState(""),
     [documentFilename, setDocumentFilename] = useState("");
   const compileJob = useRef<string | null>(null);
+  const openingDesktopDocument = useRef(false);
+  const pendingDesktopOpen = useRef(true);
+  const [documentOpenRevision, setDocumentOpenRevision] = useState(0);
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  const refreshTex = async (chooseDirectory = false) => {
+    setTexDetectionError("");
+    try {
+      const result = chooseDirectory
+        ? await desktop?.chooseTexDirectory?.()
+        : await desktop?.detectTex();
+      if (result) setTexCapabilities(result);
+    } catch (e) {
+      setTexDetectionError((e as Error).message);
+    }
+  };
   useEffect(() => {
     if (!desktop) return;
     let live = true;
@@ -848,6 +918,45 @@ export default function App() {
     setHistoryTick((t) => t + 1);
   };
   const activeEquation = object?.type === "equation" ? object : undefined;
+  useEffect(() => {
+    if (selected.length)
+      setInspectorTab((tab) => (tab === "document" ? "style" : tab));
+  }, [selected.join(":"), deck.id, slide.id]);
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const narrow = window.matchMedia("(max-width: 1000px)");
+    const closePanels = () => {
+      if (narrow.matches) {
+        setInspectorVisible(false);
+        setObjectListVisible(false);
+      }
+    };
+    narrow.addEventListener("change", closePanels);
+    return () => narrow.removeEventListener("change", closePanels);
+  }, []);
+  const equationEditorOpen =
+    !!activeEquation && equationEditorId === activeEquation.id;
+  const openEquationEditor = (target: EquationObject) => {
+    if (busy || !target.visible || isObjectLocked(target, slide.objects))
+      return;
+    finishTextEditing();
+    cancelGesture();
+    setDrawingTool(null);
+    setSelected([target.id]);
+    setEquationEditorId(target.id);
+  };
+  const closeEquationEditor = () => {
+    const jobId = compileJob.current;
+    compileJob.current = null;
+    setCompileBusy(false);
+    if (jobId) void desktop?.cancelCompile(jobId).catch(() => undefined);
+    setEquationEditorId(null);
+    canvasRef.current?.focus({ preventScroll: true });
+  };
+  useEffect(() => {
+    if (equationEditorId && equationEditorId !== activeEquation?.id)
+      setEquationEditorId(null);
+  }, [equationEditorId, activeEquation?.id]);
   const canCompileEquation = Boolean(
     desktop &&
     activeEquation &&
@@ -991,7 +1100,7 @@ export default function App() {
       !activeEquation ||
       !canCompileEquation ||
       compileJob.current ||
-      hasEditorDialog ||
+      hasOtherEditorDialog ||
       showThemeChooser ||
       presenting
     )
@@ -1004,7 +1113,7 @@ export default function App() {
       return;
     }
     const jobId = newId();
-    setInspectorVisible(true);
+    setEquationEditorId(activeEquation.id);
     compileJob.current = jobId;
     setCompileBusy(true);
     const snapshot = {
@@ -1061,7 +1170,14 @@ export default function App() {
     [],
   );
   const applyEquation = async () => {
-    if (!activeEquation) return;
+    if (
+      !activeEquation ||
+      equationApplyingRef.current ||
+      isObjectLocked(activeEquation, slide.objects)
+    )
+      return;
+    equationApplyingRef.current = true;
+    setEquationApplying(true);
     try {
       assertEquationDocumentLimits(
         draft.latex,
@@ -1092,6 +1208,23 @@ export default function App() {
               draft.color,
               activeEquation.displayMode,
             );
+      const current = deckRef.current;
+      const currentSlide = current.slides.find(
+        (candidate) => candidate.id === slide.id,
+      );
+      const currentEquation = currentSlide?.objects.find(
+        (candidate) => candidate.id === activeEquation.id,
+      );
+      if (
+        current.id !== deck.id ||
+        !currentSlide ||
+        currentEquation?.type !== "equation" ||
+        isObjectLocked(currentEquation, currentSlide.objects) ||
+        !currentEquation.visible ||
+        JSON.stringify(currentEquation) !== JSON.stringify(activeEquation) ||
+        draftRef.current !== draft
+      )
+        return;
       recoveredDrafts.current = recoveredDrafts.current.filter(
         (entry) =>
           !(entry.deckId === deck.id && entry.equationId === activeEquation.id),
@@ -1119,8 +1252,13 @@ export default function App() {
         }
       });
       notify("수식을 적용했습니다.");
+      closeEquationEditor();
     } catch (e) {
+      setDraftError((e as Error).message);
       notify((e as Error).message);
+    } finally {
+      equationApplyingRef.current = false;
+      setEquationApplying(false);
     }
   };
   const switchSlide = (id: string) => {
@@ -1140,7 +1278,59 @@ export default function App() {
     )
       .find((button) => button.dataset.slideId === id)
       ?.focus();
-  const addSlide = () => {
+  const focusedSlideCard = () =>
+    document.activeElement?.closest<HTMLButtonElement>(
+      ".slide-list [data-slide-id]",
+    );
+  const copySlide = (sourceId = slide.id, cut = false) => {
+    if (busy || (cut && deckRef.current.slides.length < 2)) return;
+    finishTextEditing();
+    cancelGesture();
+    const current = deckRef.current;
+    const source = current.slides.find((s) => s.id === sourceId);
+    if (!source) return;
+    clipboard.current = {
+      kind: "slide",
+      value: captureSlideClipboard(current, source),
+    };
+    setClipboardKind("slide");
+    if (cut) {
+      const index = current.slides.indexOf(source);
+      const nextId = current.slides[index ? index - 1 : 1].id;
+      removeSlide(sourceId);
+      setTimeout(() => focusSlideCard(nextId), 0);
+    } else {
+      focusSlideCard(sourceId);
+    }
+    notify(
+      cut
+        ? "Slide cut. Paste after any slide."
+        : "Slide copied. Paste after any slide.",
+    );
+  };
+  const pasteSlide = (
+    afterId = focusedSlideCard()?.dataset.slideId ?? slide.id,
+  ) => {
+    if (busy || clipboard.current?.kind !== "slide") return;
+    finishTextEditing();
+    cancelGesture();
+    const next = cloneDeck(deckRef.current);
+    try {
+      const pasted = pasteSlideClipboard(
+        next,
+        afterId,
+        clipboard.current.value,
+      );
+      validateDeck(next);
+      commit(next);
+      switchSlide(pasted.id);
+      setTimeout(() => focusSlideCard(pasted.id), 0);
+      notify("Slide pasted.");
+    } catch (e) {
+      notify((e as Error).message);
+    }
+  };
+  const openSlideTemplates = () => {
     setShowHelp(false);
     setExportMenu(false);
     setShowSlideTemplates(true);
@@ -1152,6 +1342,23 @@ export default function App() {
     });
     switchSlide(s.id);
     setShowSlideTemplates(false);
+    lastSlideLayout.current = { deckId: deck.id, id };
+  };
+  const addSlide = () => {
+    if (busy || hasEditorDialog) return;
+    finishTextEditing();
+    const layouts = getDeckLayouts(deck);
+    const previous = lastSlideLayout.current;
+    const id =
+      previous?.deckId === deck.id &&
+      layouts.some((layout) => layout.id === previous.id)
+        ? previous.id
+        : (layouts.find(
+            (layout) =>
+              layout.id === "content" ||
+              layout.id === "keynote-white-title-bullets",
+          )?.id ?? "blank");
+    addTemplateSlide(id);
   };
   const duplicateSlide = (sourceId = slide.id, retainFocus = false) => {
     finishTextEditing();
@@ -1274,6 +1481,8 @@ export default function App() {
     change((d) => d.slides.find((s) => s.id === slide.id)!.objects.push(o));
     setSelected([o.id]);
     if (o.type === "text") beginTextEditing(o);
+    else if (o.type === "equation" && !inlineEquationEditRef.current)
+      setEquationEditorId(o.id);
   };
   const deleteObjects = () => {
     const ids = editableSelection(slide.objects, selected);
@@ -1321,9 +1530,9 @@ export default function App() {
       : expandSelection(slide.objects, selected);
     const copied = captureObjectClipboard(deck, slide, ids);
     if (!copied) return;
-    clipboard.current = copied;
+    clipboard.current = { kind: "objects", value: copied };
     pasteSequence.current = { deckId: "", slideId: "", count: 0 };
-    setHasClipboard(true);
+    setClipboardKind("objects");
     if (cut) {
       change((d) => {
         const current = d.slides.find((s) => s.id === slide.id)!;
@@ -1340,7 +1549,7 @@ export default function App() {
     );
   };
   const pasteObjects = () => {
-    if (!clipboard.current) return;
+    if (clipboard.current?.kind !== "objects") return;
     cancelGesture();
     setDrawingTool(null);
     const next = cloneDeck(deckRef.current);
@@ -1350,10 +1559,15 @@ export default function App() {
         previous.deckId === next.id && previous.slideId === slide.id
           ? previous.count + 1
           : 1;
-      const ids = pasteObjectClipboard(next, slide.id, clipboard.current, {
-        x: count * 32,
-        y: count * 32,
-      });
+      const ids = pasteObjectClipboard(
+        next,
+        slide.id,
+        clipboard.current.value,
+        {
+          x: count * 32,
+          y: count * 32,
+        },
+      );
       validateDeck(next);
       commit(next);
       pasteSequence.current = { deckId: next.id, slideId: slide.id, count };
@@ -1361,6 +1575,10 @@ export default function App() {
     } catch (e) {
       notify((e as Error).message);
     }
+  };
+  const pasteClipboard = () => {
+    if (clipboard.current?.kind === "slide") pasteSlide();
+    else pasteObjects();
   };
   const distribute = (axis: "x" | "y") => {
     const next = cloneDeck(deckRef.current);
@@ -1504,8 +1722,9 @@ export default function App() {
     finishTextEditing();
     setBusy("Packaging deck");
     try {
-      const archive = await buildDeckArchive(deckRef.current),
-        suggestedName = `${deckRef.current.title || "Untitled"}.scislide`;
+      const snapshot = deckRef.current;
+      const archive = await buildDeckArchive(snapshot),
+        suggestedName = `${snapshot.title || "Untitled"}.scislide`;
       if (desktop) {
         const result = await desktop.saveDocument({
           bytes: new Uint8Array(await archive.arrayBuffer()),
@@ -1514,10 +1733,12 @@ export default function App() {
         });
         if (result) {
           setDocumentFilename(result.name);
+          setLastFileSave({ deck: snapshot, kind: "saved" });
           notify("프레젠테이션을 저장했습니다.");
         }
       } else {
         downloadBlob(archive, suggestedName);
+        setLastFileSave({ deck: snapshot, kind: "downloaded" });
         notify(
           "다운로드를 시작했습니다. 브라우저 다운로드 폴더를 확인해주세요.",
         );
@@ -1528,16 +1749,21 @@ export default function App() {
       setBusy("");
     }
   };
-  const openDesktopDocument = async () => {
-    if (busy) return;
+  const openDesktopDocument = async (pending = false): Promise<boolean> => {
+    if (busy || openingDesktopDocument.current) return false;
     if (!desktop) {
       openInput.current?.click();
-      return;
+      return false;
     }
+    openingDesktopDocument.current = true;
     setBusy("Opening deck");
     try {
-      const result = await desktop.openDocument();
-      if (!result) return;
+      const result = pending
+        ? await desktop.takeOpenDocument?.()
+        : await desktop.openDocument();
+      if (!result) return false;
+      finishTextEditing();
+      cancelGesture();
       const next = await readDeckArchive(
         new Blob([new Uint8Array(result.bytes).buffer]),
       );
@@ -1545,14 +1771,22 @@ export default function App() {
       switchSlide(next.slides[0].id);
       workspaceActive.current = true;
       setShowThemeChooser(false);
+      setCanResumeWorkspace(true);
       setDocumentFilename(result.name);
+      setLastFileSave({ deck: next, kind: "saved" });
       notify("프레젠테이션을 불러왔습니다.");
+      return true;
     } catch (e) {
       await desktop.clearDocument();
       setDocumentFilename("");
       notify((e as Error).message);
+      // A bad external file must not prevent the next queued file from opening.
+      return pending;
     } finally {
+      openingDesktopDocument.current = false;
       setBusy("");
+      if (pendingDesktopOpen.current)
+        setDocumentOpenRevision((revision) => revision + 1);
     }
   };
   const newPresentation = () => {
@@ -1573,6 +1807,7 @@ export default function App() {
     setShowThemeChooser(false);
     setThemeChooserFromEditor(false);
     setDocumentFilename("");
+    setLastFileSave(null);
     void desktop?.clearDocument();
   };
   const open = async (file: File) => {
@@ -1584,6 +1819,8 @@ export default function App() {
       workspaceActive.current = true;
       setShowThemeChooser(false);
       setCanResumeWorkspace(true);
+      setDocumentFilename(file.name);
+      setLastFileSave({ deck: next, kind: "opened" });
       notify("프레젠테이션을 불러왔습니다.");
     } catch (e) {
       notify((e as Error).message);
@@ -1980,6 +2217,7 @@ export default function App() {
       hasFocusedSlide: !!document.activeElement?.closest(
         ".slide-list [data-slide-id]",
       ),
+      canCutSlide: deck.slides.length > 1,
     };
   };
   const executeShortcut = (action: ShortcutAction) => {
@@ -2015,13 +2253,15 @@ export default function App() {
         selectAllObjects();
         break;
       case "copy":
-        copyObjects();
+      case "cut": {
+        const card = focusedSlideCard();
+        if (card?.dataset.slideId)
+          copySlide(card.dataset.slideId, action === "cut");
+        else copyObjects(action === "cut");
         break;
-      case "cut":
-        copyObjects(true);
-        break;
+      }
       case "paste":
-        pasteObjects();
+        pasteClipboard();
         break;
       case "duplicate":
       case "duplicateSlide": {
@@ -2039,8 +2279,13 @@ export default function App() {
         const visible = inspector ? inspectorVisible : objectListVisible;
         if (visible) canvasRef.current?.focus();
         else paneFocus.current = inspector ? "inspector" : "objects";
-        if (inspector) setInspectorVisible(!visible);
-        else setObjectListVisible(!visible);
+        if (inspector) {
+          setInspectorVisible(!visible);
+          if (!visible) setObjectListVisible(false);
+        } else {
+          setObjectListVisible(!visible);
+          if (!visible) setInspectorVisible(false);
+        }
         break;
       }
       case "group":
@@ -2050,7 +2295,7 @@ export default function App() {
         ungroupSelection();
         break;
       case "addSlide":
-        addSlide();
+        openSlideTemplates();
         break;
       case "insertEquation":
         if (
@@ -2060,13 +2305,7 @@ export default function App() {
           editInlineEquationAtField(document.activeElement);
           break;
         }
-        void insert("equation")
-          .then(() => {
-            if (keyboardPlatform !== "linux") return;
-            setInspectorVisible(true);
-            setTimeout(() => sourceRef.current?.focus(), 0);
-          })
-          .catch((error: Error) => notify(error.message));
+        void insert("equation").catch((error: Error) => notify(error.message));
         break;
       case "insertInlineEquation":
         if (
@@ -2206,7 +2445,7 @@ export default function App() {
         break;
     }
   };
-  const hasEditorDialog =
+  const hasOtherEditorDialog =
     showHelp ||
     showAiDraft ||
     !!pdfFigure ||
@@ -2214,6 +2453,35 @@ export default function App() {
     showMathLibrary ||
     showEquationLibrary ||
     !!inlineEquationEdit;
+  const hasEditorDialog = hasOtherEditorDialog || equationEditorOpen;
+  useEffect(
+    () =>
+      desktop?.onOpenDocument?.(() => {
+        pendingDesktopOpen.current = true;
+        setDocumentOpenRevision((revision) => revision + 1);
+      }),
+    [],
+  );
+  useEffect(() => {
+    if (
+      !desktop?.takeOpenDocument ||
+      !recoveryLoaded ||
+      busy ||
+      openingDesktopDocument.current ||
+      hasEditorDialog ||
+      presenting ||
+      !pendingDesktopOpen.current
+    )
+      return;
+    pendingDesktopOpen.current = false;
+    const openRequested = async () => {
+      while (await openDesktopDocument(true)) {
+        /* Drain launch requests in order. */
+      }
+    };
+    // Pull after subscription so early Finder/launch events survive editor hydration.
+    void openRequested();
+  }, [recoveryLoaded, busy, hasEditorDialog, presenting, documentOpenRevision]);
   useEffect(() => {
     if (!desktop?.setCommandAvailability) return;
     const syncMenu = () => {
@@ -2235,6 +2503,12 @@ export default function App() {
           ["cut", "copy", "paste", "selectAll", "undo", "redo"].includes(action)
         ) {
           enabled = true; // The focused text control owns native editing, even in a modal.
+        } else if (
+          equationEditorOpen &&
+          !hasOtherEditorDialog &&
+          action === "compileEquation"
+        ) {
+          enabled = enabled && isEquationShortcutTarget(document.activeElement);
         } else if (hasEditorDialog || presenting) {
           enabled = false;
         } else if (showThemeChooser) {
@@ -2262,7 +2536,23 @@ export default function App() {
   });
   useEffect(() =>
     desktop?.onCommand((command) => {
-      if (hasEditorDialog || presenting) return;
+      if (hasOtherEditorDialog || presenting) return;
+      if (equationEditorOpen) {
+        if (
+          isTextInput(document.activeElement) &&
+          ["undo", "redo", "cut", "copy", "paste", "selectAll"].includes(
+            command,
+          )
+        )
+          document.execCommand(command);
+        else if (
+          command === "compileEquation" &&
+          isShortcutAvailable("compileEquation", keyboardPlatform) &&
+          isEquationShortcutTarget(document.activeElement)
+        )
+          void compileEquation();
+        return;
+      }
       if (command === "exportPptx") {
         if (!showThemeChooser) void runExport("pptx");
         return;
@@ -3084,35 +3374,47 @@ export default function App() {
             }
           />
           <span>
-            <span className="status-dot" />
-            {documentFilename || recoveryStatus}
+            <span
+              className={`status-dot ${fileMatchesSaved ? "is-saved" : "is-unsaved"}`}
+            />
+            <span
+              className="file-save-state"
+              aria-label="Document save status"
+              title={
+                documentFilename || "Save this presentation as a .scislide file"
+              }
+            >
+              {busy === "Packaging deck"
+                ? "Saving…"
+                : fileMatchesSaved && lastFileSave
+                  ? lastFileSave.kind === "saved"
+                    ? "Saved to file"
+                    : lastFileSave.kind === "opened"
+                      ? "Opened from file"
+                      : "Downloaded .scislide"
+                  : "Unsaved changes"}
+            </span>
+            <span
+              className="recovery-state"
+              title="Local recovery is separate from saving a portable .scislide file"
+            >
+              {recoveryStatus === "Local workspace"
+                ? "Local recovery"
+                : recoveryStatus}
+            </span>
+            {documentFilename && (
+              <span className="document-filename">{documentFilename}</span>
+            )}
             {desktop && <span className="desktop-badge">DESKTOP</span>}
           </span>
         </div>
         <div className="header-actions">
           <button
             className="button light"
-            disabled={!!busy}
-            onClick={() => setShowAiDraft(true)}
-          >
-            <Sparkles size={16} /> AI draft
-          </button>
-          <IconButton
-            title={shortcutTitle("Keyboard shortcuts", "help")}
-            ariaLabel="Keyboard shortcuts"
-            onClick={() => setShowHelp(true)}
-          >
-            <CircleHelp size={19} />
-          </IconButton>
-          <button
-            className="button light"
             title={shortcutTitle("Present", "present")}
             onClick={startPresent}
           >
             <Presentation size={16} /> Present
-          </button>
-          <button className="button light" onClick={startWithPresenter}>
-            Presenter display
           </button>
           <div className="dropdown-wrap">
             <button
@@ -3155,33 +3457,59 @@ export default function App() {
               </div>
             )}
           </div>
-          <span className="avatar">SC</span>
         </div>
       </header>
-      <fieldset className="toolbar" disabled={!!busy || hasEditorDialog}>
-        <div className="toolbar-group">
-          <IconButton
-            title={shortcutTitle("Open .scislide", "open")}
-            ariaLabel="Open .scislide"
-            onClick={() => void openDesktopDocument()}
+      <fieldset
+        className="toolbar editor-toolbar"
+        disabled={!!busy || hasEditorDialog}
+        aria-label="Editor tools"
+      >
+        <ToolbarMenu
+          label="File"
+          icon={<FolderOpen size={17} />}
+          disabled={!!busy || hasEditorDialog}
+        >
+          <div className="toolbar-group">
+            <IconButton
+              title={shortcutTitle("Open .scislide", "open")}
+              ariaLabel="Open .scislide"
+              onClick={() => void openDesktopDocument()}
+            >
+              <FolderOpen size={18} /> <span>Open…</span>
+            </IconButton>
+            <IconButton
+              title={shortcutTitle("Save .scislide", "save")}
+              onClick={() => void save()}
+            >
+              <Save size={18} /> <span>Save .scislide</span>
+            </IconButton>
+            <IconButton
+              title={shortcutTitle("New presentation", "new")}
+              ariaLabel="New presentation"
+              onClick={newPresentation}
+            >
+              <FilePlus2 size={18} /> <span>New presentation</span>
+            </IconButton>
+          </div>
+
+          <button type="button" className="tool" onClick={startWithPresenter}>
+            <Presentation size={16} /> Presenter display
+          </button>
+          <button
+            type="button"
+            className="tool"
+            onClick={() => setShowAiDraft(true)}
           >
-            <FolderOpen size={18} />
-          </IconButton>
-          <IconButton
-            title={shortcutTitle("Save .scislide", "save")}
-            onClick={() => void save()}
+            <Sparkles size={16} /> AI draft
+          </button>
+          <button
+            type="button"
+            className="tool"
+            onClick={() => setShowHelp(true)}
           >
-            <Save size={18} />
-          </IconButton>
-          <IconButton
-            title={shortcutTitle("New presentation", "new")}
-            ariaLabel="New presentation"
-            onClick={newPresentation}
-          >
-            <FilePlus2 size={18} />
-          </IconButton>
-        </div>
-        <span className="toolbar-divider" />
+            <CircleHelp size={16} /> Keyboard shortcuts
+          </button>
+        </ToolbarMenu>
         <div className="toolbar-group">
           <IconButton
             title={shortcutTitle("Undo", "undo")}
@@ -3198,31 +3526,99 @@ export default function App() {
             <Redo2 size={18} />
           </IconButton>
         </div>
+
+        <ToolbarMenu label="Edit" disabled={!!busy || hasEditorDialog}>
+          <div className="toolbar-group">
+            <IconButton
+              title={shortcutTitle("Copy objects", "copy")}
+              disabled={!selected.length}
+              onClick={() => copyObjects()}
+            >
+              <Copy size={17} /> <span>Copy objects</span>
+            </IconButton>
+            <IconButton
+              title={shortcutTitle("Cut objects", "cut")}
+              disabled={!editableSelection(slide.objects, selected).length}
+              onClick={() => copyObjects(true)}
+            >
+              <Scissors size={17} /> <span>Cut objects</span>
+            </IconButton>
+            <IconButton
+              title={shortcutTitle(
+                clipboardKind === "slide" ? "Paste slide" : "Paste objects",
+                "paste",
+              )}
+              disabled={!hasClipboard}
+              onClick={pasteClipboard}
+            >
+              <ClipboardPaste size={17} /> <span>Paste</span>
+            </IconButton>
+          </div>
+          <IconButton
+            title={shortcutTitle("Group objects", "group")}
+            disabled={editableSelection(slide.objects, selected).length < 2}
+            onClick={groupSelection}
+          >
+            <Group size={17} /> <span>Group objects</span>
+          </IconButton>
+          <IconButton
+            title={shortcutTitle("Ungroup objects", "ungroup")}
+            disabled={
+              !slide.objects.some(
+                (o) =>
+                  selected.includes(o.id) &&
+                  o.groupId &&
+                  !isObjectLocked(o, slide.objects),
+              )
+            }
+            onClick={ungroupSelection}
+          >
+            <Ungroup size={17} /> <span>Ungroup objects</span>
+          </IconButton>
+          <span className="toolbar-divider" />
+          <div className="toolbar-group">
+            <IconButton
+              title="Distribute horizontally"
+              disabled={
+                selectionLayoutUnits(slide.objects, selected, metrics).length <
+                3
+              }
+              onClick={() => distribute("x")}
+            >
+              <span>↔</span> <span>Distribute horizontally</span>
+            </IconButton>
+            <IconButton
+              title="Distribute vertically"
+              disabled={
+                selectionLayoutUnits(slide.objects, selected, metrics).length <
+                3
+              }
+              onClick={() => distribute("y")}
+            >
+              <span>↕</span> <span>Distribute vertically</span>
+            </IconButton>
+          </div>
+        </ToolbarMenu>
         <span className="toolbar-divider" />
-        <div className="toolbar-group">
-          <IconButton
-            title={shortcutTitle("Copy objects", "copy")}
-            disabled={!selected.length}
-            onClick={() => copyObjects()}
+        <div className="slide-add-control">
+          <button
+            type="button"
+            className="tool"
+            aria-label="New slide"
+            onClick={addSlide}
           >
-            <Copy size={17} />
-          </IconButton>
-          <IconButton
-            title={shortcutTitle("Cut objects", "cut")}
-            disabled={!editableSelection(slide.objects, selected).length}
-            onClick={() => copyObjects(true)}
+            <Plus size={18} /> Slide
+          </button>
+          <button
+            type="button"
+            className="tool slide-layout-toggle"
+            aria-label="Choose slide layout"
+            title="Choose slide layout"
+            onClick={openSlideTemplates}
           >
-            <Scissors size={17} />
-          </IconButton>
-          <IconButton
-            title={shortcutTitle("Paste objects", "paste")}
-            disabled={!hasClipboard}
-            onClick={pasteObjects}
-          >
-            <ClipboardPaste size={17} />
-          </IconButton>
+            <ChevronDown size={14} />
+          </button>
         </div>
-        <span className="toolbar-divider" />
         <button className="tool" onClick={() => void insert("text")}>
           <Type size={18} /> Text
         </button>
@@ -3241,9 +3637,6 @@ export default function App() {
         >
           <Sigma size={20} /> Equation
         </button>
-        <button className="tool" onClick={() => setShowEquationLibrary(true)}>
-          <BookOpen size={17} /> My equations
-        </button>
         <button
           className="tool"
           disabled={!!busy}
@@ -3257,139 +3650,113 @@ export default function App() {
         >
           <ImagePlus size={18} /> Figure
         </button>
-        <button
-          className="tool"
-          disabled={!!busy}
-          onClick={() => {
-            finishTextEditing();
-            cancelGesture();
-            setDrawingTool(null);
-            videoInput.current?.click();
-          }}
-          title={`Insert an MP4 or WebM video · up to ${MAX_VIDEO_BYTES / 1024 / 1024} MB`}
+
+        <ToolbarMenu
+          label="Shape"
+          icon={<Square size={17} />}
+          disabled={!!busy || hasEditorDialog}
         >
-          <Video size={18} /> Video
-        </button>
-        <IconButton
-          title="Select objects · Escape"
-          active={!drawingTool}
-          onClick={() => chooseDrawingTool(null)}
-        >
-          <MousePointer2 size={17} />
-        </IconButton>
-        <IconButton
-          title="Draw rectangle"
-          active={drawingTool === "rect"}
-          onClick={() =>
-            chooseDrawingTool(drawingTool === "rect" ? null : "rect")
-          }
-        >
-          <Square size={17} />
-        </IconButton>
-        <IconButton
-          title="Draw ellipse"
-          active={drawingTool === "ellipse"}
-          onClick={() =>
-            chooseDrawingTool(drawingTool === "ellipse" ? null : "ellipse")
-          }
-        >
-          <Circle size={17} />
-        </IconButton>
-        <IconButton
-          title="Draw line"
-          active={drawingTool === "line"}
-          onClick={() =>
-            chooseDrawingTool(drawingTool === "line" ? null : "line")
-          }
-        >
-          <Minus size={17} />
-        </IconButton>
-        <IconButton
-          title="Draw arrow"
-          active={drawingTool === "arrow"}
-          onClick={() =>
-            chooseDrawingTool(drawingTool === "arrow" ? null : "arrow")
-          }
-        >
-          <ArrowUpRight size={17} />
-        </IconButton>
-        <IconButton
-          title={shortcutTitle("Group objects", "group")}
-          disabled={editableSelection(slide.objects, selected).length < 2}
-          onClick={groupSelection}
-        >
-          <Group size={17} />
-        </IconButton>
-        <IconButton
-          title={shortcutTitle("Ungroup objects", "ungroup")}
-          disabled={
-            !slide.objects.some(
-              (o) =>
-                selected.includes(o.id) &&
-                o.groupId &&
-                !isObjectLocked(o, slide.objects),
-            )
-          }
-          onClick={ungroupSelection}
-        >
-          <Ungroup size={17} />
-        </IconButton>
-        <span className="toolbar-divider" />
-        <div className="toolbar-group">
           <IconButton
-            title="Distribute horizontally"
-            disabled={
-              selectionLayoutUnits(slide.objects, selected, metrics).length < 3
-            }
-            onClick={() => distribute("x")}
+            title="Select objects · Escape"
+            active={!drawingTool}
+            onClick={() => chooseDrawingTool(null)}
           >
-            <span>↔</span>
+            <MousePointer2 size={17} />
           </IconButton>
           <IconButton
-            title="Distribute vertically"
-            disabled={
-              selectionLayoutUnits(slide.objects, selected, metrics).length < 3
+            title="Draw rectangle"
+            active={drawingTool === "rect"}
+            onClick={() =>
+              chooseDrawingTool(drawingTool === "rect" ? null : "rect")
             }
-            onClick={() => distribute("y")}
           >
-            <span>↕</span>
+            <Square size={17} /> <span>Rectangle</span>
           </IconButton>
-        </div>
+          <IconButton
+            title="Draw ellipse"
+            active={drawingTool === "ellipse"}
+            onClick={() =>
+              chooseDrawingTool(drawingTool === "ellipse" ? null : "ellipse")
+            }
+          >
+            <Circle size={17} /> <span>Ellipse</span>
+          </IconButton>
+          <IconButton
+            title="Draw line"
+            active={drawingTool === "line"}
+            onClick={() =>
+              chooseDrawingTool(drawingTool === "line" ? null : "line")
+            }
+          >
+            <Minus size={17} /> <span>Line</span>
+          </IconButton>
+          <IconButton
+            title="Draw arrow"
+            active={drawingTool === "arrow"}
+            onClick={() =>
+              chooseDrawingTool(drawingTool === "arrow" ? null : "arrow")
+            }
+          >
+            <ArrowUpRight size={17} /> <span>Arrow</span>
+          </IconButton>
+        </ToolbarMenu>
+        <ToolbarMenu label="Insert" disabled={!!busy || hasEditorDialog}>
+          <button className="tool" onClick={() => setShowEquationLibrary(true)}>
+            <BookOpen size={17} /> My equations
+          </button>
+          <button
+            className="tool"
+            disabled={!!busy}
+            onClick={() => {
+              finishTextEditing();
+              cancelGesture();
+              setDrawingTool(null);
+              videoInput.current?.click();
+            }}
+            title={`Insert an MP4 or WebM video · up to ${MAX_VIDEO_BYTES / 1024 / 1024} MB`}
+          >
+            <Video size={18} /> Video
+          </button>
+        </ToolbarMenu>
         <div className="toolbar-end">
-          <IconButton
-            title={`Smart alignment guides · ${keyboardPlatform === "mac" ? "⌥" : "Alt"} to bypass`}
-            active={smartGuides}
-            onClick={() => setSmartGuides(!smartGuides)}
-          >
-            <Magnet size={18} />
-          </IconButton>
-          <IconButton
-            title="Snap to 20 px grid"
-            active={grid}
-            onClick={() => setGrid(!grid)}
-          >
-            <GripVertical size={18} />
-          </IconButton>
-          <IconButton
-            title={shortcutTitle("Toggle Inspector", "toggleInspector")}
-            active={inspectorVisible}
+          <ToolbarMenu label="View" disabled={!!busy || hasEditorDialog}>
+            <IconButton
+              title={`Smart alignment guides · ${keyboardPlatform === "mac" ? "⌥" : "Alt"} to bypass`}
+              active={smartGuides}
+              onClick={() => setSmartGuides(!smartGuides)}
+            >
+              <Magnet size={18} /> <span>Smart guides</span>
+            </IconButton>
+            <IconButton
+              title="Snap to 20 px grid"
+              active={grid}
+              onClick={() => setGrid(!grid)}
+            >
+              <GripVertical size={18} /> <span>Snap to grid</span>
+            </IconButton>
+            <IconButton
+              title={shortcutTitle(
+                "Toggle objects and layers",
+                "toggleObjectList",
+              )}
+              active={objectListVisible}
+              disabled={!!busy || hasEditorDialog}
+              onClick={() => executeShortcut("toggleObjectList")}
+            >
+              <Layers size={18} /> <span>Objects and layers</span>
+            </IconButton>
+          </ToolbarMenu>
+          <button
+            type="button"
+            className={`tool format-toggle ${inspectorVisible ? "active" : ""}`}
             disabled={!!busy || hasEditorDialog}
+            title={shortcutTitle("Toggle Inspector", "toggleInspector")}
+            aria-label={shortcutTitle("Toggle Inspector", "toggleInspector")}
+            aria-pressed={inspectorVisible}
             onClick={() => executeShortcut("toggleInspector")}
           >
-            <Settings2 size={18} />
-          </IconButton>
-          <IconButton
-            title={shortcutTitle(
-              "Toggle objects and layers",
-              "toggleObjectList",
-            )}
-            active={objectListVisible}
-            disabled={!!busy || hasEditorDialog}
-            onClick={() => executeShortcut("toggleObjectList")}
-          >
-            <Layers size={18} />
-          </IconButton>
-          <span>16:9</span>
+            <Settings2 size={18} /> Format
+          </button>
         </div>
       </fieldset>
       <div className="workspace">
@@ -3398,7 +3765,11 @@ export default function App() {
             <span>
               SLIDES <b>{deck.slides.length}</b>
             </span>
-            <IconButton title="Add slide" onClick={addSlide}>
+            <IconButton
+              title="Add slide"
+              onClick={addSlide}
+              disabled={!!busy || hasEditorDialog}
+            >
               <Plus size={18} />
             </IconButton>
           </div>
@@ -3409,34 +3780,70 @@ export default function App() {
             onSelect={switchSlide}
             onReorder={reorderSlide}
           />
-          <button className="add-slide" onClick={addSlide}>
+          <button
+            className="add-slide"
+            onClick={addSlide}
+            disabled={!!busy || hasEditorDialog}
+          >
             <Plus size={17} /> New slide
           </button>
+          <div className="slide-clipboard-actions">
+            <button
+              aria-label="Copy slide"
+              title={shortcutTitle("Copy slide", "copy")}
+              disabled={!!busy || hasEditorDialog}
+              onClick={() => copySlide()}
+            >
+              <Copy size={14} /> Copy
+            </button>
+            <button
+              aria-label="Paste copied slide"
+              title={shortcutTitle("Paste slide", "paste")}
+              disabled={clipboardKind !== "slide" || !!busy || hasEditorDialog}
+              onClick={() => pasteSlide(slide.id)}
+            >
+              <ClipboardPaste size={14} /> Paste
+            </button>
+          </div>
           <div className="sidebar-bottom">
             <IconButton
               title="Duplicate slide"
               onClick={() => duplicateSlide()}
+              disabled={!!busy || hasEditorDialog}
             >
               <Copy size={15} />
             </IconButton>
             <IconButton
               title="Move slide up"
               onClick={() => moveSlide(-1)}
-              disabled={slideIndex === 0}
+              disabled={slideIndex === 0 || !!busy || hasEditorDialog}
             >
               <ArrowUp size={16} />
             </IconButton>
             <IconButton
               title="Move slide down"
               onClick={() => moveSlide(1)}
-              disabled={slideIndex === deck.slides.length - 1}
+              disabled={
+                slideIndex === deck.slides.length - 1 ||
+                !!busy ||
+                hasEditorDialog
+              }
             >
               <ArrowDown size={16} />
             </IconButton>
-            <IconButton title="Delete slide" onClick={() => removeSlide()}>
+            <IconButton
+              title="Delete slide"
+              onClick={() => removeSlide()}
+              disabled={deck.slides.length < 2 || !!busy}
+            >
               <Trash2 size={15} />
             </IconButton>
           </div>
+          <p className="slide-list-hint">
+            Drag to reorder · {shortcutLabel("copy", keyboardPlatform)} to copy
+            <br />
+            {shortcutLabel("paste", keyboardPlatform)} to paste after selection
+          </p>
         </aside>
         <main className="editor-area">
           <div className="canvas-heading">
@@ -3514,11 +3921,14 @@ export default function App() {
                     beginTextEditing(o);
                     return;
                   }
+                  if (o.type === "equation") {
+                    openEquationEditor(o);
+                    return;
+                  }
                   setSelected([o.id]);
                   setInspectorVisible(true);
                   setTimeout(() => {
-                    if (o.type === "equation") sourceRef.current?.focus();
-                    else document.getElementById("text-content")?.focus();
+                    document.getElementById("text-content")?.focus();
                   }, 0);
                 }}
                 onEditInlineEquation={(o, start, end) => {
@@ -3583,34 +3993,59 @@ export default function App() {
               <span>{zoom}%</span>
             </div>
           </div>
-          <section className="notes-panel">
-            <div>
-              <span>Speaker notes</span>
-              <small>Only visible to you</small>
-            </div>
-            <textarea
-              aria-label="Speaker notes"
-              value={slide.notes}
-              placeholder="Add a reminder for your presentation…"
-              onChange={(e) =>
-                change((d) => {
-                  d.slides.find((s) => s.id === slide.id)!.notes =
-                    e.target.value;
-                }, "notes")
-              }
-            />
-          </section>
+          <SpeakerNotes
+            value={slide.notes}
+            onChange={(value) =>
+              change((next) => {
+                next.slides.find(
+                  (candidate) => candidate.id === slide.id,
+                )!.notes = value;
+              }, "notes")
+            }
+          />
         </main>
         <aside
           className="inspector"
+          style={
+            { "--inspector-width": `${inspectorWidth}px` } as CSSProperties
+          }
           hidden={!inspectorVisible && !objectListVisible}
         >
-          <div className="inspector-heading" hidden={!inspectorVisible}>
+          <PanelResizeHandle
+            label="Resize Format panel"
+            value={inspectorWidth}
+            min={260}
+            max={440}
+            onChange={setInspectorWidth}
+          />
+          <div className="inspector-heading">
             <span>
-              <Settings2 size={17} /> Inspector
+              <Settings2 size={17} /> Format
             </span>
-            <MoreHorizontal size={18} />
+            <IconButton
+              title="Close Format panel"
+              onClick={() => {
+                setInspectorVisible(false);
+                setObjectListVisible(false);
+                canvasRef.current?.focus();
+              }}
+            >
+              <X size={16} />
+            </IconButton>
           </div>
+          <InspectorTabs
+            active={objectListVisible ? "layers" : inspectorTab}
+            onChange={(tab) => {
+              if (tab === "layers") {
+                setObjectListVisible(true);
+                setInspectorVisible(false);
+              } else {
+                setInspectorTab(tab);
+                setInspectorVisible(true);
+                setObjectListVisible(false);
+              }
+            }}
+          />
           <div
             ref={objectListRef}
             tabIndex={-1}
@@ -3657,7 +4092,7 @@ export default function App() {
             aria-label="Inspector panel"
             hidden={!inspectorVisible}
           >
-            {object ? (
+            {object && inspectorTab !== "document" && (
               <>
                 <div className="object-heading">
                   <span className="object-type-icon">
@@ -3695,1013 +4130,778 @@ export default function App() {
                     <LockKeyhole size={15} />
                   </IconButton>
                 </div>
-                {activeEquation && (
-                  <>
+
+                <div
+                  hidden={inspectorTab !== "style"}
+                  data-inspector-section="style"
+                >
+                  {activeEquation && (
                     <div className="inspector-section">
-                      <Field label="Equation renderer">
-                        <select
-                          aria-label="Equation renderer"
-                          value={draft.renderer}
-                          onChange={(e) => {
-                            const renderer = e.target
-                              .value as EquationDraft["renderer"];
-                            try {
-                              const converted =
-                                renderer === "local-latex" &&
-                                draft.renderer === "mathjax"
-                                  ? moveLeadingPackagesToPreamble(
-                                      draft.latex,
-                                      draft.preamble,
-                                    )
-                                  : {
-                                      source: draft.latex,
-                                      preamble: draft.preamble,
-                                    };
-                              assertEquationDocumentLimits(
-                                converted.source,
-                                renderer === "local-latex"
-                                  ? converted.preamble
-                                  : undefined,
-                              );
-                              setDraft({
-                                ...draft,
-                                renderer,
-                                latex: converted.source,
-                                preamble: converted.preamble,
-                              });
-                            } catch (error) {
-                              notify((error as Error).message);
-                            }
-                          }}
-                        >
-                          <option value="mathjax">
-                            MathJax · Live preview
-                          </option>
-                          <option value="local-latex">
-                            Local LaTeX · Installed packages
-                          </option>
-                        </select>
-                      </Field>
-                      <div className="section-label">
-                        LATEX SOURCE{" "}
-                        <span>
-                          {draft.renderer === "mathjax"
-                            ? "Live preview"
-                            : "Local compile"}
-                        </span>
-                      </div>
+                      <button
+                        className="button primary equation-editor-launcher"
+                        disabled={
+                          busy !== "" ||
+                          selected.length !== 1 ||
+                          !activeEquation.visible ||
+                          isObjectLocked(activeEquation, slide.objects)
+                        }
+                        onClick={() => openEquationEditor(activeEquation)}
+                      >
+                        <Sigma size={16} /> Edit equation
+                      </button>
+                      <p className="field-hint">
+                        Double-click the equation on the slide to open the LaTeX
+                        editor.
+                      </p>
+                    </div>
+                  )}
+                  {object.type === "text" && (
+                    <div className="inspector-section">
+                      <div className="section-label">CONTENT & TYPE</div>
                       <textarea
-                        ref={sourceRef}
-                        className="latex-input"
-                        aria-label="LaTeX source"
-                        value={draft.latex}
-                        spellCheck={false}
-                        maxLength={MAX_EQUATION_SOURCE_CHARACTERS}
+                        id="text-content"
+                        aria-label="Text content"
+                        aria-describedby="inline-math-hint"
+                        className="text-input"
+                        value={object.text}
+                        onCompositionStart={() => {
+                          textContentComposing.current = true;
+                        }}
+                        onCompositionEnd={() => {
+                          textContentComposing.current = false;
+                        }}
+                        onKeyDown={(event) => {
+                          if (
+                            textContentComposing.current ||
+                            event.nativeEvent.isComposing ||
+                            event.keyCode === 229 ||
+                            event.getModifierState("AltGraph")
+                          ) {
+                            event.stopPropagation();
+                            return;
+                          }
+                          if (
+                            matchesShortcut(
+                              event.nativeEvent,
+                              "insertInlineEquation",
+                              keyboardPlatform,
+                            )
+                          ) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            if (!event.repeat)
+                              editInlineEquationAtField(event.currentTarget);
+                          }
+                        }}
                         onChange={(e) =>
-                          setDraft({ ...draft, latex: e.target.value })
+                          updateObject(
+                            object.id,
+                            (o) => {
+                              if (o.type === "text") o.text = e.target.value;
+                            },
+                            "text-" + object.id,
+                          )
                         }
                       />
-                      <button
-                        className="math-library-button"
-                        onClick={() => setShowMathLibrary(true)}
-                        hidden={draft.renderer === "local-latex"}
-                      >
-                        <span>
-                          <Check size={12} /> AMS fonts & symbols
-                        </span>
-                        <span>
-                          Packages & examples <ChevronRight size={12} />
-                        </span>
-                      </button>
-                      {draft.renderer === "local-latex" && (
-                        <div className="local-tex-panel">
-                          <Field label="TeX engine">
-                            <select
-                              aria-label="TeX engine"
-                              value={draft.engine}
-                              onChange={(e) =>
-                                setDraft({
-                                  ...draft,
-                                  engine: e.target
-                                    .value as EquationDraft["engine"],
-                                })
-                              }
-                            >
-                              <option value="latex">
-                                LaTeX · Classic math fonts
-                              </option>
-                              <option value="xelatex">
-                                XeLaTeX · OpenType math fonts
-                              </option>
-                            </select>
-                          </Field>
-                          <div className="section-label">
-                            PREAMBLE <span>Packages & fonts</span>
-                          </div>
-                          <textarea
-                            className="latex-input preamble-input"
-                            aria-label="LaTeX preamble"
-                            value={draft.preamble}
-                            spellCheck={false}
-                            maxLength={MAX_LOCAL_PREAMBLE_CHARACTERS}
-                            onChange={(e) =>
-                              setDraft({ ...draft, preamble: e.target.value })
-                            }
-                          />
-                          <p className="field-hint">
-                            패키지·매크로·글꼴 설정은 여기에 입력하세요.
-                            XeLaTeX에서는 unicode-math와 setmathfont를 사용할 수
-                            있습니다.
-                          </p>
-                          {desktop ? (
-                            <p
-                              className={`tex-status ${texCapabilities?.available ? "ready" : ""}`}
-                              aria-label="Local LaTeX status"
-                            >
-                              {texDetectionError ||
-                                (texCapabilities
-                                  ? texCapabilities.available
-                                    ? "Installed LaTeX is ready"
-                                    : texCapabilities.message ||
-                                      texCapabilities.sandbox.reason ||
-                                      "로컬 LaTeX을 사용할 수 없습니다."
-                                  : "Checking installed LaTeX…")}
-                            </p>
-                          ) : (
-                            <p className="field-hint">
-                              저장된 결과는 웹에서도 볼 수 있습니다. 컴파일은
-                              SciSlide 데스크톱 앱에서 사용할 수 있습니다.
-                            </p>
+                      <p id="inline-math-hint" className="field-hint">
+                        Use <code>$...$</code> for inline math, e.g.{" "}
+                        <code>{String.raw`$U(1)_{L_\mu - L_\tau}$`}</code> or{" "}
+                        <code>{String.raw`$N_\mathrm{eff}$`}</code>. Press{" "}
+                        <kbd>
+                          {shortcutLabel(
+                            "insertInlineEquation",
+                            keyboardPlatform,
                           )}
-                          <button
-                            className="button compile-button"
-                            title={
-                              keyboardPlatform === "linux"
-                                ? shortcutTitle(
-                                    "Compile with LaTeX",
-                                    "compileEquation",
-                                  )
-                                : "Compile with LaTeX"
-                            }
-                            disabled={!canCompileEquation}
-                            onClick={() => void compileEquation()}
-                          >
-                            <Sigma size={14} />
-                            {compileBusy ? "Compiling…" : "Compile with LaTeX"}
-                          </button>
-                          {compileBusy && (
-                            <button
-                              className="text-button"
-                              onClick={() => {
-                                const id = compileJob.current;
-                                compileJob.current = null;
-                                setCompileBusy(false);
-                                if (id) void desktop?.cancelCompile(id);
-                              }}
-                            >
-                              Cancel compile
-                            </button>
-                          )}
-                          {!!draftTexRender?.warnings.length && (
-                            <p className="field-hint">
-                              {draftTexRender.warnings.join(" · ")}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                      <div
-                        className={`equation-preview ${draftError ? "error" : ""}`}
-                        aria-label="Equation preview"
-                      >
-                        {draftError ? (
-                          <span>{draftError}</span>
-                        ) : (
-                          <div dangerouslySetInnerHTML={{ __html: draftSvg }} />
-                        )}
-                        {draftBusy && <small>Rendering…</small>}
-                      </div>
-                      {draftFallbackCount > 0 && !draftBusy && (
-                        <p className="math-fallback-note">
-                          일부 기호는 STIX Two의 벡터 글자로 보완했습니다.
-                        </p>
-                      )}
-                      <button
-                        className="button apply-button"
-                        disabled={draftBusy || compileBusy || !!draftError}
-                        onClick={() => void applyEquation()}
-                      >
-                        <Check size={15} /> Apply equation
-                      </button>
-                    </div>
-                    <div className="inspector-section">
-                      <div className="section-label">TYPOGRAPHY</div>
-                      {draft.renderer === "mathjax" && (
-                        <>
-                          <Field label="Math font">
-                            <select
-                              aria-label="Math font"
-                              value={draft.font}
-                              onChange={(e) =>
-                                setDraft({
-                                  ...draft,
-                                  font: e.target.value as EquationDraft["font"],
-                                })
-                              }
-                            >
-                              {FONT_OPTIONS.map((f) => (
-                                <option key={f.id} value={f.id}>
-                                  {f.label}
-                                </option>
-                              ))}
-                            </select>
-                          </Field>
-                          <p className="field-hint">
-                            {
-                              FONT_OPTIONS.find((f) => f.id === draft.font)
-                                ?.description
-                            }
-                          </p>
-                        </>
-                      )}
+                        </kbd>{" "}
+                        to insert or edit an inline equation. Double-click an
+                        equation to edit it. Use <code>{"\\$"}</code> for a
+                        dollar sign.
+                      </p>
                       <div className="field-row">
                         <Field label="Size">
-                          <input
-                            aria-label="Equation size"
-                            type="number"
-                            min="12"
-                            max="180"
-                            value={draft.size}
+                          <CommitNumberInput
+                            resetKey={object.id}
+                            aria-label="Text size"
+                            min={8}
+                            max={180}
+                            value={object.fontSize}
+                            onCommit={(value) =>
+                              updateObject(
+                                object.id,
+                                (o) => {
+                                  if (o.type === "text") o.fontSize = value;
+                                },
+                                "textsize",
+                              )
+                            }
+                          />
+                        </Field>
+                        <Field label="Weight">
+                          <select
+                            value={object.fontWeight}
                             onChange={(e) =>
-                              setDraft({
-                                ...draft,
-                                size: Math.max(
-                                  12,
-                                  Math.min(180, Number(e.target.value)),
-                                ),
+                              updateObject(object.id, (o) => {
+                                if (o.type === "text")
+                                  o.fontWeight = Number(e.target.value);
+                              })
+                            }
+                          >
+                            <option value="400">Regular</option>
+                            <option value="500">Medium</option>
+                            <option value="600">Semibold</option>
+                            <option value="700">Bold</option>
+                          </select>
+                        </Field>
+                      </div>
+                      <div className="field-row">
+                        <Field label="Color">
+                          <input
+                            aria-label="Text color"
+                            type="color"
+                            value={object.color}
+                            onChange={(e) =>
+                              updateObject(object.id, (o) => {
+                                if (o.type === "text") o.color = e.target.value;
                               })
                             }
                           />
                         </Field>
-                        <Field label="Color">
-                          <div className="color-field">
+                        <div className="field">
+                          <span>Alignment</span>
+                          <div
+                            className="text-alignment-controls"
+                            role="group"
+                            aria-label="Text alignment"
+                          >
+                            {(
+                              [
+                                ["left", "Align text left", AlignLeft],
+                                ["center", "Align text center", AlignCenter],
+                                ["right", "Align text right", AlignRight],
+                              ] as const
+                            ).map(([alignment, label, Icon]) => (
+                              <button
+                                key={alignment}
+                                type="button"
+                                aria-label={label}
+                                title={label}
+                                aria-pressed={object.align === alignment}
+                                disabled={isObjectLocked(object, slide.objects)}
+                                onClick={() => {
+                                  if (object.align === alignment) return;
+                                  updateObject(object.id, (o) => {
+                                    if (o.type === "text") o.align = alignment;
+                                  });
+                                }}
+                              >
+                                <Icon size={18} aria-hidden="true" />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {object.type === "shape" && (
+                    <div className="inspector-section">
+                      <div className="section-label">APPEARANCE</div>
+                      <div className="field-row">
+                        {!isLineShape(object) && (
+                          <Field label="Fill">
                             <input
-                              aria-label="Equation color"
+                              aria-label="Shape fill"
                               type="color"
-                              value={draft.color}
+                              value={
+                                object.fill === "none" ? "#dcf2eb" : object.fill
+                              }
+                              disabled={object.fill === "none"}
                               onChange={(e) =>
-                                setDraft({ ...draft, color: e.target.value })
+                                updateObject(object.id, (o) => {
+                                  if (o.type === "shape")
+                                    o.fill = e.target.value;
+                                })
                               }
                             />
-                            <span>{draft.color.toUpperCase()}</span>
-                          </div>
+                          </Field>
+                        )}
+                        <Field label="Stroke">
+                          <input
+                            aria-label="Shape stroke"
+                            type="color"
+                            value={
+                              object.stroke === "none"
+                                ? "#259f87"
+                                : object.stroke
+                            }
+                            onChange={(e) =>
+                              updateObject(object.id, (o) => {
+                                if (o.type === "shape")
+                                  o.stroke = e.target.value;
+                              })
+                            }
+                          />
                         </Field>
                       </div>
-                      {draft.renderer === "local-latex" && (
-                        <p className="field-hint">
-                          크기를 바꾸려면 Size → Compile → Apply 순서로
-                          반영하세요.
-                        </p>
+                      {!isLineShape(object) && (
+                        <label className="drawing-checkbox">
+                          <input
+                            type="checkbox"
+                            aria-label="No shape fill"
+                            checked={object.fill === "none"}
+                            onChange={(e) =>
+                              updateObject(object.id, (o) => {
+                                if (o.type === "shape")
+                                  o.fill = e.target.checked
+                                    ? "none"
+                                    : "#dcf2eb";
+                              })
+                            }
+                          />
+                          No fill (transparent)
+                        </label>
                       )}
+                      <Field label="Stroke width">
+                        <input
+                          type="number"
+                          aria-label="Shape stroke width"
+                          min="0"
+                          max="20"
+                          value={object.strokeWidth}
+                          onChange={(e) =>
+                            updateObject(object.id, (o) => {
+                              if (o.type === "shape")
+                                o.strokeWidth = Math.max(
+                                  0,
+                                  Math.min(20, Number(e.target.value)),
+                                );
+                            })
+                          }
+                        />
+                      </Field>
+                      <Field label="Line style">
+                        <select
+                          aria-label="Shape line style"
+                          value={object.strokeStyle ?? "solid"}
+                          onChange={(e) =>
+                            updateObject(object.id, (o) => {
+                              if (o.type === "shape")
+                                o.strokeStyle = e.target
+                                  .value as ShapeObject["strokeStyle"];
+                            })
+                          }
+                        >
+                          <option value="solid">Solid</option>
+                          <option value="dashed">Dashed</option>
+                          <option value="dotted">Dotted</option>
+                        </select>
+                      </Field>
+                      {isLineShape(object) && (
+                        <>
+                          <Field label="Arrowheads">
+                            <select
+                              aria-label="Arrowheads"
+                              value={`${object.startArrow ? "1" : "0"}${(object.endArrow ?? object.shape === "arrow") ? "1" : "0"}`}
+                              onChange={(e) =>
+                                updateObject(object.id, (o) => {
+                                  if (o.type === "shape") {
+                                    o.startArrow = e.target.value[0] === "1";
+                                    o.endArrow = e.target.value[1] === "1";
+                                  }
+                                })
+                              }
+                            >
+                              <option value="00">None</option>
+                              <option value="10">Start</option>
+                              <option value="01">End</option>
+                              <option value="11">Both</option>
+                            </select>
+                          </Field>
+                          <p className="field-hint">
+                            Drag either endpoint to edit the line. Hold Shift
+                            for 45° angles.
+                            {object.groupId
+                              ? " Ungroup to edit endpoints."
+                              : ""}
+                          </p>
+                          {(["start", "end"] as const).map((endpoint) => (
+                            <div className="field-row" key={endpoint}>
+                              {(["x", "y"] as const).map((axis) => (
+                                <Field
+                                  label={`${endpoint === "start" ? "Start" : "End"} ${axis.toUpperCase()}`}
+                                  key={axis}
+                                >
+                                  <input
+                                    aria-label={`Line ${endpoint} ${axis}`}
+                                    type="number"
+                                    disabled={
+                                      !!object.groupId ||
+                                      isObjectLocked(object, slide.objects)
+                                    }
+                                    value={numeric(
+                                      lineWorldEndpoints(object)[endpoint][
+                                        axis
+                                      ],
+                                    )}
+                                    onChange={(e) =>
+                                      updateObject(
+                                        object.id,
+                                        (o) => {
+                                          if (isLineShape(o)) {
+                                            const p =
+                                              lineWorldEndpoints(o)[endpoint];
+                                            p[axis] = Math.max(
+                                              -1_000_000,
+                                              Math.min(
+                                                1_000_000,
+                                                Number(e.target.value),
+                                              ),
+                                            );
+                                            Object.assign(
+                                              o,
+                                              moveLineEndpoint(o, endpoint, p),
+                                            );
+                                          }
+                                        },
+                                        `${endpoint}-${axis}`,
+                                      )
+                                    }
+                                  />
+                                </Field>
+                              ))}
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {object.type === "figure" && (
+                    <div className="inspector-section">
+                      <div className="section-label">FIGURE</div>
                       <button
-                        className="text-button"
-                        disabled={draft.renderer === "local-latex"}
-                        onClick={() =>
+                        className="button light figure-replace"
+                        disabled={
+                          !!busy || isObjectLocked(object, slide.objects)
+                        }
+                        onClick={() => {
+                          replaceFigureTarget.current = {
+                            deckId: deck.id,
+                            slideId: slide.id,
+                            objectId: object.id,
+                          };
+                          replaceFigureInput.current?.click();
+                        }}
+                      >
+                        <ImagePlus size={15} /> Replace figure
+                      </button>
+                      <FigureTools
+                        object={object}
+                        asset={deck.assets.find((a) => a.id === object.assetId)}
+                        disabled={
+                          isObjectLocked(object, slide.objects) ||
+                          !!object.groupId
+                        }
+                        onCropChange={(crop) =>
                           updateObject(object.id, (o) => {
-                            if (o.type === "equation") o.style = {};
+                            if (o.type === "figure") {
+                              if (crop) o.crop = crop;
+                              else delete o.crop;
+                            }
                           })
                         }
-                      >
-                        Use deck typography
-                      </button>
-                    </div>
-                  </>
-                )}
-                {object.type === "text" && (
-                  <div className="inspector-section">
-                    <div className="section-label">CONTENT & TYPE</div>
-                    <textarea
-                      id="text-content"
-                      aria-label="Text content"
-                      aria-describedby="inline-math-hint"
-                      className="text-input"
-                      value={object.text}
-                      onCompositionStart={() => {
-                        textContentComposing.current = true;
-                      }}
-                      onCompositionEnd={() => {
-                        textContentComposing.current = false;
-                      }}
-                      onKeyDown={(event) => {
-                        if (
-                          textContentComposing.current ||
-                          event.nativeEvent.isComposing ||
-                          event.keyCode === 229 ||
-                          event.getModifierState("AltGraph")
-                        ) {
-                          event.stopPropagation();
-                          return;
-                        }
-                        if (
-                          matchesShortcut(
-                            event.nativeEvent,
-                            "insertInlineEquation",
-                            keyboardPlatform,
-                          )
-                        ) {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          if (!event.repeat)
-                            editInlineEquationAtField(event.currentTarget);
-                        }
-                      }}
-                      onChange={(e) =>
-                        updateObject(
-                          object.id,
-                          (o) => {
-                            if (o.type === "text") o.text = e.target.value;
-                          },
-                          "text-" + object.id,
-                        )
-                      }
-                    />
-                    <p id="inline-math-hint" className="field-hint">
-                      Press{" "}
-                      <kbd>
-                        {shortcutLabel(
-                          "insertInlineEquation",
-                          keyboardPlatform,
-                        )}
-                      </kbd>{" "}
-                      to insert or edit an inline equation. Double-click an
-                      equation to edit it. Use <code>{"\\$"}</code> for a dollar
-                      sign.
-                    </p>
-                    <div className="field-row">
-                      <Field label="Size">
-                        <CommitNumberInput
-                          resetKey={object.id}
-                          aria-label="Text size"
-                          min={8}
-                          max={180}
-                          value={object.fontSize}
-                          onCommit={(value) =>
+                        onCreateInset={(crop) => {
+                          const inset = createFigureInset(
+                            { ...object, crop },
+                            deck.assets.find((a) => a.id === object.assetId)!,
+                            deck.slideSize,
+                          );
+                          change((d) =>
+                            d.slides
+                              .find((s) => s.id === slide.id)!
+                              .objects.push(inset),
+                          );
+                          setSelected([inset.id]);
+                        }}
+                      />
+                      <Field label="Description">
+                        <textarea
+                          value={object.alt}
+                          onChange={(e) =>
                             updateObject(
                               object.id,
                               (o) => {
-                                if (o.type === "text") o.fontSize = value;
+                                if (o.type === "figure") o.alt = e.target.value;
                               },
-                              "textsize",
+                              "alt",
                             )
                           }
                         />
                       </Field>
-                      <Field label="Weight">
-                        <select
-                          value={object.fontWeight}
-                          onChange={(e) =>
-                            updateObject(object.id, (o) => {
-                              if (o.type === "text")
-                                o.fontWeight = Number(e.target.value);
-                            })
-                          }
-                        >
-                          <option value="400">Regular</option>
-                          <option value="500">Medium</option>
-                          <option value="600">Semibold</option>
-                          <option value="700">Bold</option>
-                        </select>
-                      </Field>
+                      <p className="field-hint">
+                        Original asset is bundled with the deck.
+                      </p>
                     </div>
-                    <div className="field-row">
-                      <Field label="Color">
-                        <input
-                          aria-label="Text color"
-                          type="color"
-                          value={object.color}
+                  )}
+                  {object.type === "video" && (
+                    <div className="inspector-section">
+                      <div className="section-label">VIDEO</div>
+                      <Field label="Description">
+                        <textarea
+                          aria-label="Video description"
+                          value={object.alt}
                           onChange={(e) =>
-                            updateObject(object.id, (o) => {
-                              if (o.type === "text") o.color = e.target.value;
-                            })
+                            updateObject(
+                              object.id,
+                              (o) => {
+                                if (o.type === "video") o.alt = e.target.value;
+                              },
+                              "video-alt",
+                            )
                           }
                         />
                       </Field>
-                      <div className="field">
-                        <span>Alignment</span>
-                        <div
-                          className="text-alignment-controls"
-                          role="group"
-                          aria-label="Text alignment"
-                        >
-                          {(
-                            [
-                              ["left", "Align text left", AlignLeft],
-                              ["center", "Align text center", AlignCenter],
-                              ["right", "Align text right", AlignRight],
-                            ] as const
-                          ).map(([alignment, label, Icon]) => (
-                            <button
-                              key={alignment}
-                              type="button"
-                              aria-label={label}
-                              title={label}
-                              aria-pressed={object.align === alignment}
-                              disabled={isObjectLocked(object, slide.objects)}
-                              onClick={() => {
-                                if (object.align === alignment) return;
+                      {(["autoplay", "loop", "muted", "controls"] as const).map(
+                        (property) => (
+                          <label className="check-field" key={property}>
+                            <input
+                              type="checkbox"
+                              checked={object[property]}
+                              onChange={(e) =>
                                 updateObject(object.id, (o) => {
-                                  if (o.type === "text") o.align = alignment;
-                                });
-                              }}
-                            >
-                              <Icon size={18} aria-hidden="true" />
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {object.type === "shape" && (
-                  <div className="inspector-section">
-                    <div className="section-label">APPEARANCE</div>
-                    <div className="field-row">
-                      {!isLineShape(object) && (
-                        <Field label="Fill">
-                          <input
-                            aria-label="Shape fill"
-                            type="color"
-                            value={
-                              object.fill === "none" ? "#dcf2eb" : object.fill
-                            }
-                            disabled={object.fill === "none"}
-                            onChange={(e) =>
-                              updateObject(object.id, (o) => {
-                                if (o.type === "shape") o.fill = e.target.value;
-                              })
-                            }
-                          />
-                        </Field>
-                      )}
-                      <Field label="Stroke">
-                        <input
-                          aria-label="Shape stroke"
-                          type="color"
-                          value={
-                            object.stroke === "none" ? "#259f87" : object.stroke
-                          }
-                          onChange={(e) =>
-                            updateObject(object.id, (o) => {
-                              if (o.type === "shape") o.stroke = e.target.value;
-                            })
-                          }
-                        />
-                      </Field>
-                    </div>
-                    {!isLineShape(object) && (
-                      <label className="drawing-checkbox">
-                        <input
-                          type="checkbox"
-                          aria-label="No shape fill"
-                          checked={object.fill === "none"}
-                          onChange={(e) =>
-                            updateObject(object.id, (o) => {
-                              if (o.type === "shape")
-                                o.fill = e.target.checked ? "none" : "#dcf2eb";
-                            })
-                          }
-                        />
-                        No fill (transparent)
-                      </label>
-                    )}
-                    <Field label="Stroke width">
-                      <input
-                        type="number"
-                        aria-label="Shape stroke width"
-                        min="0"
-                        max="20"
-                        value={object.strokeWidth}
-                        onChange={(e) =>
-                          updateObject(object.id, (o) => {
-                            if (o.type === "shape")
-                              o.strokeWidth = Math.max(
-                                0,
-                                Math.min(20, Number(e.target.value)),
-                              );
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field label="Line style">
-                      <select
-                        aria-label="Shape line style"
-                        value={object.strokeStyle ?? "solid"}
-                        onChange={(e) =>
-                          updateObject(object.id, (o) => {
-                            if (o.type === "shape")
-                              o.strokeStyle = e.target
-                                .value as ShapeObject["strokeStyle"];
-                          })
-                        }
-                      >
-                        <option value="solid">Solid</option>
-                        <option value="dashed">Dashed</option>
-                        <option value="dotted">Dotted</option>
-                      </select>
-                    </Field>
-                    {isLineShape(object) && (
-                      <>
-                        <Field label="Arrowheads">
-                          <select
-                            aria-label="Arrowheads"
-                            value={`${object.startArrow ? "1" : "0"}${(object.endArrow ?? object.shape === "arrow") ? "1" : "0"}`}
-                            onChange={(e) =>
-                              updateObject(object.id, (o) => {
-                                if (o.type === "shape") {
-                                  o.startArrow = e.target.value[0] === "1";
-                                  o.endArrow = e.target.value[1] === "1";
-                                }
-                              })
-                            }
-                          >
-                            <option value="00">None</option>
-                            <option value="10">Start</option>
-                            <option value="01">End</option>
-                            <option value="11">Both</option>
-                          </select>
-                        </Field>
-                        <p className="field-hint">
-                          Drag either endpoint to edit the line. Hold Shift for
-                          45° angles.
-                          {object.groupId ? " Ungroup to edit endpoints." : ""}
-                        </p>
-                        {(["start", "end"] as const).map((endpoint) => (
-                          <div className="field-row" key={endpoint}>
-                            {(["x", "y"] as const).map((axis) => (
-                              <Field
-                                label={`${endpoint === "start" ? "Start" : "End"} ${axis.toUpperCase()}`}
-                                key={axis}
-                              >
-                                <input
-                                  aria-label={`Line ${endpoint} ${axis}`}
-                                  type="number"
-                                  disabled={
-                                    !!object.groupId ||
-                                    isObjectLocked(object, slide.objects)
-                                  }
-                                  value={numeric(
-                                    lineWorldEndpoints(object)[endpoint][axis],
-                                  )}
-                                  onChange={(e) =>
-                                    updateObject(
-                                      object.id,
-                                      (o) => {
-                                        if (isLineShape(o)) {
-                                          const p =
-                                            lineWorldEndpoints(o)[endpoint];
-                                          p[axis] = Math.max(
-                                            -1_000_000,
-                                            Math.min(
-                                              1_000_000,
-                                              Number(e.target.value),
-                                            ),
-                                          );
-                                          Object.assign(
-                                            o,
-                                            moveLineEndpoint(o, endpoint, p),
-                                          );
-                                        }
-                                      },
-                                      `${endpoint}-${axis}`,
-                                    )
-                                  }
-                                />
-                              </Field>
-                            ))}
-                          </div>
-                        ))}
-                      </>
-                    )}
-                  </div>
-                )}
-                {object.type === "figure" && (
-                  <div className="inspector-section">
-                    <div className="section-label">FIGURE</div>
-                    <button
-                      className="button light figure-replace"
-                      disabled={!!busy || isObjectLocked(object, slide.objects)}
-                      onClick={() => {
-                        replaceFigureTarget.current = {
-                          deckId: deck.id,
-                          slideId: slide.id,
-                          objectId: object.id,
-                        };
-                        replaceFigureInput.current?.click();
-                      }}
-                    >
-                      <ImagePlus size={15} /> Replace figure
-                    </button>
-                    <FigureTools
-                      object={object}
-                      asset={deck.assets.find((a) => a.id === object.assetId)}
-                      disabled={
-                        isObjectLocked(object, slide.objects) ||
-                        !!object.groupId
-                      }
-                      onCropChange={(crop) =>
-                        updateObject(object.id, (o) => {
-                          if (o.type === "figure") {
-                            if (crop) o.crop = crop;
-                            else delete o.crop;
-                          }
-                        })
-                      }
-                      onCreateInset={(crop) => {
-                        const inset = createFigureInset(
-                          { ...object, crop },
-                          deck.assets.find((a) => a.id === object.assetId)!,
-                          deck.slideSize,
-                        );
-                        change((d) =>
-                          d.slides
-                            .find((s) => s.id === slide.id)!
-                            .objects.push(inset),
-                        );
-                        setSelected([inset.id]);
-                      }}
-                    />
-                    <Field label="Description">
-                      <textarea
-                        value={object.alt}
-                        onChange={(e) =>
-                          updateObject(
-                            object.id,
-                            (o) => {
-                              if (o.type === "figure") o.alt = e.target.value;
-                            },
-                            "alt",
-                          )
-                        }
-                      />
-                    </Field>
-                    <p className="field-hint">
-                      Original asset is bundled with the deck.
-                    </p>
-                  </div>
-                )}
-                {object.type === "video" && (
-                  <div className="inspector-section">
-                    <div className="section-label">VIDEO</div>
-                    <Field label="Description">
-                      <textarea
-                        aria-label="Video description"
-                        value={object.alt}
-                        onChange={(e) =>
-                          updateObject(
-                            object.id,
-                            (o) => {
-                              if (o.type === "video") o.alt = e.target.value;
-                            },
-                            "video-alt",
-                          )
-                        }
-                      />
-                    </Field>
-                    {(["autoplay", "loop", "muted", "controls"] as const).map(
-                      (property) => (
-                        <label className="check-field" key={property}>
-                          <input
-                            type="checkbox"
-                            checked={object[property]}
-                            onChange={(e) =>
-                              updateObject(object.id, (o) => {
-                                if (o.type === "video")
-                                  o[property] = e.target.checked;
-                              })
-                            }
-                          />
-                          <span>
-                            {
+                                  if (o.type === "video")
+                                    o[property] = e.target.checked;
+                                })
+                              }
+                            />
+                            <span>
                               {
-                                autoplay: "Play when revealed",
-                                loop: "Loop video",
-                                muted: "Mute audio",
-                                controls: "Show playback controls",
-                              }[property]
-                            }
-                          </span>
-                        </label>
-                      ),
-                    )}
-                    <p className="field-hint">
-                      {deck.assets.find((a) => a.id === object.assetId)?.mime ||
-                        "Embedded video"}
-                      {" · "}
-                      {(() => {
-                        const asset = deck.assets.find(
-                          (a) => a.id === object.assetId,
-                        );
-                        if (!asset) return "Missing asset";
-                        const bytes = Math.floor(
-                          ((asset.dataUrl.length -
-                            asset.dataUrl.indexOf(",") -
-                            1) *
-                            3) /
-                            4,
-                        );
-                        return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-                      })()}
-                      <br />
-                      Stored inside the deck. Videos play only in Present mode.
-                      Codec support depends on your browser or Electron;
-                      autoplay may require a click.
-                    </p>
-                  </div>
-                )}
-                <div className="inspector-section">
-                  <div className="section-label">APPEARANCE STEPS</div>
-                  <Field label="Reveal step (0 = visible at start)">
-                    <input
-                      aria-label="Object reveal step"
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="1"
-                      value={object.build?.step ?? 0}
-                      onChange={(e) =>
-                        updateObject(
-                          object.id,
-                          (o) => {
-                            o.build = {
-                              step: Math.max(
-                                0,
-                                Math.min(
-                                  100,
-                                  Math.round(Number(e.target.value)),
-                                ),
-                              ),
-                              effect: o.build?.effect ?? "appear",
-                              durationMs: o.build?.durationMs ?? 300,
-                            };
-                          },
-                          "build-step",
-                        )
-                      }
-                    />
-                  </Field>
-                  <div className="field-row">
-                    <Field label="Effect">
-                      <select
-                        aria-label="Object reveal effect"
-                        value={object.build?.effect ?? "appear"}
-                        onChange={(e) =>
-                          updateObject(object.id, (o) => {
-                            o.build = {
-                              step: o.build?.step ?? 0,
-                              effect: e.target.value as "appear" | "fade",
-                              durationMs: o.build?.durationMs ?? 300,
-                            };
-                          })
-                        }
-                      >
-                        <option value="appear">Appear</option>
-                        <option value="fade">Fade in</option>
-                      </select>
-                    </Field>
-                    <Field label="Duration (ms)">
+                                {
+                                  autoplay: "Play when revealed",
+                                  loop: "Loop video",
+                                  muted: "Mute audio",
+                                  controls: "Show playback controls",
+                                }[property]
+                              }
+                            </span>
+                          </label>
+                        ),
+                      )}
+                      <p className="field-hint">
+                        {deck.assets.find((a) => a.id === object.assetId)
+                          ?.mime || "Embedded video"}
+                        {" · "}
+                        {(() => {
+                          const asset = deck.assets.find(
+                            (a) => a.id === object.assetId,
+                          );
+                          if (!asset) return "Missing asset";
+                          const bytes = Math.floor(
+                            ((asset.dataUrl.length -
+                              asset.dataUrl.indexOf(",") -
+                              1) *
+                              3) /
+                              4,
+                          );
+                          return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+                        })()}
+                        <br />
+                        Stored inside the deck. Videos play only in Present
+                        mode. Codec support depends on your browser or Electron;
+                        autoplay may require a click.
+                      </p>
+                    </div>
+                  )}
+                  <div className="inspector-section">
+                    <div className="section-label">APPEARANCE STEPS</div>
+                    <Field label="Reveal step (0 = visible at start)">
                       <input
-                        aria-label="Object reveal duration"
+                        aria-label="Object reveal step"
                         type="number"
-                        min="100"
-                        max="3000"
-                        step="100"
-                        disabled={object.build?.effect !== "fade"}
-                        value={object.build?.durationMs ?? 300}
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={object.build?.step ?? 0}
                         onChange={(e) =>
                           updateObject(
                             object.id,
                             (o) => {
                               o.build = {
-                                step: o.build?.step ?? 0,
-                                effect: o.build?.effect ?? "appear",
-                                durationMs: Math.max(
-                                  100,
-                                  Math.min(3000, Number(e.target.value)),
+                                step: Math.max(
+                                  0,
+                                  Math.min(
+                                    100,
+                                    Math.round(Number(e.target.value)),
+                                  ),
                                 ),
+                                effect: o.build?.effect ?? "appear",
+                                durationMs: o.build?.durationMs ?? 300,
                               };
                             },
-                            "build-duration",
+                            "build-step",
                           )
                         }
                       />
                     </Field>
-                  </div>
-                  <p className="field-hint">
-                    Present reveals each step with Next or an arrow key. Objects
-                    with the same step appear together. Editor and PDF/SVG
-                    exports show all steps.
-                  </p>
-                </div>
-                <div className="inspector-section">
-                  <div className="section-label">POSITION & SIZE</div>
-                  {object.groupId && (
-                    <p className="field-hint">
-                      Position moves the whole group. Ungroup to resize or
-                      rotate a member.
-                    </p>
-                  )}
-                  <div className="field-row">
-                    {(["x", "y"] as const).map((k) => (
-                      <Field key={k} label={k.toUpperCase()}>
-                        <input
-                          aria-label={`Object ${k}`}
-                          type="number"
-                          disabled={isObjectLocked(object, slide.objects)}
-                          value={numeric(object.transform[k])}
+                    <div className="field-row">
+                      <Field label="Effect">
+                        <select
+                          aria-label="Object reveal effect"
+                          value={object.build?.effect ?? "appear"}
                           onChange={(e) =>
-                            updatePosition(k, Number(e.target.value))
+                            updateObject(object.id, (o) => {
+                              o.build = {
+                                step: o.build?.step ?? 0,
+                                effect: e.target.value as "appear" | "fade",
+                                durationMs: o.build?.durationMs ?? 300,
+                              };
+                            })
+                          }
+                        >
+                          <option value="appear">Appear</option>
+                          <option value="fade">Fade in</option>
+                        </select>
+                      </Field>
+                      <Field label="Duration (ms)">
+                        <input
+                          aria-label="Object reveal duration"
+                          type="number"
+                          min="100"
+                          max="3000"
+                          step="100"
+                          disabled={object.build?.effect !== "fade"}
+                          value={object.build?.durationMs ?? 300}
+                          onChange={(e) =>
+                            updateObject(
+                              object.id,
+                              (o) => {
+                                o.build = {
+                                  step: o.build?.step ?? 0,
+                                  effect: o.build?.effect ?? "appear",
+                                  durationMs: Math.max(
+                                    100,
+                                    Math.min(3000, Number(e.target.value)),
+                                  ),
+                                };
+                              },
+                              "build-duration",
+                            )
                           }
                         />
                       </Field>
-                    ))}
+                    </div>
+                    <p className="field-hint">
+                      Present reveals each step with Next or an arrow key.
+                      Objects with the same step appear together. Editor and
+                      PDF/SVG exports show all steps.
+                    </p>
                   </div>
-                  <div className="field-row">
-                    {(["width", "height"] as const).map((k) => (
-                      <Field key={k} label={k === "width" ? "W" : "H"}>
-                        {object.type === "text" ? (
-                          <CommitNumberInput
-                            resetKey={object.id}
-                            syncKey={object.transform[k]}
-                            aria-label={`Object ${k}`}
-                            min={1}
-                            max={1_000_000}
-                            disabled={
-                              !!object.groupId ||
-                              isObjectLocked(object, slide.objects)
-                            }
-                            value={numeric(
-                              metrics[object.id]?.[k] ?? object.transform[k],
-                            )}
-                            onCommit={(value) =>
-                              updateObject(
-                                object.id,
-                                (o) => {
-                                  o.transform[k] = value;
-                                },
-                                k,
-                              )
-                            }
-                          />
-                        ) : (
+                </div>
+                <div
+                  hidden={inspectorTab !== "arrange"}
+                  data-inspector-section="arrange"
+                >
+                  <div className="inspector-section">
+                    <div className="section-label">POSITION & SIZE</div>
+                    {object.groupId && (
+                      <p className="field-hint">
+                        Position moves the whole group. Ungroup to resize or
+                        rotate a member.
+                      </p>
+                    )}
+                    <div className="field-row">
+                      {(["x", "y"] as const).map((k) => (
+                        <Field key={k} label={k.toUpperCase()}>
                           <input
                             aria-label={`Object ${k}`}
                             type="number"
-                            min={isLineShape(object) ? 0.01 : 1}
-                            step={isLineShape(object) ? 0.01 : 1}
-                            disabled={
-                              object.type === "equation" ||
-                              !!object.groupId ||
-                              isObjectLocked(object, slide.objects)
-                            }
-                            value={
-                              isLineShape(object)
-                                ? Number(object.transform[k].toFixed(4))
-                                : numeric(
-                                    object.type === "equation"
-                                      ? (metrics[object.id]?.[k] ??
-                                          object.transform[k])
-                                      : object.transform[k],
-                                  )
-                            }
+                            disabled={isObjectLocked(object, slide.objects)}
+                            value={numeric(object.transform[k])}
                             onChange={(e) =>
-                              updateObject(
-                                object.id,
-                                (o) => {
-                                  o.transform[k] = Math.max(
-                                    isLineShape(o) ? 0.01 : 1,
-                                    Number(e.target.value),
-                                  );
-                                },
-                                k,
-                              )
+                              updatePosition(k, Number(e.target.value))
                             }
                           />
-                        )}
+                        </Field>
+                      ))}
+                    </div>
+                    <div className="field-row">
+                      {(["width", "height"] as const).map((k) => (
+                        <Field key={k} label={k === "width" ? "W" : "H"}>
+                          {object.type === "text" ? (
+                            <CommitNumberInput
+                              resetKey={object.id}
+                              syncKey={object.transform[k]}
+                              aria-label={`Object ${k}`}
+                              min={1}
+                              max={1_000_000}
+                              disabled={
+                                !!object.groupId ||
+                                isObjectLocked(object, slide.objects)
+                              }
+                              value={numeric(
+                                metrics[object.id]?.[k] ?? object.transform[k],
+                              )}
+                              onCommit={(value) =>
+                                updateObject(
+                                  object.id,
+                                  (o) => {
+                                    o.transform[k] = value;
+                                  },
+                                  k,
+                                )
+                              }
+                            />
+                          ) : (
+                            <input
+                              aria-label={`Object ${k}`}
+                              type="number"
+                              min={isLineShape(object) ? 0.01 : 1}
+                              step={isLineShape(object) ? 0.01 : 1}
+                              disabled={
+                                object.type === "equation" ||
+                                !!object.groupId ||
+                                isObjectLocked(object, slide.objects)
+                              }
+                              value={
+                                isLineShape(object)
+                                  ? Number(object.transform[k].toFixed(4))
+                                  : numeric(
+                                      object.type === "equation"
+                                        ? (metrics[object.id]?.[k] ??
+                                            object.transform[k])
+                                        : object.transform[k],
+                                    )
+                              }
+                              onChange={(e) =>
+                                updateObject(
+                                  object.id,
+                                  (o) => {
+                                    o.transform[k] = Math.max(
+                                      isLineShape(o) ? 0.01 : 1,
+                                      Number(e.target.value),
+                                    );
+                                  },
+                                  k,
+                                )
+                              }
+                            />
+                          )}
+                        </Field>
+                      ))}
+                    </div>
+                    <div className="field-row">
+                      <Field label="Rotation">
+                        <input
+                          aria-label="Object rotation"
+                          type="number"
+                          disabled={
+                            !!object.groupId ||
+                            isObjectLocked(object, slide.objects)
+                          }
+                          value={object.transform.rotation}
+                          onChange={(e) =>
+                            updateObject(
+                              object.id,
+                              (o) => {
+                                o.transform.rotation = Number(e.target.value);
+                              },
+                              "rotation",
+                            )
+                          }
+                        />
                       </Field>
-                    ))}
+                      <Field label="Opacity">
+                        <input
+                          aria-label="Object opacity"
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={numeric(object.opacity * 100)}
+                          onChange={(e) =>
+                            updateObject(
+                              object.id,
+                              (o) => {
+                                o.opacity =
+                                  Math.max(
+                                    0,
+                                    Math.min(100, Number(e.target.value)),
+                                  ) / 100;
+                              },
+                              "opacity",
+                            )
+                          }
+                        />
+                      </Field>
+                    </div>
                   </div>
-                  <div className="field-row">
-                    <Field label="Rotation">
-                      <input
-                        aria-label="Object rotation"
-                        type="number"
+                  <div className="inspector-section">
+                    <div className="section-label">ARRANGE</div>
+                    <div className="arrange-buttons">
+                      <button
                         disabled={
-                          !!object.groupId ||
-                          isObjectLocked(object, slide.objects)
+                          selectionLayoutUnits(slide.objects, selected, metrics)
+                            .length < 3
                         }
-                        value={object.transform.rotation}
-                        onChange={(e) =>
-                          updateObject(
-                            object.id,
-                            (o) => {
-                              o.transform.rotation = Number(e.target.value);
-                            },
-                            "rotation",
+                        onClick={() => distribute("x")}
+                      >
+                        Equal horizontal gaps
+                      </button>
+                      <button
+                        disabled={
+                          selectionLayoutUnits(slide.objects, selected, metrics)
+                            .length < 3
+                        }
+                        onClick={() => distribute("y")}
+                      >
+                        Equal vertical gaps
+                      </button>
+                    </div>
+                    <div className="arrange-buttons">
+                      <button
+                        onClick={groupSelection}
+                        disabled={
+                          editableSelection(slide.objects, selected).length < 2
+                        }
+                      >
+                        <Group size={14} /> Group
+                      </button>
+                      <button
+                        onClick={ungroupSelection}
+                        disabled={
+                          !slide.objects.some(
+                            (o) =>
+                              selected.includes(o.id) &&
+                              o.groupId &&
+                              !isObjectLocked(o, slide.objects),
                           )
                         }
-                      />
-                    </Field>
-                    <Field label="Opacity">
-                      <input
-                        aria-label="Object opacity"
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={numeric(object.opacity * 100)}
-                        onChange={(e) =>
-                          updateObject(
-                            object.id,
-                            (o) => {
-                              o.opacity =
-                                Math.max(
-                                  0,
-                                  Math.min(100, Number(e.target.value)),
-                                ) / 100;
-                            },
-                            "opacity",
-                          )
-                        }
-                      />
-                    </Field>
-                  </div>
-                </div>
-                <div className="inspector-section">
-                  <div className="section-label">ARRANGE</div>
-                  <div className="arrange-buttons">
-                    <button
-                      disabled={
-                        selectionLayoutUnits(slide.objects, selected, metrics)
-                          .length < 3
-                      }
-                      onClick={() => distribute("x")}
-                    >
-                      Equal horizontal gaps
-                    </button>
-                    <button
-                      disabled={
-                        selectionLayoutUnits(slide.objects, selected, metrics)
-                          .length < 3
-                      }
-                      onClick={() => distribute("y")}
-                    >
-                      Equal vertical gaps
-                    </button>
-                  </div>
-                  <div className="arrange-buttons">
-                    <button
-                      onClick={groupSelection}
-                      disabled={
-                        editableSelection(slide.objects, selected).length < 2
-                      }
-                    >
-                      <Group size={14} /> Group
-                    </button>
-                    <button
-                      onClick={ungroupSelection}
-                      disabled={
-                        !slide.objects.some(
-                          (o) =>
-                            selected.includes(o.id) &&
-                            o.groupId &&
-                            !isObjectLocked(o, slide.objects),
-                        )
-                      }
-                    >
-                      <Ungroup size={14} /> Ungroup
-                    </button>
-                  </div>
-                  <div className="arrange-buttons">
-                    <button onClick={() => layer(false)}>
-                      <Layers size={14} /> Send back
-                    </button>
-                    <button onClick={() => layer(true)}>
-                      <Layers size={14} /> Bring front
-                    </button>
-                  </div>
-                  <div className="object-actions">
-                    <button onClick={duplicateObjects}>
-                      <Copy size={14} /> Duplicate
-                    </button>
-                    <button
-                      className="danger"
-                      disabled={object.locked}
-                      onClick={deleteObjects}
-                    >
-                      <Trash2 size={14} /> Delete
-                    </button>
+                      >
+                        <Ungroup size={14} /> Ungroup
+                      </button>
+                    </div>
+                    <div className="arrange-buttons">
+                      <button onClick={() => layer(false)}>
+                        <Layers size={14} /> Send back
+                      </button>
+                      <button onClick={() => layer(true)}>
+                        <Layers size={14} /> Bring front
+                      </button>
+                    </div>
+                    <div className="object-actions">
+                      <button onClick={duplicateObjects}>
+                        <Copy size={14} /> Duplicate
+                      </button>
+                      <button
+                        className="danger"
+                        disabled={object.locked}
+                        onClick={deleteObjects}
+                      >
+                        <Trash2 size={14} /> Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
               </>
-            ) : (
+            )}
+            {!object && inspectorTab !== "document" && (
               <>
                 <div className="inspector-empty">
                   <MousePointer2 size={27} />
@@ -4711,217 +4911,216 @@ export default function App() {
                     position.
                   </p>
                 </div>
+
                 <div className="inspector-section">
-                  <div className="section-label">SLIDE</div>
-                  <Field label="Slide title">
-                    <input
-                      value={slide.title}
-                      onChange={(e) =>
-                        change((d) => {
-                          d.slides.find((s) => s.id === slide.id)!.title =
-                            e.target.value;
-                        }, "slidetitle")
-                      }
-                    />
-                  </Field>
-                  <Field label="Background">
-                    <div className="color-field">
-                      <input
-                        aria-label="Slide background"
-                        type="color"
-                        value={slide.background}
-                        onChange={(e) =>
-                          change((d) => {
-                            d.slides.find(
-                              (s) => s.id === slide.id,
-                            )!.background = e.target.value;
-                          })
-                        }
-                      />
-                      <span>{slide.background.toUpperCase()}</span>
-                    </div>
-                  </Field>
-                </div>
-                <div className="inspector-section">
-                  <div className="section-label">DECK TYPOGRAPHY</div>
-                  <Field label="Default math font">
-                    <select
-                      aria-label="Default math font"
-                      value={deck.theme.equation.fontSetId}
-                      onChange={(e) =>
-                        change((d) => {
-                          d.theme.equation.fontSetId = e.target
-                            .value as NonNullable<
-                            EquationObject["style"]["fontSetId"]
-                          >;
-                        })
-                      }
-                    >
-                      {FONT_OPTIONS.map((f) => (
-                        <option key={f.id} value={f.id}>
-                          {f.label}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <p className="field-hint">
-                    Applies to equations using deck typography.
-                  </p>
-                </div>
-                <div className="inspector-section">
-                  <div className="section-label">PAGE NUMBERS</div>
-                  <label className="check-field">
-                    <input
-                      type="checkbox"
-                      checked={pageNumbers.enabled}
-                      onChange={(e) =>
-                        change((d) => {
-                          d.pageNumbers = {
-                            ...pageNumbers,
-                            enabled: e.target.checked,
-                          };
-                        })
-                      }
-                    />
-                    <span>Show page numbers</span>
-                  </label>
-                  <div className="field-row">
-                    <Field label="Position">
-                      <select
-                        aria-label="Page number position"
-                        disabled={!pageNumbers.enabled}
-                        value={pageNumbers.position}
-                        onChange={(e) =>
-                          change((d) => {
-                            d.pageNumbers = {
-                              ...pageNumbers,
-                              position: e.target
-                                .value as typeof pageNumbers.position,
-                            };
-                          })
-                        }
-                      >
-                        <option value="bottom-left">Bottom left</option>
-                        <option value="bottom-center">Bottom center</option>
-                        <option value="bottom-right">Bottom right</option>
-                      </select>
-                    </Field>
-                    <Field label="Format">
-                      <select
-                        aria-label="Page number format"
-                        disabled={!pageNumbers.enabled}
-                        value={pageNumbers.format}
-                        onChange={(e) =>
-                          change((d) => {
-                            d.pageNumbers = {
-                              ...pageNumbers,
-                              format: e.target
-                                .value as typeof pageNumbers.format,
-                            };
-                          })
-                        }
-                      >
-                        <option value="number">1</option>
-                        <option value="number-total">Number / last page</option>
-                      </select>
-                    </Field>
-                  </div>
-                  <Field label="Start numbering at">
-                    <input
-                      aria-label="Page number starting value"
-                      type="number"
-                      min="0"
-                      max="10000"
-                      step="1"
-                      disabled={!pageNumbers.enabled}
-                      value={pageNumbers.startAt}
-                      onChange={(e) =>
-                        change((d) => {
-                          d.pageNumbers = {
-                            ...pageNumbers,
-                            startAt: Math.max(
-                              0,
-                              Math.min(
-                                10000,
-                                Math.round(Number(e.target.value)),
-                              ),
-                            ),
-                          };
-                        }, "page-start")
-                      }
-                    />
-                  </Field>
-                  <label className="check-field">
-                    <input
-                      type="checkbox"
-                      disabled={!pageNumbers.enabled}
-                      checked={pageNumbers.hideFirst}
-                      onChange={(e) =>
-                        change((d) => {
-                          d.pageNumbers = {
-                            ...pageNumbers,
-                            hideFirst: e.target.checked,
-                          };
-                        })
-                      }
-                    />
-                    <span>Hide number on the first slide</span>
-                  </label>
-                  <div className="field-row">
-                    <Field label="Size">
-                      <input
-                        aria-label="Page number size"
-                        type="number"
-                        min="4"
-                        max="200"
-                        disabled={!pageNumbers.enabled}
-                        value={pageNumbers.fontSize}
-                        onChange={(e) =>
-                          change((d) => {
-                            d.pageNumbers = {
-                              ...pageNumbers,
-                              fontSize: Math.max(
-                                4,
-                                Math.min(200, Number(e.target.value)),
-                              ),
-                            };
-                          }, "page-size")
-                        }
-                      />
-                    </Field>
-                    <Field label="Color">
-                      <input
-                        aria-label="Page number color"
-                        type="color"
-                        disabled={!pageNumbers.enabled}
-                        value={pageNumbers.color}
-                        onChange={(e) =>
-                          change((d) => {
-                            d.pageNumbers = {
-                              ...pageNumbers,
-                              color: e.target.value,
-                            };
-                          })
-                        }
-                      />
-                    </Field>
-                  </div>
-                  <p className="field-hint">
-                    Applies to every slide and static exports. Hiding the first
-                    number keeps the remaining numbering unchanged.
-                  </p>
+                  <button
+                    className="button document-settings-button"
+                    onClick={() => setInspectorTab("document")}
+                  >
+                    Edit slide and document
+                  </button>
                 </div>
               </>
             )}
-            <div className="inspector-tip">
-              <span className="tip-icon">
-                <Atom size={16} />
-              </span>
-              <p>
-                Equations stay editable.
-                <br />
-                <strong>Source first. Vector always.</strong>
-              </p>
+            <div
+              hidden={inspectorTab !== "document"}
+              data-inspector-section="document"
+            >
+              <div className="inspector-section">
+                <div className="section-label">SLIDE</div>
+                <Field label="Slide title">
+                  <input
+                    value={slide.title}
+                    onChange={(e) =>
+                      change((d) => {
+                        d.slides.find((s) => s.id === slide.id)!.title =
+                          e.target.value;
+                      }, "slidetitle")
+                    }
+                  />
+                </Field>
+                <Field label="Background">
+                  <div className="color-field">
+                    <input
+                      aria-label="Slide background"
+                      type="color"
+                      value={slide.background}
+                      onChange={(e) =>
+                        change((d) => {
+                          d.slides.find((s) => s.id === slide.id)!.background =
+                            e.target.value;
+                        })
+                      }
+                    />
+                    <span>{slide.background.toUpperCase()}</span>
+                  </div>
+                </Field>
+              </div>
+              <div className="inspector-section">
+                <div className="section-label">DECK TYPOGRAPHY</div>
+                <Field label="Default math font">
+                  <select
+                    aria-label="Default math font"
+                    value={deck.theme.equation.fontSetId}
+                    onChange={(e) =>
+                      change((d) => {
+                        d.theme.equation.fontSetId = e.target
+                          .value as NonNullable<
+                          EquationObject["style"]["fontSetId"]
+                        >;
+                      })
+                    }
+                  >
+                    {FONT_OPTIONS.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <p className="field-hint">
+                  Applies to equations using deck typography.
+                </p>
+              </div>
+              <div className="inspector-section">
+                <div className="section-label">PAGE NUMBERS</div>
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    checked={pageNumbers.enabled}
+                    onChange={(e) =>
+                      change((d) => {
+                        d.pageNumbers = {
+                          ...pageNumbers,
+                          enabled: e.target.checked,
+                        };
+                      })
+                    }
+                  />
+                  <span>Show page numbers</span>
+                </label>
+                <div className="field-row">
+                  <Field label="Position">
+                    <select
+                      aria-label="Page number position"
+                      disabled={!pageNumbers.enabled}
+                      value={pageNumbers.position}
+                      onChange={(e) =>
+                        change((d) => {
+                          d.pageNumbers = {
+                            ...pageNumbers,
+                            position: e.target
+                              .value as typeof pageNumbers.position,
+                          };
+                        })
+                      }
+                    >
+                      <option value="bottom-left">Bottom left</option>
+                      <option value="bottom-center">Bottom center</option>
+                      <option value="bottom-right">Bottom right</option>
+                    </select>
+                  </Field>
+                  <Field label="Format">
+                    <select
+                      aria-label="Page number format"
+                      disabled={!pageNumbers.enabled}
+                      value={pageNumbers.format}
+                      onChange={(e) =>
+                        change((d) => {
+                          d.pageNumbers = {
+                            ...pageNumbers,
+                            format: e.target.value as typeof pageNumbers.format,
+                          };
+                        })
+                      }
+                    >
+                      <option value="number">1</option>
+                      <option value="number-total">Number / last page</option>
+                    </select>
+                  </Field>
+                </div>
+                <Field label="Start numbering at">
+                  <input
+                    aria-label="Page number starting value"
+                    type="number"
+                    min="0"
+                    max="10000"
+                    step="1"
+                    disabled={!pageNumbers.enabled}
+                    value={pageNumbers.startAt}
+                    onChange={(e) =>
+                      change((d) => {
+                        d.pageNumbers = {
+                          ...pageNumbers,
+                          startAt: Math.max(
+                            0,
+                            Math.min(10000, Math.round(Number(e.target.value))),
+                          ),
+                        };
+                      }, "page-start")
+                    }
+                  />
+                </Field>
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    disabled={!pageNumbers.enabled}
+                    checked={pageNumbers.hideFirst}
+                    onChange={(e) =>
+                      change((d) => {
+                        d.pageNumbers = {
+                          ...pageNumbers,
+                          hideFirst: e.target.checked,
+                        };
+                      })
+                    }
+                  />
+                  <span>Hide number on the first slide</span>
+                </label>
+                <div className="field-row">
+                  <Field label="Size">
+                    <input
+                      aria-label="Page number size"
+                      type="number"
+                      min="4"
+                      max="200"
+                      disabled={!pageNumbers.enabled}
+                      value={pageNumbers.fontSize}
+                      onChange={(e) =>
+                        change((d) => {
+                          d.pageNumbers = {
+                            ...pageNumbers,
+                            fontSize: Math.max(
+                              4,
+                              Math.min(200, Number(e.target.value)),
+                            ),
+                          };
+                        }, "page-size")
+                      }
+                    />
+                  </Field>
+                  <Field label="Color">
+                    <input
+                      aria-label="Page number color"
+                      type="color"
+                      disabled={!pageNumbers.enabled}
+                      value={pageNumbers.color}
+                      onChange={(e) =>
+                        change((d) => {
+                          d.pageNumbers = {
+                            ...pageNumbers,
+                            color: e.target.value,
+                          };
+                        })
+                      }
+                    />
+                  </Field>
+                </div>
+                <p className="field-hint">
+                  Applies to every slide and static exports. Hiding the first
+                  number keeps the remaining numbering unchanged.
+                </p>
+              </div>
             </div>
           </div>
         </aside>
@@ -4980,6 +5179,311 @@ export default function App() {
           platform={keyboardPlatform}
           onClose={() => setShowHelp(false)}
         />
+      )}
+      {equationEditorOpen && activeEquation && (
+        <EquationEditorDialog
+          key={activeEquation.id}
+          sourceRef={sourceRef}
+          platform={keyboardPlatform}
+          canApply={
+            !draftBusy &&
+            !compileBusy &&
+            !draftError &&
+            !!draft.latex.trim() &&
+            !isObjectLocked(activeEquation, slide.objects)
+          }
+          applying={equationApplying}
+          suspended={showMathLibrary}
+          onApply={() => void applyEquation()}
+          onCompile={() => void compileEquation()}
+          onClose={closeEquationEditor}
+        >
+          <div className="inspector-section">
+            <Field label="Equation renderer">
+              <select
+                aria-label="Equation renderer"
+                value={draft.renderer}
+                onChange={(e) => {
+                  const renderer = e.target.value as EquationDraft["renderer"];
+                  try {
+                    const converted =
+                      renderer === "local-latex" && draft.renderer === "mathjax"
+                        ? moveLeadingPackagesToPreamble(
+                            draft.latex,
+                            draft.preamble,
+                          )
+                        : {
+                            source: draft.latex,
+                            preamble: draft.preamble,
+                          };
+                    assertEquationDocumentLimits(
+                      converted.source,
+                      renderer === "local-latex"
+                        ? converted.preamble
+                        : undefined,
+                    );
+                    setDraft({
+                      ...draft,
+                      renderer,
+                      latex: converted.source,
+                      preamble: converted.preamble,
+                    });
+                  } catch (error) {
+                    notify((error as Error).message);
+                  }
+                }}
+              >
+                <option value="mathjax">MathJax · Live preview</option>
+                <option value="local-latex">
+                  Local LaTeX · Installed packages
+                </option>
+              </select>
+            </Field>
+            <div className="section-label">
+              LATEX SOURCE{" "}
+              <span>
+                {draft.renderer === "mathjax"
+                  ? "Live preview"
+                  : "Local compile"}
+              </span>
+            </div>
+            <textarea
+              ref={sourceRef}
+              className="latex-input"
+              aria-label="LaTeX source"
+              value={draft.latex}
+              spellCheck={false}
+              maxLength={MAX_EQUATION_SOURCE_CHARACTERS}
+              onChange={(e) => setDraft({ ...draft, latex: e.target.value })}
+            />
+            <button
+              className="math-library-button"
+              onClick={() => setShowMathLibrary(true)}
+              hidden={draft.renderer === "local-latex"}
+            >
+              <span>
+                <Check size={12} /> AMS fonts & symbols
+              </span>
+              <span>
+                Packages & examples <ChevronRight size={12} />
+              </span>
+            </button>
+            {draft.renderer === "local-latex" && (
+              <div className="local-tex-panel">
+                <Field label="TeX engine">
+                  <select
+                    aria-label="TeX engine"
+                    value={draft.engine}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        engine: e.target.value as EquationDraft["engine"],
+                      })
+                    }
+                  >
+                    <option value="latex">LaTeX · Classic math fonts</option>
+                    <option value="xelatex">
+                      XeLaTeX · OpenType math fonts
+                    </option>
+                  </select>
+                </Field>
+                <div className="section-label">
+                  PREAMBLE <span>Packages & fonts</span>
+                </div>
+                <textarea
+                  className="latex-input preamble-input"
+                  aria-label="LaTeX preamble"
+                  value={draft.preamble}
+                  spellCheck={false}
+                  maxLength={MAX_LOCAL_PREAMBLE_CHARACTERS}
+                  onChange={(e) =>
+                    setDraft({ ...draft, preamble: e.target.value })
+                  }
+                />
+                <p className="field-hint">
+                  패키지·매크로·글꼴 설정은 여기에 입력하세요. XeLaTeX에서는
+                  unicode-math와 setmathfont를 사용할 수 있습니다.
+                </p>
+                {desktop ? (
+                  <p
+                    className={`tex-status ${texCapabilities?.available ? "ready" : ""}`}
+                    aria-label="Local LaTeX status"
+                  >
+                    {texDetectionError ||
+                      (texCapabilities
+                        ? texCapabilities.available
+                          ? "Installed LaTeX is ready"
+                          : texCapabilities.message ||
+                            texCapabilities.sandbox.reason ||
+                            "로컬 LaTeX을 사용할 수 없습니다."
+                        : "Checking installed LaTeX…")}
+                  </p>
+                ) : (
+                  <p className="field-hint">
+                    저장된 결과는 웹에서도 볼 수 있습니다. 컴파일은 SciSlide
+                    데스크톱 앱에서 사용할 수 있습니다.
+                  </p>
+                )}
+                {desktop?.platform === "linux" && (
+                  <div className="field-hint">
+                    {texCapabilities?.paths?.[draft.engine] && (
+                      <div style={{ overflowWrap: "anywhere" }}>
+                        TeX: {texCapabilities.paths[draft.engine]}
+                      </div>
+                    )}
+                    <button
+                      className="text-button"
+                      disabled={compileBusy}
+                      onClick={() => void refreshTex()}
+                    >
+                      Check again
+                    </button>
+                    {desktop.chooseTexDirectory && (
+                      <button
+                        className="text-button"
+                        disabled={compileBusy}
+                        onClick={() => void refreshTex(true)}
+                      >
+                        Choose TeX folder…
+                      </button>
+                    )}
+                  </div>
+                )}
+                <button
+                  className="button compile-button"
+                  title={
+                    keyboardPlatform === "linux"
+                      ? shortcutTitle("Compile with LaTeX", "compileEquation")
+                      : "Compile with LaTeX"
+                  }
+                  disabled={!canCompileEquation}
+                  onClick={() => void compileEquation()}
+                >
+                  <Sigma size={14} />
+                  {compileBusy ? "Compiling…" : "Compile with LaTeX"}
+                </button>
+                {compileBusy && (
+                  <button
+                    className="text-button"
+                    onClick={() => {
+                      const id = compileJob.current;
+                      compileJob.current = null;
+                      setCompileBusy(false);
+                      if (id) void desktop?.cancelCompile(id);
+                    }}
+                  >
+                    Cancel compile
+                  </button>
+                )}
+                {!!draftTexRender?.warnings.length && (
+                  <p className="field-hint">
+                    {draftTexRender.warnings.join(" · ")}
+                  </p>
+                )}
+              </div>
+            )}
+            <div className="section-label">
+              PREVIEW <span>Slide background</span>
+            </div>
+            <div
+              className={`equation-preview ${draftError ? "error" : ""}`}
+              aria-label="Equation preview"
+              aria-busy={draftBusy || compileBusy}
+              style={{
+                backgroundColor: draftError ? undefined : slide.background,
+              }}
+            >
+              {draftError ? (
+                <span>{draftError}</span>
+              ) : (
+                <div dangerouslySetInnerHTML={{ __html: draftSvg }} />
+              )}
+              {draftBusy && <small>Rendering…</small>}
+            </div>
+            {draftFallbackCount > 0 && !draftBusy && (
+              <p className="math-fallback-note">
+                일부 기호는 STIX Two의 벡터 글자로 보완했습니다.
+              </p>
+            )}
+          </div>
+          <div className="inspector-section">
+            <div className="section-label">TYPOGRAPHY</div>
+            {draft.renderer === "mathjax" && (
+              <>
+                <Field label="Math font">
+                  <select
+                    aria-label="Math font"
+                    value={draft.font}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        font: e.target.value as EquationDraft["font"],
+                      })
+                    }
+                  >
+                    {FONT_OPTIONS.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <p className="field-hint">
+                  {FONT_OPTIONS.find((f) => f.id === draft.font)?.description}
+                </p>
+              </>
+            )}
+            <div className="field-row">
+              <Field label="Size">
+                <input
+                  aria-label="Equation size"
+                  type="number"
+                  min="12"
+                  max="180"
+                  value={draft.size}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      size: Math.max(12, Math.min(180, Number(e.target.value))),
+                    })
+                  }
+                />
+              </Field>
+              <Field label="Color">
+                <div className="color-field">
+                  <input
+                    aria-label="Equation color"
+                    type="color"
+                    value={draft.color}
+                    onChange={(e) =>
+                      setDraft({ ...draft, color: e.target.value })
+                    }
+                  />
+                  <span>{draft.color.toUpperCase()}</span>
+                </div>
+              </Field>
+            </div>
+            {draft.renderer === "local-latex" && (
+              <p className="field-hint">
+                크기를 바꾸려면 Size → Compile → Apply 순서로 반영하세요.
+              </p>
+            )}
+            <button
+              className="text-button"
+              disabled={draft.renderer === "local-latex"}
+              onClick={() =>
+                setDraft({
+                  ...draft,
+                  font: deck.theme.equation.fontSetId,
+                  size: deck.theme.equation.fontSize,
+                  color: deck.theme.equation.color,
+                })
+              }
+            >
+              Reset to deck typography
+            </button>
+          </div>
+        </EquationEditorDialog>
       )}
       {inlineEquationEdit && inlineEquationObject?.type === "text" && (
         <InlineEquationDialog

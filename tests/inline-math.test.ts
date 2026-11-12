@@ -565,4 +565,77 @@ describe("shared inline text layout", () => {
       ),
     ).toBe(true);
   });
+
+  it.each(["left", "center", "right"] as const)(
+    "renders a dark-matter title as two inline formulas with %s alignment",
+    async (align) => {
+      const source = String.raw`Constraining $U(1)_{L_\mu - L_\tau}$ Model with Dark Matter Using Relic Density and $N_\mathrm{eff}$ Bounds`;
+      const object = text(source, { align });
+      const layout = await layoutInlineText(object, deck);
+      const runs = layout.lines.flatMap((line) => line.runs);
+      const math = runs.filter((run) => run.type === "math");
+      expect(math.map((run) => run.latex)).toEqual([
+        String.raw`U(1)_{L_\mu - L_\tau}`,
+        String.raw`N_\mathrm{eff}`,
+      ]);
+      expect(math.every((run) => run.svg.includes("<path"))).toBe(true);
+      expect(
+        runs
+          .filter((run) => run.type === "text")
+          .map((run) => run.text)
+          .join(""),
+      ).not.toMatch(/\$|\\mathrm|\\mu/);
+      for (const line of layout.lines) {
+        const start = line.runs[0].x;
+        const end = line.runs.at(-1)!.x + line.runs.at(-1)!.width;
+        if (align === "left") expect(start).toBeCloseTo(0);
+        if (align === "center") expect(start + end).toBeCloseTo(800);
+        if (align === "right") expect(end).toBeCloseTo(800);
+        for (const run of line.runs) {
+          if (run.type !== "math") continue;
+          const equation = await equations.renderEquation(
+            run.latex,
+            deck.theme.equation.fontSetId,
+            object.fontSize,
+            object.color,
+            false,
+          );
+          expect(run.y + equation.baseline!).toBeCloseTo(line.baseline);
+          expect(source.slice(run.start, run.end)).toBe(run.source);
+        }
+      }
+      expect(object.text).toBe(source);
+    },
+  );
+
+  it("keeps valid formulas and exact edit spans after a malformed formula in preview", async () => {
+    const source = String.raw`Before $x$ $U(1)*{L\_{*\mu} - L\_\tau}}$ and $N_\mathrm{eff}$ Bounds`;
+    const object = text(source, {
+      transform: { x: 0, y: 0, width: 300, height: 100, rotation: 0 },
+    });
+    const layout = await layoutInlineText(object, deck, {
+      tolerateErrors: true,
+    });
+    const runs = layout.lines.flatMap((line) => line.runs);
+    expect(layout.errors).toHaveLength(1);
+    const math = runs.filter((run) => run.type === "math");
+    expect(math.map((run) => run.latex)).toEqual([
+      "x",
+      String.raw`N_\mathrm{eff}`,
+    ]);
+    expect(math[1].start).toBe(source.indexOf("$N_"));
+    const failed = runs.filter((run) => run.type === "text" && run.equation);
+    expect(failed.length).toBeGreaterThan(1);
+    for (const run of failed) {
+      expect(run.equation?.start).toBe(source.indexOf("$U(1)"));
+      expect(run.equation?.source).toBe(
+        String.raw`$U(1)*{L\_{*\mu} - L\_\tau}}$`,
+      );
+      expect(run.equation?.error).toBe(layout.errors![0]);
+    }
+    await expect(layoutInlineText(object, deck)).rejects.toThrow(
+      /Inline equation/,
+    );
+    expect(object.text).toBe(source);
+  });
 });

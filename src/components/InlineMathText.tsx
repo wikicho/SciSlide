@@ -1,10 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Deck, TextObject } from "../lib/model";
-import {
-  getInlineMathSpans,
-  inlineTextLayoutKey,
-  layoutInlineText,
-} from "../lib/inline-math";
+import { inlineTextLayoutKey, layoutInlineText } from "../lib/inline-math";
 import type { InlineTextLayout } from "../lib/inline-math";
 import { wrapText } from "../lib/layout";
 import { exportTextFontFamily, exportTextFontWeight } from "../lib/text-fonts";
@@ -29,7 +25,7 @@ export function InlineMathText({
   }>();
   useEffect(() => {
     let active = true;
-    layoutInlineText(object, deck).then(
+    layoutInlineText(object, deck, { tolerateErrors: true }).then(
       (layout) => {
         if (active) setState({ key, layout });
       },
@@ -48,25 +44,22 @@ export function InlineMathText({
   }, [key]);
   const current = state?.key === key ? state : undefined;
   const layout = current?.layout;
-  const spans = getInlineMathSpans(object.text);
-  let equationIndex = 0;
+  const error = current?.error ?? layout?.errors?.join("\n");
   useEffect(() => {
     if (layout) onMetrics?.(object.id, key, layout.height);
   }, [object.id, key, layout, onMetrics]);
   return (
     <g
       data-inline-math={object.id}
-      data-inline-math-error={current?.error}
+      data-inline-math-error={error}
       aria-label={object.text}
       aria-busy={!current}
     >
-      {current?.error && <title>{current.error}</title>}
+      {error && <title>{error}</title>}
       {layout ? (
         layout.lines.map((line, index) => (
           <g key={index} data-inline-math-line={index}>
             {line.runs.map((run, runIndex) => {
-              const span =
-                run.type === "math" ? spans[equationIndex++] : undefined;
               return run.type === "math" ? (
                 <g
                   key={runIndex}
@@ -74,24 +67,37 @@ export function InlineMathText({
                   aria-label={run.latex}
                   transform={`translate(${run.x} ${run.y})`}
                   onDoubleClick={(event) => {
-                    if (!span || !onEditEquation) return;
+                    if (!onEditEquation) return;
                     event.stopPropagation();
-                    onEditEquation(span.start, span.end);
+                    onEditEquation(run.start, run.end);
                   }}
-                  dangerouslySetInnerHTML={{ __html: run.svg }}
-                />
+                >
+                  <rect
+                    width={run.width}
+                    height={run.height}
+                    fill="transparent"
+                  />
+                  <g dangerouslySetInnerHTML={{ __html: run.svg }} />
+                </g>
               ) : (
                 <text
                   key={runIndex}
                   x={run.x}
                   y={line.baseline}
-                  fill={object.color}
+                  fill={run.equation ? "#be123c" : object.color}
                   fontSize={object.fontSize}
                   fontFamily={layout.fontFamily}
                   fontWeight={layout.fontWeight}
                   xmlSpace="preserve"
+                  data-inline-math-invalid={run.equation?.latex}
+                  onDoubleClick={(event) => {
+                    if (!run.equation || !onEditEquation) return;
+                    event.stopPropagation();
+                    onEditEquation(run.equation.start, run.equation.end);
+                  }}
                 >
                   {run.text}
+                  {run.equation && <title>{run.equation.error}</title>}
                 </text>
               );
             })}

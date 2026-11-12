@@ -26,7 +26,9 @@ Linux needs `latex` or `xelatex`, `dvisvgm`, `kpsewhich`, **bubblewrap 0.9.0 or 
 sudo apt install texlive-latex-extra texlive-fonts-recommended texlive-science texlive-xetex dvisvgm bubblewrap util-linux
 ```
 
-If kernel/system policy prevents isolation, compilation stays disabled. System TeX/font paths are mounted read-only; `~/texmf` and other home package/font folders are not mounted. Packages requiring shell escape or external programs are unsupported. Enter preamble and equation body separately, rather than a full LaTeX document. See [Equations and fonts](Equations-and-Fonts).
+If the Ubuntu app cannot find TeX, check the engine path in the Local LaTeX panel. Use **Choose TeX folder…** to select the directory containing `latex` or `xelatex`, then **Check again** after installing missing tools. The app remembers the selected directory across launches.
+
+If kernel/system policy prevents isolation, compilation stays disabled. System TeX/font paths and selected Linux TeX Live distributions are mounted read-only; personal `~/texmf` packages and personal font folders are not automatically mounted. Packages requiring shell escape or external programs are unsupported. Enter preamble and equation body separately, rather than a full LaTeX document. See [Equations and fonts](Equations-and-Fonts).
 
 ## An equation preview or export is stale
 

@@ -124,6 +124,7 @@ export interface ShortcutAvailabilityState {
   hasObjects?: boolean;
   hasSlide?: boolean;
   hasFocusedSlide?: boolean;
+  canCutSlide?: boolean;
   canCompileEquation?: boolean;
 }
 
@@ -197,6 +198,10 @@ export function isShortcutEnabled(
   const { availability } = getShortcut(action, platform);
   if (availability === "always") return true;
   if (state.busy) return false;
+  if (state.hasFocusedSlide && (action === "copy" || action === "cut"))
+    return action === "copy"
+      ? Boolean(state.hasSlide)
+      : Boolean(state.canCutSlide);
   const enabled: Record<ShortcutAvailability, boolean> = {
     always: true,
     idle: true,

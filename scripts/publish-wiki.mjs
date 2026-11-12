@@ -13,6 +13,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const runFile = promisify(execFile);
+const sourceRoot = fileURLToPath(new URL("../", import.meta.url));
 const repository = "wikicho/SciSlide";
 const wikiUrl = `https://github.com/${repository}.wiki.git`;
 
@@ -158,7 +159,6 @@ async function git(args, cwd, token) {
 export async function main(args = process.argv.slice(2)) {
   if (args.some((arg) => arg !== "--validate-only"))
     throw new Error("Use --validate-only or no arguments.");
-  const sourceRoot = process.cwd();
   const pages = await loadPages(path.join(sourceRoot, "docs", "wiki"));
   if (args.includes("--validate-only")) {
     validatePages(pages);

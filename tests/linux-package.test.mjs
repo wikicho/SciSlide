@@ -349,8 +349,27 @@ test(
       path.join(extracted, "usr/share/applications/scislide.desktop"),
       "utf8",
     );
-    assert.match(launcher, /^Exec=\/usr\/bin\/scislide$/m);
-    assert.doesNotMatch(launcher, /%[fFuU]|^MimeType=/m);
+    assert.match(launcher, /^Exec=\/usr\/bin\/scislide %F$/m);
+    assert.match(launcher, /^MimeType=application\/x-scislide;$/m);
+    const mime = await readFile(
+      path.join(extracted, "usr/share/mime/packages/scislide.xml"),
+      "utf8",
+    );
+    assert.match(mime, /<mime-type type="application\/x-scislide">/);
+    assert.match(mime, /<glob pattern="\*\.scislide" weight="80"\/>/);
+    const control = path.join(root, "control");
+    await run("dpkg-deb", ["--control", result.deb, control]);
+    for (const name of ["postinst", "postrm"]) {
+      const script = path.join(control, name);
+      assert.equal((await lstat(script)).mode & 0o777, 0o755);
+      const contents = await readFile(script, "utf8");
+      assert.match(contents, /update-mime-database \/usr\/share\/mime/);
+      assert.match(
+        contents,
+        /update-desktop-database \/usr\/share\/applications/,
+      );
+      assert.equal(spawnSync("/bin/sh", ["-n", script]).status, 0);
+    }
     assert.ok(
       (await readFile(path.join(extracted, "usr/share/doc/scislide/README.md")))
         .length,

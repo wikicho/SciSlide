@@ -25,7 +25,7 @@
   opacity: 0.55;
 }
 .theme-chooser button:focus-visible {
-  outline: 3px solid #269c86;
+  outline: 3px solid var(--ui-accent);
   outline-offset: 4px;
 }
 .theme-chooser-topbar {
@@ -61,8 +61,8 @@
   width: 44px;
   height: 44px;
   border-radius: 13px;
-  color: #137f6b;
-  background: #e6f4ef;
+  color: var(--ui-ink);
+  background: var(--ui-selected);
 }
 .theme-chooser-top-actions {
   display: flex;
@@ -85,7 +85,7 @@
 .theme-chooser-open:hover,
 .theme-chooser-cancel:hover {
   background: #f4f7f8;
-  border-color: #b8cbc6;
+  border-color: var(--ui-border-strong);
 }
 .theme-chooser-main {
   flex: 1;
@@ -106,12 +106,12 @@
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 1.8px;
-  color: #4e847a;
+  color: var(--ui-ink-muted);
 }
 .theme-chooser-intro h1 {
   margin: 20px 0 19px;
   max-width: 350px;
-  color: #193445;
+  color: var(--ui-ink);
   font-size: clamp(34px, 3.6vw, 52px);
   line-height: 1.1;
   letter-spacing: -2.1px;
@@ -144,21 +144,21 @@
   width: 100%;
   margin-top: 49px;
   padding: 17px 14px;
-  border: 1px solid #dfe8e5;
+  border: 1px solid var(--ui-border-strong);
   border-radius: 9px;
-  color: #338675;
+  color: var(--ui-ink);
   text-align: left;
-  background: #edf5f2;
+  background: var(--ui-selected);
 }
 .theme-chooser-resume:hover {
-  border-color: #9cc6ba;
-  background: #e7f2ec;
+  border-color: var(--ui-border-strong);
+  background: var(--ui-selected);
 }
 .theme-chooser-resume-icon {
   display: flex;
   padding: 9px;
   border-radius: 8px;
-  color: #378b78;
+  color: var(--ui-ink);
   background: #ffffff;
 }
 .theme-chooser-resume > span:nth-child(2) {
@@ -166,14 +166,14 @@
 }
 .theme-chooser-resume strong {
   display: block;
-  color: #2b6257;
+  color: var(--ui-ink);
   font-size: 11px;
   font-weight: 600;
 }
 .theme-chooser-resume small {
   display: block;
   margin-top: 6px;
-  color: #7c958d;
+  color: var(--ui-ink-muted);
   font-size: 10px;
 }
 .theme-chooser-demo {
@@ -188,7 +188,7 @@
   font-size: 11px !important;
 }
 .theme-chooser-demo:hover {
-  color: #137f6b;
+  color: var(--ui-ink);
 }
 .theme-chooser-gallery {
   min-width: 0;
@@ -222,12 +222,12 @@
   box-shadow: 0 3px 10px #142f4204;
 }
 .theme-chooser-card:hover {
-  border-color: #b5c8c0;
+  border-color: var(--ui-border-strong);
   box-shadow: 0 3px 16px #142f4210;
 }
 .theme-chooser-card[aria-checked="true"] {
-  border-color: #248e79;
-  box-shadow: 0 0 0 2px #248e7924;
+  border-color: var(--ui-border-strong);
+  box-shadow: 0 0 0 2px #292c3324;
 }
 .theme-chooser-preview {
   position: relative;
@@ -256,7 +256,7 @@
   border: 2px solid #ffffff;
   border-radius: 50%;
   color: white;
-  background: #198b75;
+  background: var(--ui-primary);
   box-shadow: 0 2px 6px #1126381a;
 }
 .theme-chooser-card-description {
@@ -330,16 +330,16 @@
   gap: 17px;
   min-width: 188px;
   padding: 13px 17px;
-  border: 1px solid #168773;
+  border: 1px solid var(--ui-primary);
   border-radius: 8px;
   color: #ffffff;
-  background: #168773;
+  background: var(--ui-primary);
   font-size: 11px !important;
   font-weight: 500 !important;
 }
 .theme-chooser-create:hover {
-  background: #11755f;
-  border-color: #11755f;
+  background: var(--ui-primary-hover);
+  border-color: var(--ui-border-strong);
 }
 @media (min-width: 1500px) {
   .theme-chooser-main {

@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { inflateSync } from "node:zlib";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
@@ -28,7 +28,9 @@ import {
 // Use the genuine ESM converter rather than the package's browser-global UMD entry.
 vi.mock("svg2pdf.js", () => import("svg2pdf.js/dist/svg2pdf.es.js"));
 
-const options = { fontsDir: resolve("public/fonts") };
+const options = {
+  fontsDir: fileURLToPath(new URL("../public/fonts/", import.meta.url)),
+};
 
 function text(source: string, overrides: Partial<TextObject> = {}): TextObject {
   return {

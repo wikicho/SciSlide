@@ -310,7 +310,8 @@ export async function packageLinux(options = {}, dependencies = {}) {
     );
     const docs = path.join(tree, "usr", "share", "doc", "scislide");
     const bin = path.join(tree, "usr", "bin");
-    for (const directory of [applications, icons, docs, bin])
+    const mimePackages = path.join(tree, "usr", "share", "mime", "packages");
+    for (const directory of [applications, icons, docs, bin, mimePackages])
       await mkdir(directory, { recursive: true });
     await writeFile(path.join(bin, "scislide"), linuxInstalledLauncher());
     await writeFile(
@@ -321,14 +322,27 @@ export async function packageLinux(options = {}, dependencies = {}) {
         "Type=Application",
         "Name=SciSlide",
         "Comment=Scientific presentations with editable equations",
-        "Exec=/usr/bin/scislide",
+        "Exec=/usr/bin/scislide %F",
         "TryExec=/usr/bin/scislide",
         "Icon=scislide",
         "Terminal=false",
         "Categories=Office;Education;Science;",
         "StartupWMClass=SciSlide",
+        "MimeType=application/x-scislide;",
         "",
       ].join("\n"),
+    );
+    await writeFile(
+      path.join(mimePackages, "scislide.xml"),
+      `<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-scislide">
+    <comment>SciSlide presentation</comment>
+    <sub-class-of type="application/zip"/>
+    <glob pattern="*.scislide" weight="80"/>
+  </mime-type>
+</mime-info>
+`,
     );
     await writeFile(path.join(icons, "scislide.svg"), icon);
     await writeFile(path.join(docs, "README.md"), usage);
@@ -369,7 +383,7 @@ export async function packageLinux(options = {}, dependencies = {}) {
         "Maintainer: SciSlide contributors <wikicho@users.noreply.github.com>",
         `Installed-Size: ${installedSize + 1}`,
         `Depends: ${LINUX_DEPENDS.join(", ")}`,
-        "Recommends: hicolor-icon-theme, xdg-utils",
+        "Recommends: hicolor-icon-theme, xdg-utils, shared-mime-info, desktop-file-utils",
         "Suggests: bubblewrap (>= 0.9.0), util-linux, dvisvgm, texlive-latex-extra, texlive-xetex",
         "Homepage: https://github.com/wikicho/SciSlide",
         "Description: Scientific presentation editor with editable equations",
@@ -379,6 +393,22 @@ export async function packageLinux(options = {}, dependencies = {}) {
       ].join("\n"),
       { mode: 0o644 },
     );
+    for (const script of ["postinst", "postrm"]) {
+      await writeFile(
+        path.join(control, script),
+        `#!/bin/sh
+set -e
+if command -v update-mime-database >/dev/null 2>&1; then
+  update-mime-database /usr/share/mime
+fi
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database /usr/share/applications
+fi
+exit 0
+`,
+        { mode: 0o755 },
+      );
+    }
     await execute(
       "dpkg-deb",
       [

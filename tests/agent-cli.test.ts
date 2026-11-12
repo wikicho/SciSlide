@@ -10,6 +10,7 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runAgentCli } from "../src/cli/cli";
 import { readDeckArchive } from "../src/lib/persistence";
@@ -18,7 +19,7 @@ import { readDeckArchive } from "../src/lib/persistence";
 vi.mock("svg2pdf.js", () => import("svg2pdf.js/dist/svg2pdf.es.js"));
 
 const directories: string[] = [];
-const fontsDir = path.resolve("public/fonts");
+const fontsDir = fileURLToPath(new URL("../public/fonts/", import.meta.url));
 async function temporary() {
   const directory = await mkdtemp(
     path.join(os.tmpdir(), "scislide-agent-test-"),

@@ -431,7 +431,7 @@
           "nativeMenu": true
         }
       },
-      "label": "Copy objects",
+      "label": "Copy objects or focused slide",
       "category": "Editing",
       "native": {
         "command": "copy",
@@ -470,7 +470,7 @@
           "nativeMenu": true
         }
       },
-      "label": "Cut objects",
+      "label": "Cut objects or focused slide",
       "category": "Editing",
       "native": {
         "command": "cut",
@@ -509,7 +509,7 @@
           "nativeMenu": true
         }
       },
-      "label": "Paste objects",
+      "label": "Paste objects or slide",
       "category": "Editing",
       "native": {
         "command": "paste",

@@ -3,6 +3,12 @@ export interface TexCapabilities {
   engines: Array<{ id: "latex" | "xelatex"; label: string; version: string }>;
   converter?: { version: string };
   packages?: string[];
+  paths?: {
+    latex?: string;
+    xelatex?: string;
+    converter?: string;
+    kpsewhich?: string;
+  };
   sandbox: { available: boolean; reason?: string };
   message?: string;
 }
@@ -115,6 +121,8 @@ export interface DesktopApi {
     name: string;
     path: string;
   } | null>;
+  takeOpenDocument?(): ReturnType<DesktopApi["openDocument"]>;
+  onOpenDocument?(callback: () => void): () => void;
   saveDocument(request: {
     bytes: Uint8Array;
     suggestedName: string;
@@ -127,6 +135,7 @@ export interface DesktopApi {
   }): Promise<{ path: string; name: string } | null>;
   clearDocument(): Promise<void>;
   detectTex(): Promise<TexCapabilities>;
+  chooseTexDirectory?(): Promise<TexCapabilities | null>;
   compileTex(request: TexRequest): Promise<TexResult>;
   cancelCompile(jobId: string): Promise<void>;
   detectAi(): Promise<AiCapabilities>;

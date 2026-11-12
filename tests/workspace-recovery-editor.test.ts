@@ -241,6 +241,13 @@ describe("editor workspace recovery and unapplied equation drafts", () => {
     return snapshots.at(-1)!;
   }
 
+  async function editEquation(name: string) {
+    if (host.querySelector(".equation-editor-dialog"))
+      await click("Close equation editor");
+    await click("Select " + name);
+    await click("Edit equation");
+  }
+
   it("never writes the initial demo before hydration, including hidden and unload events", async () => {
     await render();
     expect(host.querySelector("[role=status]")?.textContent).toContain(
@@ -273,7 +280,7 @@ describe("editor workspace recovery and unapplied equation drafts", () => {
     await render();
     await hydrate(restored);
     await tick();
-    await click("Select Equation A");
+    await editEquation("Equation A");
     await input("LaTeX source", String.raw`a = \alpha + 3`);
     await tick();
     expect(latest().drafts).toHaveLength(1);
@@ -297,14 +304,14 @@ describe("editor workspace recovery and unapplied equation drafts", () => {
     await render();
     await hydrate(restored, drafts);
     await tick();
-    await click("Select Equation A");
+    await editEquation("Equation A");
     expect(field("LaTeX source").value).toBe("a=restored+draft");
     await input("LaTeX source", "a=user+edited");
-    await click("Select Equation B");
+    await editEquation("Equation B");
     expect(field("LaTeX source").value).toBe("b=independent+draft");
-    await click("Select Equation A");
+    await editEquation("Equation A");
     expect(field("LaTeX source").value).toBe("a=user+edited");
-    await click("Select Equation B");
+    await editEquation("Equation B");
     expect(field("LaTeX source").value).toBe("b=independent+draft");
     await shutdownEvents();
     expect(
@@ -324,7 +331,7 @@ describe("editor workspace recovery and unapplied equation drafts", () => {
       draft(restored, "equation-a", "a=applied+source"),
       draft(restored, "equation-b", "b=still+unapplied"),
     ]);
-    await click("Select Equation A");
+    await editEquation("Equation A");
     await tick(250);
     await click("Apply equation");
     await tick();
@@ -342,8 +349,8 @@ describe("editor workspace recovery and unapplied equation drafts", () => {
       latest().drafts.find((entry) => entry.equationId === "equation-b")?.draft
         .latex,
     ).toBe("b=still+unapplied");
-    await click("Select Equation B");
-    await click("Select Equation A");
+    await editEquation("Equation B");
+    await editEquation("Equation A");
     expect(field("LaTeX source").value).toBe("a=applied+source");
   });
 
