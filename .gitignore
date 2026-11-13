@@ -9,4 +9,4 @@ build/
 .env.*
 .DS_Store
 release/
-output/pdf/
+output/

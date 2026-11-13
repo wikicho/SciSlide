@@ -11,7 +11,7 @@
 
 ## 1. Purpose and status
 
-SciSlide should feel familiar to a researcher moving from Keynote while preserving native text input, scientific authoring commands, and predictable document editing. This specification defines that behavior for the shared browser/Electron editor. It supplements [section 5.3 of the project specification](../../SciSlide-Project-Specification.md#53-user-interface).
+SciSlide should feel familiar to a researcher moving from Keynote while preserving native text input, scientific authoring commands, and predictable document editing. This specification defines that behavior for the shared browser/Electron editor. It supplements [section 5.3 of the project specification](project.md#53-user-interface).
 
 **Revision 0.4 records the v0.6.3 release, including the P1 implementation, inline equation editing and Linux equation insertion/compilation workflow.** The inventory below describes the v0.6.3 bindings. “Target” and “Planned” describe later requirements, not functioning commands. The package version is 0.6.3 and is independent of native document format 0.5.0.
 

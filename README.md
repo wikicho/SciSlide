@@ -18,12 +18,12 @@ Use `release/macos-pkg/` for macOS installer output and `release/windows-x64/` f
 
 Download the **v0.6.4 development build** from [GitHub Releases](https://github.com/wikicho/SciSlide/releases/tag/v0.6.4):
 
-| System                            | Download                                                                                                                                                                                                                                                     |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| macOS Apple Silicon (M1 or later) | [arm64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.4/SciSlide-0.6.4-macos-arm64-unsigned.pkg)                                                                                                                                     |
-| macOS Intel                       | [x64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.4/SciSlide-0.6.4-macos-x64-unsigned.pkg)                                                                                                                                         |
+| System                            | Download                                                                                                                                                                                                                                             |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS Apple Silicon (M1 or later) | [arm64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.4/SciSlide-0.6.4-macos-arm64-unsigned.pkg)                                                                                                                                 |
+| macOS Intel                       | [x64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.4/SciSlide-0.6.4-macos-x64-unsigned.pkg)                                                                                                                                     |
 | Windows Intel/AMD x64             | [setup `.exe`](https://github.com/wikicho/SciSlide/releases/download/v0.6.4/SciSlide-0.6.4-windows-x64-setup-unsigned.exe) · [portable `.zip`](https://github.com/wikicho/SciSlide/releases/download/v0.6.4/SciSlide-0.6.4-windows-x64-portable.zip) |
-| Linux Intel/AMD x64               | [`.deb` / amd64](https://github.com/wikicho/SciSlide/releases/download/v0.6.4/SciSlide-0.6.4-linux-x64.deb)                                                                                                                                              |
+| Linux Intel/AMD x64               | [`.deb` / amd64](https://github.com/wikicho/SciSlide/releases/download/v0.6.4/SciSlide-0.6.4-linux-x64.deb)                                                                                                                                          |
 
 Matching SHA-256 checksum files and installation instructions are included in the release. macOS installers are unsigned and unnotarized; Windows distributions are unsigned. System security policies may block installation or launch. See the [macOS](desktop/MACOS.md), [Windows](desktop/WINDOWS.md) or [Linux](desktop/LINUX.md) installation guide and the [v0.6.4 release notes](docs/releases/v0.6.4.md). Node.js and TeX are not required for MathJax editing.
 
@@ -576,12 +576,15 @@ Electron runtime validation covered sandboxing and context isolation, blocked No
  src/lib/local-equation-svg.ts Passive outlined SVG validation
  src/lib/export.ts             Vector PDF/SVG exporters and resource preflight
  tests/                        Document, equation, archive and compiler regressions
+ docs/specifications/          Project and keyboard shortcut specifications
+ docs/references/              Design reference images
+ release/archive/              Preserved older local packages and development builds
  public/fonts/                 Bundled Inter and Nanum Gothic TrueType fonts
  third-party-licenses/         Dependency and font license notices
 ```
 
 ## Future Development and Licensing
 
-Priorities include PDF vector import, richer group transforms, linked themes/masters, shared deck macros, linked equation-library entries, citations/BibTeX and CSV charts with units/error bars. Attached connectors, freehand paths, advanced animation, split font loading, a separate asset/cache store and desktop distribution validation remain follow-up work. Local TeX isolation on Windows, along with access to explicitly selected user package folders, requires separate implementation. See the [project specification](SciSlide-Project-Specification.md) for the detailed design and follow-up requirements.
+Priorities include PDF vector import, richer group transforms, linked themes/masters, shared deck macros, linked equation-library entries, citations/BibTeX and CSV charts with units/error bars. Attached connectors, freehand paths, advanced animation, split font loading, a separate asset/cache store and desktop distribution validation remain follow-up work. Local TeX isolation on Windows, along with access to explicitly selected user package folders, requires separate implementation. See the [project specification](docs/specifications/project.md) for the detailed design and follow-up requirements.
 
 This prototype does not reuse PPTist code. **A project license for the new SciSlide source has not yet been selected.** The license and contribution rules must be finalized before a public release. Bundled dependencies, fonts, and the Electron runtime retain their respective licenses; notices are kept in `third-party-licenses/` and the packaged runtime.

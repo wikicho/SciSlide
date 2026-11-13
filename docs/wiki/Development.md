@@ -14,6 +14,8 @@ pnpm install --frozen-lockfile
 
 To check out the exact documented release before installation, use `git checkout v0.6.3.1`.
 
+Keep specifications in `docs/specifications/` and design references in `docs/references/`. Generated web and CLI builds belong in `dist/` and `dist-cli/`; exported previews belong in `output/`. Current platform packages remain in `release/`, with older versioned files grouped under `release/archive/versions/` and dated development builds under `release/archive/builds/`. Dependencies and generated outputs stay outside Git.
+
 ## Run the app
 
 ```sh
@@ -80,7 +82,7 @@ Windows setup requires **Windows and Inno Setup 6.7 or later**. On Linux/macOS, 
 
 The **SciSlide development release** GitHub Actions workflow runs when versioned release notes in `docs/releases/` change on `main`. It builds all five distributions from that commit, verifies source/version consistency, architecture, checksums and the Windows install/launch/uninstall smoke path, then publishes a `v<package-version>` development prerelease with binaries, checksums and platform guides. Manual dispatch remains available for a requested `main` commit; its publication option defaults off.
 
-Separate platform workflows also exist. Workflow artifacts are retained for 30 days; published GitHub release assets are the user download location. Signing, notarization, automatic updates and complete physical-device validation remain future work.
+The macOS, Windows and Linux platform workflows run on relevant `main` source pushes and support manual dispatch. The Linux push workflow validates tests, builds the editor and CLI, verifies the Debian package and uploads its artifact; push events cannot publish a GitHub release. Linux prerelease publication remains an explicit manual option. Workflow artifacts are retained for 30 days; published GitHub release assets are the user download location. Signing, notarization, automatic updates and complete physical-device validation remain future work.
 
 ## Useful source locations
 

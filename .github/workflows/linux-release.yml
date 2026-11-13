@@ -1,6 +1,26 @@
 name: Linux x64 development packages
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/linux-release.yml
+      - scripts/build-cli.mjs
+      - scripts/package-desktop.mjs
+      - scripts/package-linux.mjs
+      - desktop/**
+      - src/**
+      - public/**
+      - tests/**
+      - examples/**
+      - third-party-licenses/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - index.html
+      - vite.config.ts
+      - vitest.config.ts
+      - tsconfig*.json
   workflow_call:
     inputs:
       publish_prerelease:
@@ -142,7 +162,7 @@ jobs:
 
   publish:
     needs: package
-    if: inputs.publish_prerelease && github.repository == 'wikicho/SciSlide' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'push' && inputs.publish_prerelease && github.repository == 'wikicho/SciSlide' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
