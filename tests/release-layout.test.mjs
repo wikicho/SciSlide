@@ -4,6 +4,7 @@ import {
   lstat,
   mkdtemp,
   readFile,
+  realpath,
   readdir,
   rename,
   rm,
@@ -22,7 +23,7 @@ import {
 
 async function fixture(t) {
   const root = await mkdtemp(
-    path.join(os.tmpdir(), "scislide-release-layout-"),
+    path.join(await realpath(os.tmpdir()), "scislide-release-layout-"),
   );
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(path.join(root, "stage"));

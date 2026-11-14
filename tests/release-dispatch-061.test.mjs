@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -13,7 +13,9 @@ async function fixture(
   t,
   { version = "0.6.1", release, tagSha, active, moveMain = false } = {},
 ) {
-  const root = await mkdtemp(path.join(os.tmpdir(), "scislide-dispatch-061-"));
+  const root = await mkdtemp(
+    path.join(await realpath(os.tmpdir()), "scislide-dispatch-061-"),
+  );
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(path.join(root, "docs", "releases"), { recursive: true });
   await writeFile(path.join(root, "package.json"), JSON.stringify({ version }));

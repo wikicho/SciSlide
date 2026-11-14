@@ -39,7 +39,9 @@ const inputs = [
 
 async function fixture(t) {
   const root = await realpath(
-    await mkdtemp(path.join(os.tmpdir(), "scislide-macos-test-")),
+    await mkdtemp(
+      path.join(await realpath(os.tmpdir()), "scislide-macos-test-"),
+    ),
   );
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const directory of inputs) await mkdir(path.join(root, directory));

@@ -27,7 +27,9 @@ import {
 
 async function fixture(t) {
   const root = await realpath(
-    await mkdtemp(path.join(os.tmpdir(), "scislide-package-test-")),
+    await mkdtemp(
+      path.join(await realpath(os.tmpdir()), "scislide-package-test-"),
+    ),
   );
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const directory of [

@@ -5,6 +5,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  realpath,
   readdir,
   rm,
   writeFile,
@@ -24,7 +25,9 @@ const repo = "wikicho/SciSlide";
 const execute = promisify(execFile);
 
 async function fixture(t, version = "0.6.0") {
-  const root = await mkdtemp(path.join(os.tmpdir(), "scislide-release-test-"));
+  const root = await mkdtemp(
+    path.join(await realpath(os.tmpdir()), "scislide-release-test-"),
+  );
   t.after(() => rm(root, { recursive: true, force: true }));
   const directory = path.join(root, "publish");
   await mkdir(directory);

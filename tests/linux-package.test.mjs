@@ -51,7 +51,9 @@ function elf(machine = 62, elfClass = 2, byteOrder = 1) {
 
 async function fixture(t) {
   const root = await realpath(
-    await mkdtemp(path.join(os.tmpdir(), "scislide-linux-test-")),
+    await mkdtemp(
+      path.join(await realpath(os.tmpdir()), "scislide-linux-test-"),
+    ),
   );
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const directory of [

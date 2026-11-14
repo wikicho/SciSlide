@@ -4,6 +4,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  realpath,
   readdir,
   rename,
   rm,
@@ -24,7 +25,7 @@ const execute = promisify(execFile);
 const date = "2026-11-14";
 async function fixture(t) {
   const root = await mkdtemp(
-    path.join(os.tmpdir(), "scislide-release-organization-"),
+    path.join(await realpath(os.tmpdir()), "scislide-release-organization-"),
   );
   t.after(() => rm(root, { recursive: true, force: true }));
   const files = {
@@ -262,7 +263,7 @@ test("release-root and destination-parent symlinks are rejected without touching
   for (const linked of ["release", "release/archive"]) {
     const options = await fixture(t);
     const outside = await mkdtemp(
-      path.join(os.tmpdir(), "scislide-release-outside-"),
+      path.join(await realpath(os.tmpdir()), "scislide-release-outside-"),
     );
     t.after(() => rm(outside, { recursive: true, force: true }));
     await writeFile(path.join(outside, "precious.txt"), "outside data");

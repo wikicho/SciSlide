@@ -36,7 +36,9 @@ function pe(machine = 0x8664, magic = 0x020b) {
 
 async function fixture(t) {
   const root = await realpath(
-    await mkdtemp(path.join(os.tmpdir(), "scislide-windows-test-")),
+    await mkdtemp(
+      path.join(await realpath(os.tmpdir()), "scislide-windows-test-"),
+    ),
   );
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const directory of [
