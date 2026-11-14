@@ -13,6 +13,12 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertReleaseVersion,
+  assertNoSymlinkParents,
+  defaultAppDirectory,
+  publishReleaseEntries,
+} from "./release-layout.mjs";
 
 const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 const platforms = new Set(["darwin", "linux", "win32"]);
@@ -261,6 +267,154 @@ async function exists(file) {
   }
 }
 
+/** Use the pinned Electron dependency's hashes for cached and downloaded runtimes. */
+async function trustedElectronChecksums(root, version, platform, arch) {
+  if (
+    typeof version !== "string" ||
+    !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$/.test(
+      version,
+    )
+  )
+    throw new Error(
+      "The Electron dependency must have a valid runtime version.",
+    );
+  const filename = path.join(
+    root,
+    "node_modules",
+    "electron",
+    "checksums.json",
+  );
+  const stat = await exists(filename);
+  if (
+    !stat?.isFile() ||
+    stat.isSymbolicLink() ||
+    !stat.size ||
+    stat.size > 1024 * 1024
+  )
+    throw new Error(
+      "The Electron dependency must supply a regular, bounded checksums.json file.",
+    );
+  let checksums;
+  try {
+    checksums = JSON.parse(await readFile(filename, "utf8"));
+  } catch (error) {
+    throw new Error(
+      "The Electron dependency checksums.json is not valid JSON.",
+      { cause: error },
+    );
+  }
+  if (
+    !checksums ||
+    typeof checksums !== "object" ||
+    Array.isArray(checksums) ||
+    !Object.keys(checksums).length ||
+    Object.keys(checksums).length > 512
+  )
+    throw new Error("The Electron dependency checksum map is invalid.");
+  for (const [name, hash] of Object.entries(checksums)) {
+    if (
+      !/^[A-Za-z0-9][A-Za-z0-9._+-]{0,199}$/.test(name) ||
+      typeof hash !== "string" ||
+      !/^[a-f0-9]{64}$/.test(hash)
+    )
+      throw new Error(
+        "The Electron dependency checksum map contains an invalid filename or SHA-256 digest.",
+      );
+  }
+  const archive = `electron-v${version}-${platform}-${arch}.zip`;
+  if (!Object.hasOwn(checksums, archive))
+    throw new Error(
+      `The Electron dependency has no trusted checksum for ${archive}.`,
+    );
+  // Restrict the downloader to the archive derived from the selected dependency
+  // version and platform. @electron/get still verifies the cached bytes.
+  return { [archive]: checksums[archive] };
+}
+
+async function validateStagedApp(stagedOutput, stagedApp, platform) {
+  const resources =
+    platform === "darwin"
+      ? path.join(stagedApp, "SciSlide.app", "Contents", "Resources")
+      : path.join(stagedApp, "resources");
+  const relativeResources = path.relative(stagedApp, resources).split(path.sep);
+  const directories = [stagedOutput, stagedApp];
+  let directory = stagedApp;
+  for (const part of relativeResources) {
+    directory = path.join(directory, part);
+    directories.push(directory);
+  }
+  for (const filename of directories) {
+    const stat = await exists(filename);
+    if (!stat?.isDirectory() || stat.isSymbolicLink())
+      throw new Error(
+        `Packager output must contain regular staged app directories: ${filename}`,
+      );
+  }
+  if (
+    (await realpath(stagedOutput)) !== stagedOutput ||
+    (await realpath(stagedApp)) !== stagedApp
+  )
+    throw new Error("Packager output escaped its staging directory.");
+  const entries = await readdir(stagedOutput);
+  if (entries.length !== 1 || entries[0] !== path.basename(stagedApp))
+    throw new Error(
+      "Packager must produce only the expected single staged app directory.",
+    );
+  const archive = path.join(resources, "app.asar");
+  const stat = await exists(archive);
+  if (!stat?.isFile() || stat.isSymbolicLink())
+    throw new Error(
+      `Packager output is missing a regular app archive: ${archive}`,
+    );
+  return resources;
+}
+
+async function appDestination(appDirectory, platform, overwrite) {
+  const existing = await exists(appDirectory);
+  if (!existing) return null;
+  if (existing.isSymbolicLink() || !existing.isDirectory())
+    throw new Error(
+      `Refusing to replace a non-directory or symlink: ${appDirectory}`,
+    );
+  if (!overwrite)
+    throw new Error(
+      `Output already exists: ${appDirectory}. Use --overwrite to replace this generated app.`,
+    );
+  const archive =
+    platform === "darwin"
+      ? path.join(
+          appDirectory,
+          "SciSlide.app",
+          "Contents",
+          "Resources",
+          "app.asar",
+        )
+      : path.join(appDirectory, "resources", "app.asar");
+  await assertNoSymlinkParents(path.dirname(archive));
+  if (!(await exists(archive))?.isFile())
+    throw new Error(
+      `Refusing to replace an unrecognized app directory: ${appDirectory}`,
+    );
+  return existing;
+}
+
+async function assertEmptySidecars(stagedApp, resources, platform) {
+  const destinations = [
+    path.join(stagedApp, "bin"),
+    path.join(stagedApp, "README.md"),
+    path.join(stagedApp, "examples"),
+    path.join(resources, "scislide-cli"),
+    ...(platform === "darwin"
+      ? [path.join(resources, "README.md"), path.join(resources, "examples")]
+      : []),
+  ];
+  for (const destination of destinations)
+    if (await exists(destination))
+      throw new Error(
+        `Packager output contains an unexpected CLI or example destination: ${destination}`,
+      );
+}
+
 export async function packageDesktop(options = {}, dependencies = {}) {
   const root = await realpath(options.root ?? projectRoot);
   const target = parsePackagingOptions([], options);
@@ -268,8 +422,27 @@ export async function packageDesktop(options = {}, dependencies = {}) {
   if (typeof target.overwrite !== "boolean") {
     throw new Error("overwrite must be a boolean.");
   }
+  const pkg = JSON.parse(
+    await readFile(path.join(root, "package.json"), "utf8"),
+  );
+  assertReleaseVersion(pkg.version);
+  const electron = JSON.parse(
+    await readFile(
+      path.join(root, "node_modules", "electron", "package.json"),
+      "utf8",
+    ),
+  );
+  const runtimeChecksums = await trustedElectronChecksums(
+    root,
+    electron.version,
+    target.platform,
+    target.arch,
+  );
   const cliPayload = await cliSources(root);
-  const requestedOutput = path.resolve(root, target.out ?? "release");
+  const requestedOutput = path.resolve(
+    root,
+    target.out ?? defaultAppDirectory(root, pkg.version),
+  );
   for (const input of [
     "dist",
     "dist-cli",
@@ -312,44 +485,12 @@ export async function packageDesktop(options = {}, dependencies = {}) {
       "The output app directory cannot contain the source project.",
     );
   }
-  const existing = await exists(appDirectory);
-  if (existing) {
-    if (existing.isSymbolicLink() || !existing.isDirectory()) {
-      throw new Error(
-        `Refusing to replace a non-directory or symlink: ${appDirectory}`,
-      );
-    }
-    if (!target.overwrite) {
-      throw new Error(
-        `Output already exists: ${appDirectory}. Use --overwrite to replace this generated app.`,
-      );
-    }
-    const archive =
-      target.platform === "darwin"
-        ? path.join(
-            appDirectory,
-            "SciSlide.app",
-            "Contents",
-            "Resources",
-            "app.asar",
-          )
-        : path.join(appDirectory, "resources", "app.asar");
-    if (!(await exists(archive))?.isFile()) {
-      throw new Error(
-        `Refusing to replace an unrecognized app directory: ${appDirectory}`,
-      );
-    }
-  }
+  const existing = await appDestination(
+    appDirectory,
+    target.platform,
+    target.overwrite,
+  );
 
-  const pkg = JSON.parse(
-    await readFile(path.join(root, "package.json"), "utf8"),
-  );
-  const electron = JSON.parse(
-    await readFile(
-      path.join(root, "node_modules", "electron", "package.json"),
-      "utf8",
-    ),
-  );
   const usage = path.join(
     root,
     "desktop",
@@ -361,7 +502,11 @@ export async function packageDesktop(options = {}, dependencies = {}) {
   );
   await readFile(usage, "utf8");
   const stage = await mkdtemp(path.join(os.tmpdir(), "scislide-package-"));
+  let stagedOutput;
   try {
+    stagedOutput = await mkdtemp(
+      path.join(output, ".scislide-package-output-"),
+    );
     // Vite bundles renderer dependencies into dist; the desktop host uses only Electron and Node built-ins.
     for (const name of ["dist", "desktop", "third-party-licenses"]) {
       await cp(path.join(root, name), path.join(stage, name), {
@@ -384,12 +529,13 @@ export async function packageDesktop(options = {}, dependencies = {}) {
       dependencies.packager ?? (await import("@electron/packager")).packager;
     const apps = await packageApp({
       dir: stage,
-      out: output,
+      out: stagedOutput,
       name: "SciSlide",
       executableName: "scislide",
       platform: target.platform,
       arch: target.arch,
       electronVersion: electron.version,
+      download: { checksums: runtimeChecksums },
       appBundleId: "com.scislide.app",
       appCategoryType: "public.app-category.productivity",
       ...(target.platform === "darwin"
@@ -417,11 +563,28 @@ export async function packageDesktop(options = {}, dependencies = {}) {
             },
           }
         : {}),
-      overwrite: target.overwrite,
+      overwrite: false,
       asar: true,
       prune: false,
     });
-    for (const app of apps) {
+    const stagedApp = path.join(stagedOutput, path.basename(appDirectory));
+    if (
+      !Array.isArray(apps) ||
+      apps.length !== 1 ||
+      typeof apps[0] !== "string" ||
+      path.resolve(apps[0]) !== stagedApp
+    )
+      throw new Error(
+        "Packager must return the expected single app inside its staging directory.",
+      );
+    const resources = await validateStagedApp(
+      stagedOutput,
+      stagedApp,
+      target.platform,
+    );
+    await assertEmptySidecars(stagedApp, resources, target.platform);
+    {
+      const app = stagedApp;
       await installCli(app, target.platform, pkg, cliPayload);
       await cp(usage, path.join(app, "README.md"));
       await cp(path.join(root, "examples"), path.join(app, "examples"), {
@@ -443,10 +606,38 @@ export async function packageDesktop(options = {}, dependencies = {}) {
         );
       }
     }
-    return apps;
+    await validateStagedApp(stagedOutput, stagedApp, target.platform);
+    const current = await appDestination(
+      appDirectory,
+      target.platform,
+      target.overwrite,
+    );
+    if (
+      !existing !== !current ||
+      (existing &&
+        current &&
+        (existing.dev !== current.dev ||
+          existing.ino !== current.ino ||
+          existing.size !== current.size ||
+          existing.mtimeMs !== current.mtimeMs))
+    )
+      throw new Error(
+        `Output changed while the desktop app was being prepared: ${appDirectory}`,
+      );
+    const publish = dependencies.publishReleaseEntries ?? publishReleaseEntries;
+    await publish(
+      [{ source: stagedApp, destination: appDirectory, kind: "directory" }],
+      { overwrite: target.overwrite },
+    );
+    return [appDirectory];
   } finally {
     // Only remove the unique directory created for this invocation, including on failed packaging.
-    await rm(stage, { recursive: true, force: true });
+    await Promise.all([
+      rm(stage, { recursive: true, force: true }),
+      ...(stagedOutput
+        ? [rm(stagedOutput, { recursive: true, force: true })]
+        : []),
+    ]);
   }
 }
 
@@ -458,10 +649,10 @@ if (
     const options = parsePackagingOptions(process.argv.slice(2));
     if (options.help) {
       console.log(
-        "Usage: node scripts/package-desktop.mjs [--platform=darwin|linux|win32] [--arch=arm64|x64] [--out=release] [--overwrite]",
+        "Usage: node scripts/package-desktop.mjs [--platform=darwin|linux|win32] [--arch=arm64|x64] [--out=directory] [--overwrite]",
       );
       console.log(
-        "Defaults to the current platform and architecture. Relative output paths resolve from the project root.",
+        "Defaults to the current platform and architecture under release/work/v<VERSION>. Relative --out paths resolve from the project root.",
       );
     } else {
       for (const app of await packageDesktop(options))

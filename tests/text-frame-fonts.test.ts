@@ -111,6 +111,50 @@ describe("text frames after font loading", () => {
     expect(object).toEqual(original);
   });
 
+  it("reflows inherited text when only the deck family changes and preserves explicit text", async () => {
+    const object = await render();
+    object.fontFamilySource = "deck";
+    const explicit = {
+      ...object,
+      id: "explicit-text",
+      fontFamilySource: undefined,
+    };
+    const deck = createThemeDeck("keynote-white");
+    deck.pageNumbers = undefined;
+    deck.slides[0].objects = [object, explicit];
+    await act(async () =>
+      root.render(
+        createElement(SlideScene, {
+          deck,
+          slide: deck.slides[0],
+          onPointer: () => undefined,
+        }),
+      ),
+    );
+    glyphWidth = 20;
+    const updated = {
+      ...deck,
+      theme: { ...deck.theme, fontFamily: "Nanum Gothic" },
+    };
+    await act(async () =>
+      root.render(
+        createElement(SlideScene, {
+          deck: updated,
+          slide: updated.slides[0],
+          onPointer: () => undefined,
+        }),
+      ),
+    );
+    const inheritedText =
+      host.querySelector('[data-object-id="font-loading-text"] text') ??
+      host.querySelector(".canvas-object > text");
+    expect(inheritedText?.getAttribute("font-family")).toBe("Nanum Gothic");
+    const texts = host.querySelectorAll(".canvas-object > text");
+    expect(texts[1]?.getAttribute("font-family")).toBe("Inter");
+    expect(texts[0]?.querySelectorAll("tspan")).toHaveLength(2);
+    expect(object.fontFamily).toBe("Inter");
+  });
+
   it("supports font sets that only expose the ready promise", async () => {
     Object.defineProperty(document, "fonts", {
       configurable: true,

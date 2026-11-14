@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runAgentCli } from "../src/cli/cli";
 import { readDeckArchive } from "../src/lib/persistence";
+import type { Deck } from "../src/lib/model";
 
 // Use the genuine converter's ESM entry in Node, as the CLI bundle does.
 vi.mock("svg2pdf.js", () => import("svg2pdf.js/dist/svg2pdf.es.js"));
@@ -187,6 +188,48 @@ describe("agent CLI native files", () => {
         filename.startsWith(".scislide-cli-"),
       ),
     ).toBe(false);
+  });
+
+  it("saves and reopens the deck inline font independently, including null reset", async () => {
+    const directory = await temporary();
+    const original = path.join(directory, "inline-original.scislide");
+    const selected = path.join(directory, "inline-selected.scislide");
+    const changed = path.join(directory, "inline-changed.scislide");
+    const reset = path.join(directory, "inline-reset.scislide");
+    await command(["create", "--layout", "blank", "--output", original]);
+    for (const [input, output, theme] of [
+      [original, selected, { inlineMathFontSetId: "mathjax-fira" }],
+      [
+        selected,
+        changed,
+        {
+          fontFamily: "Nanum Gothic",
+          equation: { fontSetId: "mathjax-stix2" },
+        },
+      ],
+      [changed, reset, { inlineMathFontSetId: null }],
+    ] as const) {
+      const applied = await command(
+        ["apply", input, "--ops", "-", "--output", output],
+        JSON.stringify([{ op: "deck.update", patch: { theme } }]),
+      );
+      expect(applied.code, applied.errors).toBe(0);
+    }
+    const read = async (filename: string) =>
+      (await command(["inspect", filename, "--full"])).result.deck as Deck;
+    expect((await read(selected)).theme.inlineMathFontSetId).toBe(
+      "mathjax-fira",
+    );
+    expect((await read(changed)).theme).toMatchObject({
+      inlineMathFontSetId: "mathjax-fira",
+      fontFamily: "Nanum Gothic",
+      equation: { fontSetId: "mathjax-stix2" },
+    });
+    const restored = await read(reset);
+    expect(restored.theme.inlineMathFontSetId).toBeUndefined();
+    expect(restored.theme.fontFamily).toBe("Nanum Gothic");
+    expect(restored.theme.equation.fontSetId).toBe("mathjax-stix2");
+    expect((await command(["validate", reset])).result.valid).toBe(true);
   });
 
   it("requires explicit replacement and protects freshness and symlink outputs", async () => {

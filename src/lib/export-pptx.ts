@@ -12,6 +12,7 @@ import { wrapText } from "./layout";
 import { shapeGeometry } from "./shape-geometry";
 import {
   exportTextFontFamily,
+  effectiveTextFontFamily,
   exportTextFontWeight,
   firstFontFamily,
   normalizeRenderedText,
@@ -183,10 +184,11 @@ async function addText(
 ) {
   if (!hasInlineMath(object.text)) {
     const text = normalizeRenderedText(inlinePlainText(object.text));
-    const family = exportTextFontFamily(text, object.fontFamily);
+    const requestedFamily = effectiveTextFontFamily(deck, object);
+    const family = exportTextFontFamily(text, requestedFamily);
     const weight = exportTextFontWeight(
       text,
-      object.fontFamily,
+      requestedFamily,
       object.fontWeight,
     );
     target.addText(

@@ -1,6 +1,6 @@
 # Editing slides
 
-These instructions describe SciSlide **0.6.3.1**. Start with [[Getting-Started]] or see [[Keyboard-Shortcuts]] for platform-specific commands.
+These instructions describe the **0.6.6 development source**; use a newly built package for the changes below. Start with [[Getting-Started]] or see [[Keyboard-Shortcuts]] for platform-specific commands.
 
 ## Slides and layouts
 
@@ -22,9 +22,19 @@ Text frames grow vertically to fit their content, using loaded-font metrics; mov
 
 Click an object to select it; **Shift+click** selects several. macOS also supports **Command+click**. Drag to move, use the lower-right handle to resize, or enter geometry in the Inspector. Canvas arrow keys move selected objects by **1 logical document unit**; **Shift+Arrow** moves them by **10**.
 
+With several objects selected, Format shows their count, groups and lock/visibility states. **Arrange selection** opens the existing group, distribution and layer tools. **Edit one object** opens one member's style without ungrouping it; position changes still move its group. Single-object style and geometry fields appear when one object is selected. Equal-gap distribution needs at least three unlocked objects or groups.
+
+On an empty slide, Format offers **Add text**, **Add equation** and **Add figure**. The canvas hint changes with selection, text editing, drawing and locked objects, including the relevant keyboard action.
+
 With the canvas focused, Tab/Shift+Tab selects eligible objects in back-to-front stacking order, treating a flat group as one unit and skipping hidden/locked content. At either end, Tab follows normal UI focus order into surrounding controls. A polite canvas status announces selected object names/counts.
 
-**Copy / Cut / Paste** reuses objects across slides or decks in the same editor session. Copies have independent IDs and carry their figures/videos. The object clipboard is internal to SciSlide; text fields keep their ordinary clipboard behavior. Locked objects can be copied but are protected from cutting.
+Toolbar menus support Enter/Space or Up/Down to open, Up/Down and Home/End to navigate, and Escape to return to the menu trigger. Left/Right moves between menus. Choosing an action or moving focus outside closes the menu; an action that opens an editor or dialog keeps focus there.
+
+The title area distinguishes the saved `.scislide` file, pending/completed local recovery and the number of unapplied equation drafts. Drafts remain local until **Apply equation** puts them on the slide. During a document transition, **Save changes** is unavailable while drafts remain; cancel to apply them or choose **Keep recovery and continue** to preserve them locally.
+
+**Copy / Cut / Paste** uses the system clipboard for editable objects, groups and slides, including embedded media and source formatting. Focus a slide thumbnail to copy that slide or paste after it. Text fields, including dialogs, keep ordinary text editing. On the canvas, pasting external text creates a text object; a screenshot or supported image creates a figure. Copying new content in another app replaces the previous SciSlide copy. Locked objects can be copied but are protected from cutting, and a failed clipboard write keeps cut originals.
+
+Browser clipboard permissions and supported formats vary. If a toolbar action reports unavailable access, focus the canvas and use the keyboard Copy/Cut/Paste commands. A failed system clipboard read never pastes an older internal copy.
 
 ## Arrange, layers and groups
 
@@ -43,6 +53,8 @@ Toggle smart guides in the toolbar or hold **Option/Alt** to bypass them for a g
 ## Figures, cropping and insets
 
 **Figure** imports a local **PNG, JPEG, SVG or PDF**, up to **20 MiB**. SVG is sanitized; active content and external resources are unsupported. For PDF, preview the document and select one page. It is embedded as a high-resolution **PNG**, so the original PDF is not required after saving. Original PDF vectors are not preserved.
+
+Drop local PNG/JPEG/SVG files onto the canvas to place them at the pointer location at any zoom. Multiple images keep the supplied file order and form one Undo step. Drop a single PDF to open the page/region chooser, or a single `.scislide` file to open a document through the save-confirmation flow. Unsupported or mixed document/PDF batches leave the presentation unchanged. Web image URLs are not imported by dropping them.
 
 Select an unlocked, independent figure and open **CROP & INSET**:
 
@@ -63,6 +75,14 @@ Click empty canvas space to open deck settings. Under **PAGE NUMBERS**, enable n
 Select an object and use **APPEARANCE STEPS** for step **0** (visible immediately) or click steps **1–100**. Objects sharing a step appear together. Choose **Appear** or **Fade in** with a **100–3000 ms** duration. Presentation advances through populated steps before the next slide; the editor and static exports show the complete layout. See [[Export-and-Presenting]] for videos and presentation controls.
 
 ## Recovery and saving
+
+Opening a file (including an OS file-open request or document drop), creating a new deck and closing the desktop editor offer **Save changes / Keep recovery and continue / Discard changes / Cancel** when needed. Each accepted document starts a separate Undo/Redo history and saving destination. A cancelled or failed read/save keeps the current document. Apply unfinished equation drafts before choosing Save changes to leave a document; drafts are not part of a portable deck save. Keep recovery and continue explicitly stores the latest local copy, including drafts, before switching. If that write fails, the current presentation stays open. Discard does not force a new recovery write; previously autosaved copies remain available until explicitly removed. The browser uses its own leave-page warning.
+
+Automatic recovery chooses the newest valid timestamp across IndexedDB and localStorage, rather than preferring one storage backend. **Resume previous work** restores the current workspace. **File → Recovered documents**, also available on the startup screen, lists separate local copies of previously opened or created presentations. Autosaves update the copy for that work session; reopening the same file keeps the preceding session separately.
+
+Open copy restores text, fonts, media, relationships and unfinished equation drafts into a fresh editing session with independent Undo/Redo. It starts without a file destination, so saving the copy cannot silently overwrite its original. A failed restore leaves the current presentation intact.
+
+History retains up to **10 copies and 100 MiB combined**. Older copies are not automatically evicted; remove a copy explicitly to free space, or save a portable file. Remove asks for confirmation and leaves the open presentation and saved files available. A later edit may create a new recovery copy of an open presentation. A damaged copy is reported separately and does not block other valid copies. Browser quota can be smaller than the configured limit; the current-workspace backup and document-history storage are separate.
 
 Automatic recovery uses local IndexedDB, with a **100 MiB** record limit and a smaller localStorage fallback. It can retain up to **200** unfinished equation drafts. Web and desktop recovery stores are separate. Unapplied drafts and the personal equation library are not included in saved `.scislide` files. Save explicitly, especially for media-heavy decks, and check failure feedback. See [[Troubleshooting]].
 

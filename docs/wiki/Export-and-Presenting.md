@@ -20,18 +20,33 @@ The built web app in `dist/` is the editor application; it is not a standalone H
 
 PowerPoint export preserves slide order, deck dimensions, object position/rotation and the final click-build state. Text and shapes remain editable in PowerPoint. Inline mathematics is split into editable prose and separate equation graphics. Standalone equations and scientific figures are also exported as graphics; equation graphics are not editable Office equations. Speaker notes are included.
 
-PPTX references the deck's text fonts without embedding them. Install those fonts on the computer opening the presentation to avoid substitution and text-layout changes. Native PowerPoint text uses regular or bold weights: SciSlide weights 400/500 export as regular and 600/700 as bold. Equation and figure graphics include a raster fallback for viewers without SVG support. Videos become labeled static placeholders, and click builds do not become PowerPoint animations. PPTX import and round-trip preservation of SciSlide editing settings are not implemented.
+PPTX references editable body-text fonts without embedding them. Install those fonts on the computer opening the presentation to avoid substitution and text-layout changes. Validated fonts already embedded inside an imported SVG figure remain inside that figure's SVG graphic. Native PowerPoint text uses regular or bold weights: SciSlide weights 400/500 export as regular and 600/700 as bold. Equation and figure graphics include a raster fallback for viewers without SVG support. Videos become labeled static placeholders, and click builds do not become PowerPoint animations. PPTX import and round-trip preservation of SciSlide editing settings are not implemented.
 
 ## What PDF and SVG preserve
 
 - The final click-build state: all ordinarily visible objects appear together. One-page-per-build export is not implemented.
 - Deck-wide page numbers, figure crops, insets, shapes and object transforms.
 - MathJax equations and valid saved Local LaTeX outlines as vectors, including inline formulas within text.
-- Modern Korean text through bundled Nanum Gothic. Latin-only body text uses Inter. PDF embeds used font subsets; SVG includes required font data.
+- Bundled Inter and Nanum Gothic body text, including supported modern Korean. Text can follow the deck's default family or use an explicit object family. PDF embeds used font subsets; SVG includes required font data.
 
 Video objects become **labeled static placeholders** in PDF/SVG. Exports do not contain playable videos, animations, speaker notes or presenter controls. Imported PDF pages are rendered to high-resolution PNG figures, so their original PDF vector content is not retained.
 
 The exporter validates resources before producing the output. Missing assets, stale Local LaTeX results, unsupported text glyphs and SVG features such as filters, masks or `textPath` can stop PDF export with an object/slide-specific error. Outline imported figure text or simplify the figure when needed. See [Troubleshooting](Troubleshooting) and [Equations and fonts](Equations-and-Fonts).
+
+## Imported SVG fonts
+
+Import and export use the same SVG stylesheet validation: ordinary supported plot styles are flattened, and only bounded, embedded binary font rules are retained. Font families are isolated per figure so that one imported font cannot replace another figure's or the slide's font.
+
+| Font or text in an imported SVG                               | SVG output and PPTX figure graphic                             | PDF output                                                 |
+| ------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------- |
+| Validated embedded normal TTF at a supported requested weight | Retained inside the SVG graphic. Viewer support still applies. | Embedded with glyph coverage checked.                      |
+| Embedded OTF, WOFF or WOFF2 used by visible text              | Retained.                                                      | Unsupported; export stops with a font diagnostic.          |
+| Italic/oblique text, unavailable weights or missing glyphs    | Retained where supported by the SVG viewer.                    | Unsupported; export stops rather than substituting a font. |
+| Remote font or unsupported stylesheet                         | Rejected during import.                                        | Unavailable.                                               |
+
+After SVG import, paste, drop or replacement, the editor reports known PDF limitations early and shows an **Export compatibility** note when the figure is selected. The check follows visible text and used fonts/effects; an unused embedded font does not create a warning. It does not perform font conversion or prove complete glyph coverage, which the final PDF preflight still checks.
+
+An SVG accepted for viewing and saving is therefore not guaranteed to support every output format. Outline unsupported figure text before importing, or choose SVG/PPTX output. The native `.scislide` source and its embedded font data remain intact if export fails. Full equivalence between every accepted SVG font format and PDF output remains unfinished.
 
 ## Audience slideshow
 

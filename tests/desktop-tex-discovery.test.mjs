@@ -10,6 +10,9 @@ import {
 } from "../desktop/tex-discovery.mjs";
 import { bubblewrapArgs } from "../desktop/tex.mjs";
 
+const executableName = (name) =>
+  process.platform === "win32" ? `${name}.exe` : name;
+
 async function fixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), "scislide-tex-discovery-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -19,9 +22,13 @@ async function fixture(t) {
   await mkdir(bin, { recursive: true });
   await mkdir(path.join(installation, "texmf-dist"));
   for (const name of ["latex", "xelatex", "dvisvgm", "kpsewhich"])
-    await writeFile(path.join(bin, name), "#!/bin/sh\nexit 0\n", {
-      mode: 0o755,
-    });
+    await writeFile(
+      path.join(bin, executableName(name)),
+      "#!/bin/sh\nexit 0\n",
+      {
+        mode: 0o755,
+      },
+    );
   return { root, home, installation, bin };
 }
 
@@ -35,35 +42,41 @@ test("finds a home TeX Live installation with a file manager's minimal PATH", as
   });
   assert.ok(directories.includes(bin));
   const paths = await discoverTexBinaries({
-    platform: "linux",
+    platform: process.platform,
     env: { PATH: "/nonexistent" },
     binDirectory: bin,
     texliveRoots: [],
   });
-  assert.equal(paths.latex, path.join(bin, "latex"));
-  assert.equal(paths.converter, path.join(bin, "dvisvgm"));
-  assert.equal(paths.kpsewhich, path.join(bin, "kpsewhich"));
+  assert.equal(paths.latex, path.join(bin, executableName("latex")));
+  assert.equal(paths.converter, path.join(bin, executableName("dvisvgm")));
+  assert.equal(paths.kpsewhich, path.join(bin, executableName("kpsewhich")));
 });
 
 test("an explicitly chosen folder or SCISLIDE_TEX_BIN overrides the inherited PATH", async (t) => {
   const { root, bin } = await fixture(t);
   const other = path.join(root, "other installation with spaces");
   await mkdir(other);
-  await writeFile(path.join(other, "latex"), "#!/bin/sh\nexit 0\n", {
-    mode: 0o755,
-  });
+  await writeFile(
+    path.join(other, executableName("latex")),
+    "#!/bin/sh\nexit 0\n",
+    {
+      mode: 0o755,
+    },
+  );
   for (const options of [
     { binDirectory: other },
     { env: { PATH: bin, SCISLIDE_TEX_BIN: other } },
   ]) {
     const paths = await discoverTexBinaries({
-      platform: "linux",
+      // Fixture paths belong to the host; Windows drive letters must not be
+      // split using Linux's PATH delimiter.
+      platform: process.platform,
       env: { PATH: bin },
       texliveRoots: [],
       ...options,
     });
-    assert.equal(paths.latex, path.join(other, "latex"));
-    assert.equal(paths.converter, path.join(bin, "dvisvgm"));
+    assert.equal(paths.latex, path.join(other, executableName("latex")));
+    assert.equal(paths.converter, path.join(bin, executableName("dvisvgm")));
   }
   const directories = await texSearchDirectories({
     platform: "linux",

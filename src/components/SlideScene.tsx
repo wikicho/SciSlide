@@ -29,6 +29,7 @@ import type { SceneGuide } from "./SmartGuideOverlay";
 import { isLineShape, lineEndpoints } from "../lib/shape-geometry";
 import {
   exportTextFontFamily,
+  effectiveTextFontFamily,
   exportTextFontWeight,
   isKoreanFontFamily,
   KOREAN_FONT_FAMILY,
@@ -206,10 +207,19 @@ export function SlideScene({
     if (
       object.type === "text" &&
       object.visible &&
-      isKoreanFontFamily(exportTextFontFamily(object.text, object.fontFamily))
+      isKoreanFontFamily(
+        exportTextFontFamily(
+          object.text,
+          effectiveTextFontFamily(deck, object),
+        ),
+      )
     ) {
       koreanWeights.add(
-        exportTextFontWeight(object.text, object.fontFamily, object.fontWeight),
+        exportTextFontWeight(
+          object.text,
+          effectiveTextFontFamily(deck, object),
+          object.fontWeight,
+        ),
       );
     }
   }
@@ -268,7 +278,7 @@ export function SlideScene({
         inline ? object.text : inlinePlainText(object.text),
         object.transform.width,
         object.fontSize,
-        object.fontFamily,
+        effectiveTextFontFamily(deck, object),
         object.fontWeight,
       );
       const measured = inlineMetrics[object.id];
@@ -288,6 +298,8 @@ export function SlideScene({
     preview,
     inlineMetrics,
     deck.theme.equation.fontSetId,
+    deck.theme.inlineMathFontSetId,
+    deck.theme.fontFamily,
     textFontRevision,
   ]);
   useEffect(() => {
@@ -302,7 +314,7 @@ export function SlideScene({
           editingObject.transform.width,
           editingObject.transform.height,
           editingObject.fontSize,
-          editingObject.fontFamily,
+          effectiveTextFontFamily(deck, editingObject),
           editingObject.fontWeight,
         ])
       : "";
@@ -411,12 +423,12 @@ export function SlideScene({
                     fontSize={o.fontSize}
                     fontWeight={exportTextFontWeight(
                       inlinePlainText(o.text),
-                      o.fontFamily,
+                      effectiveTextFontFamily(deck, o),
                       o.fontWeight,
                     )}
                     fontFamily={exportTextFontFamily(
                       inlinePlainText(o.text),
-                      o.fontFamily,
+                      effectiveTextFontFamily(deck, o),
                     )}
                     textAnchor={
                       o.align === "center"

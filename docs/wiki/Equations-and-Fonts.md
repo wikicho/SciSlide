@@ -52,7 +52,11 @@ Constraining $U(1)_{L_\mu - L_\tau}$ Model with Dark Matter Using Relic Density 
 
 Only the delimited parts become formulas; surrounding words remain ordinary text. Use `_` for subscripts inside formulas, without Markdown escapes (`\_`) or emphasis markers (`*`). Match each opening `{` with a closing `}`.
 
-Formulas use the deck's equation font and the text box's size/color. They share the text baseline and wrap with surrounding words; tall formulas expand line spacing. Left, center and right alignment apply to the entire mixed line. While editing on the canvas, the rendered result stays in its slide position and an editable source field appears below it (or above near the bottom of the slide). The source is preserved in the file; finish with **⌘+Enter** on macOS or **Ctrl+Enter** on Windows/Linux. PDF/SVG retains vector formulas and selectable ordinary text.
+Inline formulas default to **Latin Modern**, the traditional Computer Modern / LaTeX math style, including existing decks without an inline font preference. Change **Document → Deck typography → Inline math font** to choose another bundled font. The inline popup, slide, and exports all use that setting. Ordinary text keeps its own font; separate equation objects use **Default math font**.
+
+A text object's **Inline math font** can override the deck default. Choose **Use deck inline math default** to restore inheritance. Copying a mixed text/equation object or its slide preserves the source's effective inline font, so pasting into another deck keeps the same equation glyphs; the target deck's defaults remain unchanged. The inline equation editor and exports use the object's effective font.
+
+Formulas use the text box's size/color. They share the text baseline and wrap with surrounding words; tall formulas expand line spacing. Left, center and right alignment apply to the entire mixed line. While editing on the canvas, the rendered result stays in its slide position and an upright editable source field appears below or above it. The source panel stays within the slide and scrolls when the text frame or source is too tall. The source is preserved in the file; finish with **⌘+Enter** on macOS or **Ctrl+Enter** on Windows/Linux. PDF/SVG retains vector formulas and selectable ordinary text.
 
 Use `\$` for a literal dollar sign. Empty/unmatched delimiters and standalone `$$...$$` spans remain literal; use an Equation object for display mathematics. An invalid formula appears as red source with a diagnostic; surrounding prose and valid formulas continue rendering. Double-click the failed formula to correct it. Invalid formulas prevent PDF/SVG export with the object's name. Installed LaTeX packages apply only to separate Local LaTeX equation objects.
 
@@ -92,6 +96,12 @@ Valid applied results are embedded as passive outlined SVG in `.scislide` files.
 
 ## Ordinary text fonts
 
-Latin text uses bundled **Inter**; supported modern Korean text uses bundled **Nanum Gothic Regular/Bold**, including PDF/SVG output. These body-text fonts are separate from equation fonts. Unsupported body-text glyphs, including Hanja and old/combining Jamo, can stop PDF export; Local LaTeX outlines do not extend body-text font coverage. See [[Export-and-Presenting]].
+Choose bundled **Inter** or **Nanum Gothic** in **Document → Deck typography → Default text font**. New text, templates and AI draft text follow this default. Existing text without an inheritance setting retains its explicit family; changing the deck default does not replace it. Select existing text and choose **Use deck text font for selected text**, or choose **Use deck default** in the object's **Text font** control, to follow future default changes. Selecting an explicit object font ends that inheritance. Copied objects retain their effective source family when pasted into another deck.
+
+Body text, **Default math font** for standalone equations and **Inline math font** are independent. In the MathJax equation editor, **Reset to deck typography → Apply equation** removes font, size and color overrides so later deck changes also apply. Local LaTeX font changes use the preamble and require recompilation.
+
+Supported modern Korean text uses bundled **Nanum Gothic Regular/Bold**, including PDF/SVG output. Unsupported body-text glyphs, including Hanja and old/combining Jamo, can stop PDF export; Local LaTeX outlines do not extend body-text font coverage. Arbitrary existing body-font names remain readable in native files, but are not added to the bundled font selector or guaranteed for PDF embedding.
+
+Imported SVG figures have a separate font policy. Validated embedded TTF/OTF/WOFF/WOFF2 font data is retained in native files, SVG output and PPTX figure graphics. PDF supports normal embedded TrueType faces at supported requested weights and checks their glyph maps. Visible text using OTF/WOFF/WOFF2, italic/oblique text, unsupported weights or unavailable glyphs can be accepted at import and rejected later by PDF export. Outline that figure text or export SVG/PPTX. The imported font does not become a selectable body or MathJax font. See [[Export-and-Presenting]] for the remaining format-specific limits.
 
 [Wiki home](Home)

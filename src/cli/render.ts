@@ -3,7 +3,11 @@ import path from "node:path";
 // @ts-expect-error The installed jsdom runtime does not ship TypeScript declarations.
 import { JSDOM } from "jsdom";
 import { jsPDF } from "jspdf";
-import { exportDeckPdf, exportSlideSvg } from "../lib/export";
+import {
+  addFigurePdfFonts,
+  exportDeckPdf,
+  exportSlideSvg,
+} from "../lib/export";
 import type { Deck } from "../lib/model";
 import { firstFontFamily, TEXT_FONT_WEIGHTS } from "../lib/text-fonts";
 
@@ -29,6 +33,12 @@ type HeadlessWindow = Window & typeof globalThis;
 let initialization: Promise<void> | undefined;
 let fontDirectory: string | undefined;
 let standardAliasesInstalled = false;
+interface MeasurementRegistry {
+  pdf: jsPDF;
+  figureFonts: Map<string, number[]>;
+}
+let measurements: MeasurementRegistry | undefined;
+let pdfQueue: Promise<unknown> = Promise.resolve();
 
 function installStandardFontAliases() {
   if (standardAliasesInstalled) return;
@@ -68,11 +78,28 @@ function fontRequest(css: string) {
   const family = firstFontFamily(match[2]);
   const weight = /\bbold\b/.test(prefix)
     ? 700
-    : Number(prefix.match(/\b[1-9]00\b/)?.[0] ?? 400);
+    : Number(prefix.match(/\b(?:[1-9]\d{0,2}|1000)\b/)?.[0] ?? 400);
   return { family, weight, size: Number(match[1]) };
 }
 
-function measurementFont(family: string, weight: number) {
+function measurementFont(
+  family: string,
+  weight: number,
+  figureFonts?: Map<string, number[]>,
+) {
+  const weights = /^slide-\d+-object-\d+-font-\d+$/.test(family)
+    ? figureFonts?.get(family)
+    : undefined;
+  if (weights?.length) {
+    // svg2pdf probes every family with normal/400 before measuring its actual
+    // weight. Match the nearest declared face for that passive probe as a browser does.
+    const nearest = weights.reduce((selected, candidate) =>
+      Math.abs(candidate - weight) < Math.abs(selected - weight)
+        ? candidate
+        : selected,
+    );
+    return { family, style: fontStyle(nearest), bundled: true };
+  }
   const generic = family.toLowerCase();
   if (generic === "inter" || generic === "nanum gothic")
     return {
@@ -105,9 +132,14 @@ function measurementFont(family: string, weight: number) {
   );
 }
 
-function textMeasurement(pdf: jsPDF, text: string, css: string): TextMetrics {
+function textMeasurement(
+  registry: MeasurementRegistry,
+  text: string,
+  css: string,
+): TextMetrics {
+  const { pdf, figureFonts } = registry;
   const request = fontRequest(css);
-  const selected = measurementFont(request.family, request.weight);
+  const selected = measurementFont(request.family, request.weight, figureFonts);
   pdf.setFont(selected.family, selected.style);
   pdf.setFontSize(request.size * 0.75);
   const width = pdf.getTextWidth(text);
@@ -143,7 +175,10 @@ function textMeasurement(pdf: jsPDF, text: string, css: string): TextMetrics {
   } as TextMetrics;
 }
 
-function installMeasurements(window: HeadlessWindow, pdf: jsPDF) {
+function installMeasurements(
+  window: HeadlessWindow,
+  registry: MeasurementRegistry,
+) {
   const contexts = new WeakMap<HTMLCanvasElement, object>();
   Object.defineProperty(window.HTMLCanvasElement.prototype, "getContext", {
     value(this: HTMLCanvasElement, kind: string) {
@@ -153,7 +188,7 @@ function installMeasurements(window: HeadlessWindow, pdf: jsPDF) {
         context = {
           font: "10px sans-serif",
           measureText(this: { font: string }, value: string) {
-            return textMeasurement(pdf, value, this.font);
+            return textMeasurement(registry, value, this.font);
           },
         };
         contexts.set(this, context);
@@ -175,7 +210,7 @@ function installMeasurements(window: HeadlessWindow, pdf: jsPDF) {
       const weight =
         computed.fontWeight || this.getAttribute("font-weight") || "400";
       const metrics = textMeasurement(
-        pdf,
+        registry,
         this.textContent ?? "",
         `${weight} ${Number.parseFloat(size)}px ${family}`,
       );
@@ -362,6 +397,9 @@ async function prepareHeadlessDom(fontsDir: string) {
     "SVGSVGElement",
     "DOMParser",
     "XMLSerializer",
+    // The shared SVG importer constructs sheets; svg2pdf checks rule instances.
+    "CSSStyleSheet",
+    "CSSStyleRule",
   ] as const)
     Object.defineProperty(globalThis, name, {
       configurable: true,
@@ -373,7 +411,9 @@ async function prepareHeadlessDom(fontsDir: string) {
     writable: true,
     value: window.getComputedStyle.bind(window),
   });
-  installMeasurements(window, pdf);
+  const registry: MeasurementRegistry = { pdf, figureFonts: new Map() };
+  measurements = registry;
+  installMeasurements(window, registry);
   installImage(window, pdf);
   class FontFaceAdapter {
     async load() {
@@ -391,7 +431,7 @@ async function prepareHeadlessDom(fontsDir: string) {
       add() {},
       async load(css: string) {
         const request = fontRequest(css);
-        measurementFont(request.family, request.weight);
+        measurementFont(request.family, request.weight, registry.figureFonts);
         return [];
       },
     },
@@ -468,6 +508,22 @@ export async function renderAgentPdf(
   options: HeadlessRenderOptions,
 ): Promise<Uint8Array> {
   await initializeHeadlessDom(options);
-  const pdf = await exportDeckPdf(deck);
-  return new Uint8Array(await pdf.arrayBuffer());
+  const render = async () => {
+    const registry = measurements!;
+    try {
+      const pdf = await exportDeckPdf(deck, {
+        prepareSvg(svg) {
+          registry.figureFonts = addFigurePdfFonts(registry.pdf, svg);
+        },
+      });
+      return new Uint8Array(await pdf.arrayBuffer());
+    } finally {
+      registry.figureFonts = new Map();
+    }
+  };
+  // The passive DOM and measurement registry are shared within one process.
+  // Keep each PDF's current slide fonts isolated while svg2pdf awaits resources.
+  const result = pdfQueue.then(render, render);
+  pdfQueue = result.catch(() => undefined);
+  return result;
 }

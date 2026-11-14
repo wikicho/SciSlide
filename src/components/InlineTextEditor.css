@@ -25,3 +25,8 @@
   outline: 2px solid rgb(107 114 128 / 45%);
   outline-offset: -2px;
 }
+
+.inline-text-source-editor {
+  overflow: auto;
+  background: #ffffff;
+}

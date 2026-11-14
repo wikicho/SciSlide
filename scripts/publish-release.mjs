@@ -137,7 +137,19 @@ function githubApi(repo, token) {
 
 /** Publish only verified artifacts from the current trusted release workflow. */
 export async function publishRelease(options, dependencies = {}) {
-  const { repo, sha, runId, directory, root = projectRoot, token } = options;
+  const {
+    repo,
+    sha,
+    runId,
+    directory,
+    root = projectRoot,
+    token,
+    channel = "prerelease",
+  } = options;
+  require(["prerelease", "stable"].includes(
+    channel,
+  ), "Invalid release channel");
+  const prerelease = channel === "prerelease";
   require(repo === trustedRepository &&
     /^[0-9a-f]{40}$/.test(sha) &&
     /^[1-9][0-9]*$/.test(
@@ -147,6 +159,10 @@ export async function publishRelease(options, dependencies = {}) {
     await readFile(path.join(root, "package.json"), "utf8"),
   );
   const version = pkg.version;
+  require(prerelease ||
+    !version.includes(
+      "-",
+    ), "Stable releases require a version without a prerelease suffix");
   const tag = `v${version}`;
   const files = await verifyReleaseFiles({ root, directory, version });
   const api = dependencies.api ?? githubApi(repo, token);
@@ -163,6 +179,9 @@ export async function publishRelease(options, dependencies = {}) {
     run.name === "SciSlide development release" &&
     run.path ===
       ".github/workflows/release.yml", "Artifacts must come from the trusted release workflow at the requested source commit");
+  require(prerelease ||
+    run.event ===
+      "workflow_dispatch", "Stable publication requires an explicit workflow dispatch");
   async function tagCommit() {
     const ref = await api(`git/ref/tags/${encodeURIComponent(tag)}`, {
       missing: true,
@@ -196,10 +215,10 @@ export async function publishRelease(options, dependencies = {}) {
       body: {
         tag_name: tag,
         target_commitish: sha,
-        name: `SciSlide ${version} — development release`,
+        name: `SciSlide ${version}${prerelease ? " — development release" : ""}`,
         body,
         draft: true,
-        prerelease: true,
+        prerelease,
         make_latest: "false",
       },
     });
@@ -208,7 +227,7 @@ export async function publishRelease(options, dependencies = {}) {
   require(release?.tag_name === tag &&
     release.target_commitish === sha &&
     release.prerelease ===
-      true, "Existing release does not match this development source");
+      prerelease, "Existing release does not match this source and release channel");
   async function checkedAssets(complete = false) {
     const assets = await api(`releases/${release.id}/assets?per_page=100`);
     require(assets.length <= files.size &&
@@ -256,8 +275,8 @@ export async function publishRelease(options, dependencies = {}) {
         "--notes-file",
         notesFile,
         "--draft=false",
-        "--prerelease",
-        "--latest=false",
+        prerelease ? "--prerelease" : "--prerelease=false",
+        prerelease ? "--latest=false" : "--latest=true",
       ]);
     } finally {
       await rm(notesDirectory, { recursive: true, force: true });
@@ -270,7 +289,7 @@ export async function publishRelease(options, dependencies = {}) {
     published.target_commitish === sha &&
     published.draft === false &&
     published.prerelease ===
-      true, "Release did not finish publication as the expected development prerelease");
+      prerelease, "Release did not finish publication in the expected release channel");
   return {
     tag,
     sha,
@@ -291,6 +310,7 @@ if (
       runId: process.env.GITHUB_RUN_ID,
       token: process.env.GH_TOKEN,
       directory: path.resolve(process.argv[2] ?? "publish"),
+      channel: process.env.SCISLIDE_RELEASE_CHANNEL ?? "prerelease",
     });
     if (process.env.GITHUB_STEP_SUMMARY)
       await appendFile(

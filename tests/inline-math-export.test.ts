@@ -201,46 +201,50 @@ describe("inline mathematics in SVG and PDF export", () => {
     expect(object.text).toBe(source);
   });
 
-  it("inherits the deck math font but uses the text object's size and color", async () => {
-    const { deck, object } = textDeck("Value $\\chi$ here", {
-      fontSize: 28,
-      color: "#934b12",
-      fontWeight: 600,
-    });
-    deck.theme.equation.fontSetId = "mathjax-modern";
-    deck.theme.equation.fontSize = 90;
-    deck.theme.equation.color = "#00ffff";
-    const svg = await renderSlideSvg(deck, deck.slides[0], 0);
-    const math = mathRuns(svg)[0];
-    const expected = await renderEquation(
-      "\\chi",
-      "mathjax-modern",
-      28,
-      "#934b12",
-      false,
-    );
-    const expectedSvg = new DOMParser().parseFromString(
-      expected.svg,
-      "image/svg+xml",
-    ).documentElement;
-    const opticalScale = (object.fontSize * 0.5) / expected.xHeight!;
-    expect(glyphPaths(math)).toEqual(glyphPaths(expectedSvg));
-    expect(Number(math.getAttribute("width"))).toBeCloseTo(
-      expected.width * opticalScale,
-      7,
-    );
-    expect(Number(math.getAttribute("height"))).toBeCloseTo(
-      expected.height * opticalScale,
-      7,
-    );
-    expect(math.getAttribute("fill")).toBe(object.color);
-    expect(
-      textRuns(svg).every((run) => run.getAttribute("font-size") === "28"),
-    ).toBe(true);
-    expect(
-      textRuns(svg).every((run) => run.getAttribute("font-weight") === "600"),
-    ).toBe(true);
-  });
+  it.each([undefined, "mathjax-fira", "mathjax-stix2"] as const)(
+    "exports the inline font preference %s with the text object's size and color",
+    async (font) => {
+      const { deck, object } = textDeck("Value $\\chi$ here", {
+        fontSize: 28,
+        color: "#934b12",
+        fontWeight: 600,
+      });
+      deck.theme.inlineMathFontSetId = font;
+      deck.theme.equation.fontSetId = "mathjax-fira";
+      deck.theme.equation.fontSize = 90;
+      deck.theme.equation.color = "#00ffff";
+      const svg = await renderSlideSvg(deck, deck.slides[0], 0);
+      const math = mathRuns(svg)[0];
+      const expected = await renderEquation(
+        "\\chi",
+        font ?? "mathjax-modern",
+        28,
+        "#934b12",
+        false,
+      );
+      const expectedSvg = new DOMParser().parseFromString(
+        expected.svg,
+        "image/svg+xml",
+      ).documentElement;
+      const opticalScale = (object.fontSize * 0.5) / expected.xHeight!;
+      expect(glyphPaths(math)).toEqual(glyphPaths(expectedSvg));
+      expect(Number(math.getAttribute("width"))).toBeCloseTo(
+        expected.width * opticalScale,
+        7,
+      );
+      expect(Number(math.getAttribute("height"))).toBeCloseTo(
+        expected.height * opticalScale,
+        7,
+      );
+      expect(math.getAttribute("fill")).toBe(object.color);
+      expect(
+        textRuns(svg).every((run) => run.getAttribute("font-size") === "28"),
+      ).toBe(true);
+      expect(
+        textRuns(svg).every((run) => run.getAttribute("font-weight") === "600"),
+      ).toBe(true);
+    },
+  );
 
   it("exports optically scaled viewports with the shared run bounds and mathematical baselines", async () => {
     const { deck, object } = textDeck("Left $x$ right $\\frac{1}{2}$ end", {
@@ -510,9 +514,11 @@ describe("inline mathematics in SVG and PDF export", () => {
   it("round-trips raw inline source without changing native text fields or format", async () => {
     const source = "State \\(\\mathbb{R}^n\\) includes $\\chi$; cost \\$5.";
     const { deck } = textDeck(source);
+    deck.theme.inlineMathFontSetId = "mathjax-fira";
     const restored = await readDeckArchive(await buildDeckArchive(deck));
     const object = restored.slides[0].objects[0] as TextObject;
     expect(restored.formatVersion).toBe("0.5.0");
+    expect(restored.theme.inlineMathFontSetId).toBe("mathjax-fira");
     expect(object.type).toBe("text");
     expect(object.text).toBe(source);
     expect(restored.assets).toEqual([]);

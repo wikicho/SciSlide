@@ -1,11 +1,6 @@
 import { FONT_SET_IDS, MAX_VIDEO_BYTES, validateDeck } from "./model";
 import type { Deck, FontSetId, LocalTexEngine } from "./model";
-import {
-  MAX_FIGURE_BYTES,
-  loadRecovery,
-  saveRecovery,
-  sanitizeSvg,
-} from "./persistence";
+import { MAX_FIGURE_BYTES, sanitizeSvg } from "./persistence";
 import { assertEquationDocumentLimits } from "./local-tex-draft";
 
 export const WORKSPACE_RECOVERY_KEY = "scislide.workspace-recovery.v2";
@@ -17,6 +12,8 @@ const RECORD = "workspace";
 const LEGACY_RECOVERY_KEY = "scislide.recovery.v1";
 
 export interface EquationDraft {
+  /** True means Apply removes typography overrides and follows document defaults. */
+  inheritTypography?: boolean;
   latex: string;
   font: FontSetId;
   size: number;
@@ -58,6 +55,8 @@ export function validateEquationDraft(value: unknown): EquationDraft {
     throw new Error("Recovery equation source is invalid.");
   assertEquationDocumentLimits(draft.latex, draft.preamble);
   if (
+    (draft.inheritTypography !== undefined &&
+      typeof draft.inheritTypography !== "boolean") ||
     !FONT_SET_IDS.includes(draft.font) ||
     !Number.isFinite(draft.size) ||
     draft.size < 4 ||
@@ -72,6 +71,9 @@ export function validateEquationDraft(value: unknown): EquationDraft {
   )
     throw new Error("Recovery equation settings are invalid.");
   return {
+    ...(draft.inheritTypography !== undefined
+      ? { inheritTypography: draft.inheritTypography }
+      : {}),
     latex: draft.latex,
     font: draft.font,
     size: draft.size,
@@ -242,33 +244,43 @@ async function writeIndexedRecovery(
   });
 }
 
+function newestRecovery(
+  candidates: WorkspaceRecovery[],
+): WorkspaceRecovery | null {
+  return candidates.reduce<WorkspaceRecovery | null>(
+    (latest, candidate) =>
+      !latest || candidate.savedAt > latest.savedAt ? candidate : latest,
+    null,
+  );
+}
+
 function readFallbackRecovery(): WorkspaceRecovery | null {
-  // Storage access errors mean an unseen snapshot may exist. Only a successful
-  // read returning null permits treating this origin as having no saved work.
-  const raw = localStorage.getItem(WORKSPACE_RECOVERY_KEY);
+  const candidates: WorkspaceRecovery[] = [];
   let failure: unknown;
-  if (raw !== null) {
+  for (const key of [WORKSPACE_RECOVERY_KEY, LEGACY_RECOVERY_KEY]) {
     try {
-      return validateWorkspaceRecovery(JSON.parse(raw));
+      const source = localStorage.getItem(key);
+      if (source === null) continue;
+      const raw = JSON.parse(source);
+      candidates.push(
+        validateWorkspaceRecovery(
+          key === LEGACY_RECOVERY_KEY
+            ? {
+                deck: raw.deck,
+                equationDrafts: [],
+                // Older records without a timestamp have unknown age. Reading
+                // them must never make them newer than a dated snapshot.
+                savedAt: raw.savedAt ?? new Date(0).toISOString(),
+              }
+            : raw,
+        ),
+      );
     } catch (error) {
-      failure = error;
+      failure ??= error;
     }
   }
-  const legacyRaw = localStorage.getItem(LEGACY_RECOVERY_KEY);
-  const legacy = loadRecovery();
-  if (legacy) {
-    try {
-      return validateWorkspaceRecovery({
-        deck: legacy,
-        equationDrafts: [],
-        savedAt: new Date().toISOString(),
-      });
-    } catch (error) {
-      failure = error;
-    }
-  } else if (legacyRaw !== null) {
-    failure ??= new Error("The existing legacy recovery record is invalid.");
-  }
+  const latest = newestRecovery(candidates);
+  if (latest) return latest;
   if (failure)
     throw new Error(
       "Saved workspace recovery could not be read. Existing data was preserved.",
@@ -278,36 +290,51 @@ function readFallbackRecovery(): WorkspaceRecovery | null {
 }
 
 export async function loadWorkspaceRecovery(): Promise<WorkspaceRecovery | null> {
-  const database = await openDatabase();
-  if (!database) return readFallbackRecovery();
+  const candidates: WorkspaceRecovery[] = [];
+  let failure: unknown;
+  let database: IDBDatabase | null = null;
+  let indexedEmpty = false;
   try {
-    const raw = await readIndexedRecovery(database);
-    if (raw !== undefined) {
-      try {
-        return validateWorkspaceRecovery(raw);
-      } catch (error) {
-        const fallback = readFallbackRecovery();
-        if (fallback) return fallback;
-        throw new Error(
-          "Saved workspace recovery could not be read. Existing data was preserved.",
-          { cause: error },
-        );
-      }
+    database = await openDatabase();
+    if (database) {
+      const raw = await readIndexedRecovery(database);
+      indexedEmpty = raw === undefined;
+      if (!indexedEmpty) candidates.push(validateWorkspaceRecovery(raw));
     }
-    const migrated = readFallbackRecovery();
-    if (migrated) {
-      try {
-        await writeIndexedRecovery(database, migrated);
-      } catch {
-        /* A readable legacy snapshot remains usable even if migration cannot be saved. */
+  } catch (error) {
+    failure = error;
+  }
+  try {
+    const fallback = readFallbackRecovery();
+    if (fallback) candidates.push(fallback);
+  } catch (error) {
+    failure ??= error;
+  }
+  const latest = newestRecovery(candidates);
+  try {
+    if (latest) {
+      lastSavedAt = Math.max(lastSavedAt, Date.parse(latest.savedAt));
+      if (database && indexedEmpty) {
+        try {
+          await writeIndexedRecovery(database, latest);
+        } catch {
+          /* A readable local snapshot remains usable if migration fails. */
+        }
       }
+      return latest;
     }
-    return migrated;
+    if (failure)
+      throw new Error(
+        "Saved workspace recovery could not be read. Existing data was preserved.",
+        { cause: failure },
+      );
+    return null;
   } finally {
-    database.close();
+    database?.close();
   }
 }
 
+let lastSavedAt = 0;
 let saveQueue: Promise<unknown> = Promise.resolve();
 
 /** Serialize writes so a slower previous save can never replace a newer revision. */
@@ -318,10 +345,12 @@ export function saveWorkspaceRecovery(
   // Clone before awaiting so caller edits cannot change the pending snapshot.
   let recovery: WorkspaceRecovery;
   try {
+    // Preserve ordering even for same-millisecond saves or a clock adjustment.
+    lastSavedAt = Math.max(Date.now(), lastSavedAt + 1);
     recovery = validateWorkspaceRecovery({
       deck,
       equationDrafts,
-      savedAt: new Date().toISOString(),
+      savedAt: new Date(lastSavedAt).toISOString(),
     });
   } catch (error) {
     return Promise.reject(error);
@@ -329,12 +358,8 @@ export function saveWorkspaceRecovery(
   const save = async (): Promise<"indexeddb" | "localStorage"> => {
     const database = await openDatabase();
     if (!database) {
-      if (recovery.equationDrafts.length) {
-        localStorage.setItem(WORKSPACE_RECOVERY_KEY, JSON.stringify(recovery));
-      } else {
-        saveRecovery(recovery.deck);
-        localStorage.removeItem(WORKSPACE_RECOVERY_KEY);
-      }
+      // Keep the original timestamp even when no equation drafts remain.
+      localStorage.setItem(WORKSPACE_RECOVERY_KEY, JSON.stringify(recovery));
       return "localStorage";
     }
     try {

@@ -295,6 +295,51 @@ describe("editor workspace recovery and unapplied equation drafts", () => {
     );
   });
 
+  it("shows pending recovery until the current edit is stored, even if an older write finishes", async () => {
+    const previousWrite = deferred<"indexeddb" | "localStorage">();
+    const currentWrite = deferred<"indexeddb" | "localStorage">();
+    vi.mocked(saveWorkspaceRecovery)
+      .mockReturnValueOnce(previousWrite.promise)
+      .mockReturnValueOnce(currentWrite.promise);
+    await render();
+    await hydrate(recoveryDeck());
+    expect(host.querySelector(".recovery-state")?.textContent).toBe(
+      "Saving locally…",
+    );
+    await tick();
+    await input("Presentation title", "Latest edit awaiting storage");
+    await act(async () => previousWrite.resolve("indexeddb"));
+    expect(host.querySelector(".recovery-state")?.textContent).toBe(
+      "Saving locally…",
+    );
+    await tick();
+    await act(async () => currentWrite.resolve("indexeddb"));
+    expect(host.querySelector(".recovery-state")?.textContent).toBe(
+      "Saved locally",
+    );
+  });
+
+  it("explains local-only drafts before a document transition and disables saving them as applied content", async () => {
+    const restored = recoveryDeck();
+    await render();
+    await hydrate(restored, [draft(restored, "equation-a", "a=unfinished")]);
+    await tick();
+    expect(host.querySelector(".equation-draft-state")?.textContent).toBe(
+      "1 equation draft · local only",
+    );
+    await click("New presentation");
+    await click("Create presentation");
+    const dialog = host.querySelector('[role="alertdialog"]')!;
+    const saveButton = [
+      ...dialog.querySelectorAll<HTMLButtonElement>("button"),
+    ].find((button) => button.textContent === "Save changes")!;
+    expect(saveButton.disabled).toBe(true);
+    expect(dialog.textContent).toContain("Apply");
+    await click("Cancel");
+    expect(latest().drafts[0].draft.latex).toBe("a=unfinished");
+    expect(latest().deck.id).toBe(restored.id);
+  });
+
   it("restores each equation draft independently while switching selections", async () => {
     const restored = recoveryDeck();
     const drafts = [
@@ -331,6 +376,9 @@ describe("editor workspace recovery and unapplied equation drafts", () => {
       draft(restored, "equation-a", "a=applied+source"),
       draft(restored, "equation-b", "b=still+unapplied"),
     ]);
+    expect(host.querySelector(".equation-draft-state")?.textContent).toBe(
+      "2 equation drafts · local only",
+    );
     await editEquation("Equation A");
     await tick(250);
     await click("Apply equation");
@@ -349,6 +397,9 @@ describe("editor workspace recovery and unapplied equation drafts", () => {
       latest().drafts.find((entry) => entry.equationId === "equation-b")?.draft
         .latex,
     ).toBe("b=still+unapplied");
+    expect(host.querySelector(".equation-draft-state")?.textContent).toBe(
+      "1 equation draft · local only",
+    );
     await editEquation("Equation B");
     await editEquation("Equation A");
     expect(field("LaTeX source").value).toBe("a=applied+source");

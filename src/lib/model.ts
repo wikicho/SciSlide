@@ -57,6 +57,10 @@ export interface TextObject extends BaseSlideObject {
   type: "text";
   text: string;
   fontFamily: string;
+  /** Absence means an explicit legacy font; deck retains a compatible fallback. */
+  fontFamilySource?: "deck";
+  /** Absence follows the deck's inline math setting; copied text can keep its own. */
+  inlineMathFontSetId?: FontSetId;
   fontSize: number;
   fontWeight: number;
   color: string;
@@ -142,6 +146,8 @@ export interface Deck {
   slideSize: { width: number; height: number; unit: "px96" };
   theme: {
     equation: { fontSetId: FontSetId; fontSize: number; color: string };
+    /** Inline math defaults to Latin Modern, independently of equation objects. */
+    inlineMathFontSetId?: FontSetId;
     fontFamily: string;
   };
   slides: Slide[];
@@ -366,6 +372,8 @@ export function validateDeck(value: unknown): Deck {
   fontSet(equationTheme.fontSetId, "Equation theme");
   number(equationTheme.fontSize, "Equation font size", 4, 500);
   color(equationTheme.color, "Equation color");
+  if (theme.inlineMathFontSetId !== undefined)
+    fontSet(theme.inlineMathFontSetId, "Inline math font");
   if (deck.pageNumbers !== undefined) {
     const settings = record(deck.pageNumbers, "Page number settings");
     boolean(settings.enabled, "Page number visibility");
@@ -480,6 +488,13 @@ export function validateDeck(value: unknown): Deck {
         case "text":
           string(object.text, "Text content", 100_000);
           string(object.fontFamily, "Text font", 200);
+          if (
+            object.fontFamilySource !== undefined &&
+            object.fontFamilySource !== "deck"
+          )
+            throw new Error("Unsupported text font source.");
+          if (object.inlineMathFontSetId !== undefined)
+            fontSet(object.inlineMathFontSetId, "Text inline math font");
           number(object.fontSize, "Text size", 4, 500);
           number(object.fontWeight, "Text weight", 100, 1000);
           color(object.color, "Text color");
@@ -640,6 +655,10 @@ export function validateDeck(value: unknown): Deck {
       if (object.groupId)
         groups.set(object.groupId, (groups.get(object.groupId) ?? 0) + 1);
     for (const object of slide.objects) {
+      // Older readers ignore the optional marker, so keep their explicit
+      // fallback in sync in the validated/saved snapshot.
+      if (object.type === "text" && object.fontFamilySource === "deck")
+        object.fontFamily = snapshot.theme.fontFamily;
       if (object.groupId && groups.get(object.groupId) === 1)
         delete object.groupId;
       if (object.type === "equation" && object.localTex?.render)
@@ -685,6 +704,7 @@ function text(
     type: "text",
     text: value,
     fontFamily: "Inter",
+    fontFamilySource: "deck",
     fontSize,
     fontWeight,
     color,

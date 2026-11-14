@@ -3,7 +3,11 @@ import type { Deck, TextObject } from "../lib/model";
 import { inlineTextLayoutKey, layoutInlineText } from "../lib/inline-math";
 import type { InlineTextLayout } from "../lib/inline-math";
 import { wrapText } from "../lib/layout";
-import { exportTextFontFamily, exportTextFontWeight } from "../lib/text-fonts";
+import {
+  effectiveTextFontFamily,
+  exportTextFontFamily,
+  exportTextFontWeight,
+} from "../lib/text-fonts";
 
 /** The source remains ordinary editable text; only its display contains vectors. */
 export function InlineMathText({
@@ -18,6 +22,7 @@ export function InlineMathText({
   onEditEquation?: (start: number, end: number) => void;
 }) {
   const key = inlineTextLayoutKey(object, deck);
+  const requestedFamily = effectiveTextFontFamily(deck, object);
   const [state, setState] = useState<{
     key: string;
     layout?: InlineTextLayout;
@@ -107,10 +112,10 @@ export function InlineMathText({
         <text
           fill={current?.error ? "#be123c" : object.color}
           fontSize={object.fontSize}
-          fontFamily={exportTextFontFamily(object.text, object.fontFamily)}
+          fontFamily={exportTextFontFamily(object.text, requestedFamily)}
           fontWeight={exportTextFontWeight(
             object.text,
-            object.fontFamily,
+            requestedFamily,
             object.fontWeight,
           )}
           textAnchor={
@@ -125,7 +130,7 @@ export function InlineMathText({
             object.text,
             object.transform.width,
             object.fontSize,
-            object.fontFamily,
+            requestedFamily,
             object.fontWeight,
           ).map((line, index) => (
             <tspan

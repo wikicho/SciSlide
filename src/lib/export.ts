@@ -11,6 +11,16 @@ import {
 import { wrapText } from "./layout";
 import { resolvePageNumber } from "./model";
 import { shapeGeometry } from "./shape-geometry";
+import { inlineSvgStyles } from "./persistence";
+import {
+  ACTIVE_SVG_TAGS,
+  embeddedSvgFontFaces,
+  hasUnsupportedPdfSvgEffect,
+  isSelfContainedSvgHref,
+  pdfEmbeddedSvgFontWeights,
+  unsupportedPdfSvgElement,
+  verifySvgCssReferences,
+} from "./figure-export-compatibility";
 import koreanFontLicense from "../../third-party-licenses/nanum-gothic/OFL.txt?raw";
 import {
   fontDefinitions,
@@ -21,6 +31,7 @@ import {
 } from "./export-fonts";
 import {
   exportTextFontFamily,
+  effectiveTextFontFamily,
   exportTextFontWeight,
   firstFontFamily,
   isKoreanFontFamily,
@@ -102,23 +113,20 @@ function parseSvg(source: string, label: string): SVGSVGElement {
 
 /** Exported SVGs never depend on remote files or execute active SVG content. */
 function verifySelfContained(svg: SVGSVGElement, label: string) {
+  // Use the import policy for styles as well: flatten plot CSS, retain only
+  // reconstructed embedded font rules, and reject unsupported declarations.
+  const fonts = inlineSvgStyles(svg);
+  if (fonts.length) {
+    const style = svgElement("style");
+    style.textContent = fonts.join("\n");
+    svg.insertBefore(style, svg.firstChild);
+  }
   for (const node of [svg, ...svg.querySelectorAll("*")]) {
     const tag = node.localName.toLowerCase();
     if (tag === "style") {
-      throw new Error(
-        `${label} uses a stylesheet. Inline its SVG styles before importing so they stay isolated from the slide.`,
-      );
+      verifySvgCssReferences(node.textContent ?? "", label);
     }
-    if (
-      [
-        "script",
-        "foreignobject",
-        "iframe",
-        "animate",
-        "animatetransform",
-        "set",
-      ].includes(tag)
-    ) {
+    if (ACTIVE_SVG_TAGS.includes(tag)) {
       throw new Error(
         `${label} contains unsupported active SVG content (${node.localName}).`,
       );
@@ -128,32 +136,63 @@ function verifySelfContained(svg: SVGSVGElement, label: string) {
         throw new Error(`${label} contains an SVG event handler.`);
       if (
         attribute.localName === "href" &&
-        attribute.value &&
-        !attribute.value.startsWith("#") &&
-        !/^data:image\/(?:png|jpeg|svg\+xml)[;,]/i.test(attribute.value)
+        !isSelfContainedSvgHref(attribute.value)
       ) {
         throw new Error(
           `${label} links to an external resource. Embed its images before exporting.`,
         );
       }
-      verifyCssReferences(attribute.value, label);
+      verifySvgCssReferences(attribute.value, label);
     }
   }
 }
 
-function verifyCssReferences(css: string, label: string) {
-  if (/@import\b|javascript:|expression\s*\(/i.test(css))
-    throw new Error(`${label} contains an external or active style.`);
-  for (const match of css.matchAll(/url\(\s*['"]?([^)'"\s]+)['"]?\s*\)/gi)) {
-    if (
-      !match[1].startsWith("#") &&
-      !/^data:(?:image\/|font\/)/i.test(match[1])
-    ) {
-      throw new Error(
-        `${label} uses an external SVG resource. Embed it before exporting.`,
-      );
-    }
+/** Font-face names are global even inside nested SVG elements. */
+function prefixFontFamilies(svg: SVGSVGElement, prefix: string) {
+  const families = new Map<string, string>();
+  for (const style of svg.querySelectorAll("style")) {
+    style.textContent = (style.textContent ?? "").replace(
+      /font-family:"([^"]+)"/g,
+      (_source, family: string) => {
+        const scoped =
+          families.get(family) ?? `${prefix}-font-${families.size}`;
+        families.set(family, scoped);
+        return `font-family:"${scoped}"`;
+      },
+    );
   }
+  const rewrite = (value: string) =>
+    value
+      .split(",")
+      .map((part) => {
+        const family = part.trim().replace(/^['"]|['"]$/g, "");
+        return families.has(family) ? `"${families.get(family)}"` : part;
+      })
+      .join(",");
+  for (const node of [svg, ...svg.querySelectorAll<SVGElement>("*")]) {
+    const family = node.getAttribute("font-family");
+    if (family) node.setAttribute("font-family", rewrite(family));
+    if (node.style.fontFamily)
+      node.style.fontFamily = rewrite(node.style.fontFamily);
+  }
+}
+
+/** jsPDF embeds TrueType sources accepted by the shared SVG import policy. */
+export function addFigurePdfFonts(pdf: jsPDF, svg: SVGSVGElement) {
+  const registered = new Map<string, number[]>();
+  for (const face of embeddedSvgFontFaces(svg)) {
+    const weights = pdfEmbeddedSvgFontWeights(face);
+    if (!weights.length) continue;
+    const filename = `${face.family}.ttf`;
+    pdf.addFileToVFS(filename, face.source);
+    for (const weight of weights)
+      pdf.addFont(filename, face.family, fontStyle(weight as TextFontWeight));
+    registered.set(face.family, [
+      ...(registered.get(face.family) ?? []),
+      ...weights,
+    ]);
+  }
+  return registered;
 }
 
 /** Different figures may use the same gradient/clip IDs in one exported slide. */
@@ -263,10 +302,11 @@ async function objectSvg(
       }
     } else {
       const renderedText = normalizeRenderedText(inlinePlainText(object.text));
-      const family = exportTextFontFamily(renderedText, object.fontFamily);
+      const requestedFamily = effectiveTextFontFamily(deck, object);
+      const family = exportTextFontFamily(renderedText, requestedFamily);
       const weight = exportTextFontWeight(
         renderedText,
-        object.fontFamily,
+        requestedFamily,
         object.fontWeight,
       );
       if (isKoreanFontFamily(family)) await loadKoreanFonts();
@@ -372,6 +412,7 @@ async function objectSvg(
     if (asset.mime === "image/svg+xml") {
       const nested = parseSvg(decodeSvg(asset), label);
       verifySelfContained(nested, label);
+      prefixFontFamilies(nested, prefix);
       prefixIds(nested, prefix);
       // An SVG used as an image has its own default styles. Keep those defaults
       // when inlining it, rather than inheriting the slide's typography/paint.
@@ -567,27 +608,15 @@ export async function renderSlideSvg(
 }
 
 function verifyPdfContent(svg: SVGSVGElement, pdf: jsPDF, slide: Slide) {
-  const unsupported = svg.querySelector(
-    "filter,mask,foreignObject,textPath,switch,animate,animateTransform,set",
-  );
+  const unsupported = unsupportedPdfSvgElement(svg);
   if (unsupported)
     throw new Error(
       `Slide “${slide.title}” uses SVG ${unsupported.localName}, which this PDF exporter cannot preserve. Export SVG or simplify that figure.`,
     );
-  for (const node of [svg, ...svg.querySelectorAll("*")]) {
-    if (
-      node.hasAttribute("filter") ||
-      node.hasAttribute("mask") ||
-      /(?:filter|mask|mix-blend-mode)\s*:/i.test(
-        node.getAttribute("style") ?? "",
-      ) ||
-      (node.localName === "style" &&
-        /(?:filter|mask|mix-blend-mode)\s*:/i.test(node.textContent ?? ""))
-    ) {
-      throw new Error(
-        `Slide “${slide.title}” uses an SVG effect this PDF exporter cannot preserve. Export SVG or simplify that figure.`,
-      );
-    }
+  if (hasUnsupportedPdfSvgEffect(svg)) {
+    throw new Error(
+      `Slide “${slide.title}” uses an SVG effect this PDF exporter cannot preserve. Export SVG or simplify that figure.`,
+    );
   }
   // Computed styles include styles embedded in imported figures. The hidden
   // SVG is attached only during validation/rendering and is always removed.
@@ -603,15 +632,23 @@ function verifyPdfContent(svg: SVGSVGElement, pdf: jsPDF, slide: Slide) {
         `Slide “${slide.title}” contains italic SVG text. Outline that figure's text or export SVG.`,
       );
     let characterMap: Record<number, number> | undefined;
-    if (family === "Inter" || isKoreanFontFamily(family)) {
+    const figureFont =
+      /^slide-\d+-object-\d+-font-\d+$/.test(family) &&
+      !!pdf
+        .getFontList()
+        [family]?.includes(fontStyle(weight as TextFontWeight));
+    if (family === "Inter" || isKoreanFontFamily(family) || figureFont) {
       const korean = isKoreanFontFamily(family);
       const availableWeights = korean ? [400, 700] : TEXT_FONT_WEIGHTS;
-      if (!(availableWeights as readonly number[]).includes(weight))
+      if (
+        !figureFont &&
+        !(availableWeights as readonly number[]).includes(weight)
+      )
         throw new Error(
           `Slide “${slide.title}” uses text weight ${weight}. PDF export supports Inter 400, 500, 600, and 700, and Nanum Gothic 400 and 700 (500 maps to 400; 600 maps to 700).`,
         );
       pdf.setFont(
-        korean ? KOREAN_FONT_FAMILY : "Inter",
+        korean ? KOREAN_FONT_FAMILY : family,
         fontStyle(weight as TextFontWeight),
       );
       characterMap = pdf.getFont().metadata?.cmap?.unicode?.codeMap as
@@ -623,6 +660,10 @@ function verifyPdfContent(svg: SVGSVGElement, pdf: jsPDF, slide: Slide) {
     } else if (
       !(PDF_GENERIC_FONT_FAMILIES as readonly string[]).includes(family)
     ) {
+      if (/^slide-\d+-object-\d+-font-\d+$/.test(family))
+        throw new Error(
+          `Slide “${slide.title}” contains an embedded SVG font that this PDF exporter cannot preserve at the requested weight. Use a normal TrueType font, outline figure text, or export SVG.`,
+        );
       throw new Error(
         `Slide “${slide.title}” needs the unbundled font “${family}”. Use Inter or Nanum Gothic for slide text, outline the figure's text, or export SVG.`,
       );
@@ -672,7 +713,10 @@ export async function exportSlideSvg(deck: Deck, slide: Slide): Promise<Blob> {
 }
 
 /** Render genuine PDF vectors; raster figures remain embedded raster images. */
-export async function exportDeckPdf(deck: Deck): Promise<Blob> {
+export async function exportDeckPdf(
+  deck: Deck,
+  options: { prepareSvg?: (svg: SVGSVGElement) => void } = {},
+): Promise<Blob> {
   const fonts: ExportFontFiles = { inter: await loadInterFonts() };
   const { width, height } = deck.slideSize;
   const pdf = new jsPDF({
@@ -709,6 +753,7 @@ export async function exportDeckPdf(deck: Deck): Promise<Blob> {
     }
     for (let index = 0; index < slides.length; index++) {
       const svg = slides[index];
+      addFigurePdfFonts(pdf, svg);
       host.append(svg);
       verifyPdfContent(svg, pdf, deck.slides[index]);
       svg.remove();
@@ -721,6 +766,9 @@ export async function exportDeckPdf(deck: Deck): Promise<Blob> {
         );
       const svg = slides[index];
       host.append(svg);
+      // Headless measurement can register this validated slide's embedded
+      // fonts without searching unrelated document or detached SVG content.
+      options.prepareSvg?.(svg);
       await svg2pdf(svg, pdf, {
         width,
         height,

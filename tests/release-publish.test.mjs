@@ -96,6 +96,7 @@ test("workflow source validation accepts main pushes and requires exact dispatch
     GITHUB_SHA: sha,
     GITHUB_EVENT_NAME: "push",
     EXPECTED_SOURCE_SHA: "",
+    SCISLIDE_RELEASE_CHANNEL: "prerelease",
   };
   delete environment.NODE_TEST_CONTEXT;
   delete environment.NODE_TEST_WORKER_ID;
@@ -112,6 +113,7 @@ test("workflow source validation accepts main pushes and requires exact dispatch
   await validate({
     GITHUB_EVENT_NAME: "workflow_dispatch",
     EXPECTED_SOURCE_SHA: sha,
+    SCISLIDE_RELEASE_CHANNEL: "stable",
   });
   for (const overrides of [
     { GITHUB_EVENT_NAME: "workflow_dispatch" },
@@ -131,6 +133,10 @@ test("workflow source validation accepts main pushes and requires exact dispatch
       JSON.stringify(overrides),
     );
   }
+  await assert.rejects(
+    validate({ SCISLIDE_RELEASE_CHANNEL: "other" }),
+    /Invalid release channel/,
+  );
 });
 
 test("release verification requires all 13 source-matching files and computes their hashes", async (t) => {
@@ -248,8 +254,10 @@ async function apiFixture(
     if (resource.startsWith("git/ref/tags/"))
       return tagSha ? { object: { type: "commit", sha: tagSha } } : null;
     if (resource.startsWith("releases?")) return release ? [release] : [];
-    if (resource === "releases" && request.method === "POST")
+    if (resource === "releases" && request.method === "POST") {
+      assert.equal(request.body.make_latest, "false");
       return (release = { id: 99, ...request.body });
+    }
     if (resource === "releases/99/assets?per_page=100") return assets;
     if (resource === "releases/99") return release;
     throw new Error(`Unexpected API call: ${resource}`);
@@ -270,9 +278,14 @@ async function apiFixture(
         13,
         "Publication must wait for the full asset set",
       );
-      assert.ok(args.includes("--prerelease"));
-      assert.ok(args.includes("--latest=false"));
+      const prerelease = (options.channel ?? "prerelease") === "prerelease";
+      assert.ok(
+        args.includes(prerelease ? "--prerelease" : "--prerelease=false"),
+      );
+      assert.ok(args.includes(prerelease ? "--latest=false" : "--latest=true"));
       release.draft = false;
+      release.prerelease = prerelease;
+      release.make_latest = prerelease ? "false" : "true";
       tagSha = sha;
     }
   };
@@ -303,6 +316,56 @@ test("a trusted main push publishes the complete verified prerelease", async (t)
   assert.equal(mock.release().prerelease, true);
   assert.equal(mock.commands.filter((args) => args[1] === "upload").length, 13);
   assert.equal(mock.commands.at(-1)[1], "edit");
+});
+
+test("an explicit stable dispatch publishes a complete stable release as latest", async (t) => {
+  const options = { ...(await fixture(t)), channel: "stable" };
+  const mock = await apiFixture(options);
+  await publishRelease(options, mock);
+  assert.equal(mock.release().draft, false);
+  assert.equal(mock.release().prerelease, false);
+  assert.equal(mock.release().make_latest, "true");
+  assert.equal(mock.release().name, `SciSlide ${version}`);
+  assert.equal(mock.commands.filter((args) => args[1] === "upload").length, 13);
+  const count = mock.commands.length;
+  await publishRelease(options, mock);
+  assert.equal(mock.commands.length, count);
+});
+
+test("stable publication rejects pushes and cannot silently promote an existing prerelease", async (t) => {
+  const options = { ...(await fixture(t)), channel: "stable" };
+  const pushed = await apiFixture(options, { run: { event: "push" } });
+  await assert.rejects(
+    publishRelease(options, pushed),
+    /explicit workflow dispatch/,
+  );
+  assert.equal(pushed.release(), null);
+  assert.equal(pushed.commands.length, 0);
+  const existing = await apiFixture(options, { existing: true });
+  await assert.rejects(publishRelease(options, existing), /release channel/);
+  assert.equal(existing.commands.length, 0);
+});
+
+test("publication rejects invalid channels and prerelease versions in the stable channel", async (t) => {
+  const options = await fixture(t, "1.0.0-beta.1");
+  for (const channel of ["other", "stable"]) {
+    let called = false;
+    await assert.rejects(
+      publishRelease(
+        { ...options, channel },
+        {
+          api: () => {
+            called = true;
+            throw new Error("Unexpected API call");
+          },
+        },
+      ),
+      channel === "stable"
+        ? /without a prerelease suffix/
+        : /Invalid release channel/,
+    );
+    assert.equal(called, false);
+  }
 });
 
 test("publication rejects other events and altered push provenance before release writes", async (t) => {

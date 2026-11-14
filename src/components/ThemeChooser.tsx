@@ -19,6 +19,7 @@ export function ThemeChooser({
   onChoose,
   onOpen,
   onResume,
+  onRecover,
   onDemo,
   onCancel,
   onHelp,
@@ -27,6 +28,7 @@ export function ThemeChooser({
   onChoose: (id: DeckThemeId) => void;
   onOpen: () => void;
   onResume?: () => void;
+  onRecover?: () => void;
   onDemo?: () => void;
   onCancel?: () => void;
   onHelp?: () => void;
@@ -177,6 +179,16 @@ export function ThemeChooser({
               disabled={busy}
             >
               <Play size={14} aria-hidden="true" /> Explore demo
+            </button>
+          )}
+          {onRecover && (
+            <button
+              type="button"
+              className="theme-chooser-demo"
+              disabled={busy}
+              onClick={onRecover}
+            >
+              <History size={16} aria-hidden="true" /> Recovered documents
             </button>
           )}
         </section>

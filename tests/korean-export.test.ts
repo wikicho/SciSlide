@@ -4,6 +4,12 @@ import { URL as NodeURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createDemoDeck, type Deck, type TextObject } from "../src/lib/model";
 import {
+  buildDeckArchive,
+  readDeckArchive,
+  sanitizeSvg,
+} from "../src/lib/persistence";
+import { webcrypto } from "node:crypto";
+import {
   containsKorean,
   exportTextFontFamily,
   exportTextFontWeight,
@@ -191,6 +197,79 @@ describe("Korean PDF and SVG typography", () => {
         ?.querySelector("tspan")
         ?.getAttribute("font-weight"),
     ).toBe("600");
+  });
+
+  it("round-trips an imported embedded TrueType font through SVG and PDF without leaking its family", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const font = await readFile(
+      new NodeURL("../public/fonts/inter-400.ttf", import.meta.url),
+    );
+    const source = sanitizeSvg(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120"><style>@font-face{font-family:Inter;font-weight:400;src:url(data:font/ttf;base64,${font.toString("base64")}) format('truetype')}.label{font-family:Inter;fill:#123456}</style><text class="label" x="5" y="40">Embedded figure label</text></svg>`,
+    );
+    const original = figureDeck(source);
+    const restored = await readDeckArchive(await buildDeckArchive(original));
+    const scene = await renderSlideSvg(restored, restored.slides[0], 0);
+    const embedded = scene.querySelector("svg style")?.textContent;
+    expect(embedded).toContain('font-family:"slide-0-object-0-font-0"');
+    expect(
+      scene.querySelector("svg text")?.getAttribute("font-family"),
+    ).toContain("slide-0-object-0-font-0");
+    expect(scene.querySelector("svg text")?.getAttribute("fill")).toBe(
+      "#123456",
+    );
+    const pdf = await exportDeckPdf(restored);
+    expect(pdf.type).toBe("application/pdf");
+    expect(pdf.size).toBeGreaterThan(1000);
+    expect(restored.assets).toEqual(
+      original.assets.map((asset) => ({
+        ...asset,
+        dataUrl: restored.assets[0].dataUrl,
+      })),
+    );
+    expect(original.assets[0].dataUrl).toContain(encodeURIComponent(source));
+  });
+
+  it("embeds the inherited deck family while retaining explicit object families", async () => {
+    const source = textDeck("Inherited Latin paragraph");
+    (source.slides[0].objects[0] as TextObject).fontFamilySource = "deck";
+    source.slides[0].objects.push({
+      ...(source.slides[0].objects[0] as TextObject),
+      id: "explicit",
+      text: "Explicit Latin paragraph",
+      fontFamilySource: undefined,
+    });
+    source.theme.fontFamily = "Nanum Gothic";
+    const scene = await renderSlideSvg(source, source.slides[0], 0);
+    expect(
+      [...scene.querySelectorAll("text")].map((node) =>
+        node.getAttribute("font-family"),
+      ),
+    ).toEqual(["Nanum Gothic", "Inter"]);
+    const pdf = await exportDeckPdf(source);
+    expect(pdf.size).toBeGreaterThan(1000);
+    expect((source.slides[0].objects[0] as TextObject).fontFamily).toBe(
+      "Inter",
+    );
+  });
+
+  it("isolates embedded family names between figures on the same slide", async () => {
+    const font = btoa("\u0000\u0001\u0000\u0000" + "\u0000".repeat(8));
+    const source = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120"><style>@font-face{font-family:Inter;src:url(data:font/ttf;base64,${font})}</style><text font-family="Inter" y="40">Isolated label</text></svg>`;
+    const deck = figureDeck(source);
+    deck.slides[0].objects.push({
+      ...deck.slides[0].objects[0],
+      id: "second-figure",
+    });
+    const scene = await renderSlideSvg(deck, deck.slides[0], 0);
+    const families = [...scene.querySelectorAll("svg text")].map((node) =>
+      node.getAttribute("font-family"),
+    );
+    expect(families).toEqual([
+      "slide-0-object-0-font-0",
+      "slide-0-object-1-font-0",
+    ]);
+    expect(scene.getAttribute("font-family")).toBe("Inter");
   });
 
   it("embeds real Nanum Gothic glyphs for mixed Korean/Latin and both weight aliases", async () => {

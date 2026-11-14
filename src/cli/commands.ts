@@ -58,7 +58,16 @@ const baseObjectKeys = [
   "build",
 ];
 const objectKeys = {
-  text: ["text", "fontFamily", "fontSize", "fontWeight", "color", "align"],
+  text: [
+    "text",
+    "fontFamily",
+    "fontFamilySource",
+    "inlineMathFontSetId",
+    "fontSize",
+    "fontWeight",
+    "color",
+    "align",
+  ],
   equation: [
     "latex",
     "style",
@@ -530,6 +539,14 @@ function updateObject(object: SlideObject, patch: RecordValue): SlideObject {
   );
   checkNestedObjectProperties(patch);
   const next = { ...object, ...patch } as SlideObject;
+  if (
+    next.type === "text" &&
+    (patch.fontFamilySource === null ||
+      (patch.fontFamily !== undefined && patch.fontFamilySource === undefined))
+  )
+    delete next.fontFamilySource;
+  if (next.type === "text" && patch.inlineMathFontSetId === null)
+    delete next.inlineMathFontSetId;
   if (patch.transform !== undefined)
     next.transform = mergeRecord(
       object.transform,
@@ -603,6 +620,7 @@ function defaultObject(
         type,
         text: "",
         fontFamily: deck.theme.fontFamily,
+        fontFamilySource: "deck",
         fontSize: 40,
         fontWeight: 400,
         color: palette?.ink ?? deck.theme.equation.color,
@@ -751,7 +769,11 @@ export function applyAgentOperations(
               };
             } else {
               const theme = record(patch.theme, "Theme patch");
-              keys(theme, ["fontFamily", "equation"], "Theme patch");
+              keys(
+                theme,
+                ["fontFamily", "equation", "inlineMathFontSetId"],
+                "Theme patch",
+              );
               const equation =
                 theme.equation === undefined
                   ? deck.theme.equation
@@ -766,6 +788,8 @@ export function applyAgentOperations(
                 ...theme,
                 equation,
               } as Deck["theme"];
+              if (theme.inlineMathFontSetId === null)
+                delete deck.theme.inlineMathFontSetId;
             }
           }
           if (patch.pageNumbers === null) delete deck.pageNumbers;

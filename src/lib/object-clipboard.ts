@@ -2,6 +2,8 @@ import { cloneObjectsWithGroups, expandSelection } from "./drawing";
 import type { Point } from "./drawing";
 import { newId } from "./model";
 import type { Asset, Deck, Slide, SlideObject } from "./model";
+import { effectiveTextFontFamily } from "./text-fonts";
+import { hasInlineMath, inlineMathFont } from "./inline-math";
 
 /** An in-memory snapshot survives source deletion and switching presentations. */
 export interface ObjectClipboard {
@@ -23,6 +25,12 @@ export function captureObjectClipboard(
   if (!objects.length) return null;
   const used = new Set<string>();
   for (const object of objects) {
+    if (object.type === "text") {
+      object.fontFamily = effectiveTextFontFamily(deck, object);
+      delete object.fontFamilySource;
+      if (hasInlineMath(object.text))
+        object.inlineMathFontSetId = inlineMathFont(deck, object);
+    }
     if (object.type === "figure" || object.type === "video")
       used.add(object.assetId);
     if (object.type === "equation") {

@@ -99,6 +99,8 @@ The recommended input is a versioned envelope:
 
 The CLI also accepts an operations array. Batches support deck updates; slide creation/update/removal/reordering; text, equation, shape, figure, and video object creation/update/removal/reordering; and asset creation/update/removal. Unknown fields and invalid values are rejected. The whole batch must satisfy the native model, including final references and unique IDs, before a file is written. IDs omitted when creating objects/slides/assets are generated and returned in `results`.
 
+`deck.update` accepts independent `theme.fontFamily`, `theme.equation` and `theme.inlineMathFontSetId` patches. Set the inline value to `mathjax-modern`, `mathjax-stix2` or `mathjax-fira`; `null` removes the inline preference and restores the Latin Modern default. Changing other theme fields preserves an existing inline choice.
+
 `object.update` merges partial transforms and equation styles, so changing `x` preserves width and height. Metadata and unrelated cached resources survive edits. Changes to a local equation's compilation inputs invalidate its stale render cache. See `schema` for optional-field removal using `null` and complete operation details.
 
 Use `--ops -` to read a batch from stdin. A failed batch leaves the input intact. New output files are required by default; `--overwrite` explicitly replaces an output. `--in-place` is required to edit the original presentation. After inspecting a file, pass its returned hash as `--expect-sha256 HASH` to reject edits based on stale state; in-place writes also recheck the input before saving.

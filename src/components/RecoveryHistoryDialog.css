@@ -1,0 +1,122 @@
+.modal-backdrop.recovery-history-backdrop {
+  z-index: 1800;
+  padding: 20px;
+}
+.recovery-history-dialog {
+  width: min(720px, 100%);
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  padding: 24px;
+  border-radius: 16px;
+  background: #fff;
+  color: #253347;
+  box-shadow: 0 24px 70px #0005;
+  outline: none;
+}
+.recovery-history-dialog header,
+.recovery-history-dialog header > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.recovery-history-dialog header {
+  justify-content: space-between;
+}
+.recovery-history-dialog h2 {
+  font-size: 23px;
+  margin: 0;
+}
+.recovery-history-dialog p {
+  line-height: 1.5;
+}
+.recovery-history-dialog button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 9px 12px;
+  background: #fff;
+  color: #253347;
+  cursor: pointer;
+}
+.recovery-history-dialog button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.recovery-history-dialog button:focus-visible {
+  outline: 3px solid #6366f1;
+  outline-offset: 2px;
+}
+.recovery-history-limit {
+  color: #64748b;
+  font-size: 12px;
+}
+.recovery-history-error {
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #9a3412;
+  background: #fff7ed;
+  overflow-wrap: anywhere;
+}
+.recovery-history-empty {
+  padding: 28px 0;
+  text-align: center;
+  color: #64748b;
+}
+.recovery-history-list {
+  padding: 0;
+  margin: 20px 0 0;
+  list-style: none;
+}
+.recovery-history-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 16px 0;
+  border-top: 1px solid #e2e8f0;
+}
+.recovery-history-details {
+  min-width: 0;
+  flex: 1 1 250px;
+}
+.recovery-history-details h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.recovery-history-details time,
+.recovery-history-details p {
+  color: #64748b;
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+.recovery-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.recovery-history-actions > button:first-child {
+  color: #fff;
+  background: #4338ca;
+  border-color: #4338ca;
+}
+.recovery-history-dialog .recovery-history-remove {
+  color: #b91c1c;
+}
+.recovery-history-remove-confirm {
+  flex: 1 1 100%;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.recovery-history-remove-confirm p {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+.recovery-history-remove-confirm button {
+  margin-right: 8px;
+}

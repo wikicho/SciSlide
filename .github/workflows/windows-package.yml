@@ -12,6 +12,8 @@ on:
     paths:
       - .github/workflows/windows-package.yml
       - scripts/package-desktop.mjs
+      - scripts/release-layout.mjs
+      - scripts/organize-release.mjs
       - scripts/package-windows.mjs
       - desktop/**
       - src/**
@@ -76,7 +78,7 @@ jobs:
 
       - name: Build x64 app, portable ZIP, and per-user installer
         run: |
-          node scripts/package-windows.mjs --arch=x64
+          node scripts/package-windows.mjs --arch=x64 --out=release
           if ($LASTEXITCODE -ne 0) { throw 'Windows packaging failed.' }
           $version = node -p "require('./package.json').version"
           "SCISLIDE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append

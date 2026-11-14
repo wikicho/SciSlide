@@ -2,6 +2,7 @@ const {
   app,
   BrowserWindow,
   dialog,
+  clipboard,
   ipcMain,
   Menu,
   protocol,
@@ -57,6 +58,10 @@ const distRoot = path.join(__dirname, "..", "dist");
 const runningJobs = new Set();
 let mainWindow = null;
 let documentPath = null;
+const openCandidates = new Set();
+let closeConfirmationEnabled = false;
+let closeRequested = false;
+let closeApproved = false;
 let fileOperations = Promise.resolve();
 let texModule;
 let aiModule;
@@ -255,7 +260,7 @@ function registerIpc() {
         const selectedPath = pendingDocuments.shift();
         if (!selectedPath) return null;
         const bytes = await readDocument(selectedPath);
-        documentPath = selectedPath;
+        openCandidates.add(selectedPath);
         return { bytes, name: path.basename(selectedPath), path: selectedPath };
       }),
     { editorOnly: true },
@@ -277,9 +282,83 @@ function registerIpc() {
       if (result.canceled || !result.filePaths[0]) return null;
       const selectedPath = result.filePaths[0];
       const bytes = await readDocument(selectedPath);
-      documentPath = selectedPath;
+      openCandidates.add(selectedPath);
       return { bytes, name: path.basename(selectedPath), path: selectedPath };
     }),
+  );
+  ipc(
+    "scislide:accept-open-document",
+    (selectedPath) =>
+      withFileOperation(() => {
+        if (
+          typeof selectedPath !== "string" ||
+          !openCandidates.has(selectedPath)
+        )
+          throw new Error(
+            "Only a document read by this editor can be accepted.",
+          );
+        documentPath = selectedPath;
+        openCandidates.clear();
+      }),
+    { editorOnly: true },
+  );
+  ipc(
+    "scislide:watch-close-document",
+    (enabled) => {
+      if (typeof enabled !== "boolean")
+        throw new TypeError("Close confirmation state must be a boolean.");
+      closeConfirmationEnabled = enabled;
+    },
+    { editorOnly: true },
+  );
+  ipc(
+    "scislide:confirm-close-document",
+    () => {
+      if (!closeRequested || !mainWindow || mainWindow.isDestroyed()) return;
+      closeApproved = true;
+      mainWindow.close();
+    },
+    { editorOnly: true },
+  );
+  ipc(
+    "scislide:write-clipboard",
+    (value) => {
+      if (
+        !value ||
+        typeof value !== "object" ||
+        Array.isArray(value) ||
+        Object.keys(value).some((key) => !["text", "html"].includes(key)) ||
+        typeof value.text !== "string" ||
+        typeof value.html !== "string" ||
+        value.text.length > 64 * 1024 * 1024 ||
+        value.html.length > 96 * 1024 * 1024 ||
+        Buffer.byteLength(value.text, "utf8") > 64 * 1024 * 1024 ||
+        Buffer.byteLength(value.html, "utf8") > 96 * 1024 * 1024
+      )
+        throw new Error("Clipboard text or HTML is invalid or too large.");
+      clipboard.write({ text: value.text, html: value.html });
+    },
+    { editorOnly: true },
+  );
+  ipc(
+    "scislide:read-clipboard",
+    () => {
+      const text = clipboard.readText();
+      const html = clipboard.readHTML();
+      if (
+        text.length > 64 * 1024 * 1024 ||
+        html.length > 96 * 1024 * 1024 ||
+        Buffer.byteLength(text, "utf8") > 64 * 1024 * 1024 ||
+        Buffer.byteLength(html, "utf8") > 96 * 1024 * 1024
+      )
+        throw new Error("Clipboard data exceeds the supported size limit.");
+      const image = clipboard.readImage();
+      const png = image.isEmpty() ? undefined : image.toPNG();
+      if (png && png.length > 20 * 1024 * 1024)
+        throw new Error("The clipboard image exceeds the 20 MB limit.");
+      return { text, html, ...(png ? { png: new Uint8Array(png) } : {}) };
+    },
+    { editorOnly: true },
   );
   ipc("scislide:save-document", (value) => {
     const request = validateSaveDocument(value);
@@ -301,10 +380,14 @@ function registerIpc() {
       return { path: destination, name: path.basename(destination) };
     });
   });
-  ipc("scislide:clear-document", () =>
-    withFileOperation(() => {
-      documentPath = null;
-    }),
+  ipc(
+    "scislide:clear-document",
+    () =>
+      withFileOperation(() => {
+        documentPath = null;
+        openCandidates.clear();
+      }),
+    { editorOnly: true },
   );
   ipc("scislide:save-export", (value) => {
     const request = validateSaveExport(value);
@@ -481,6 +564,9 @@ async function configureSession() {
 }
 
 async function createMainWindow() {
+  closeConfirmationEnabled = false;
+  closeRequested = false;
+  closeApproved = false;
   mainWindow = new BrowserWindow({
     title: "SciSlide",
     width: 1440,
@@ -550,10 +636,20 @@ async function createMainWindow() {
     event.preventDefault(),
   );
   mainWindow.once("ready-to-show", () => mainWindow?.show());
+  mainWindow.on("close", (event) => {
+    if (!closeConfirmationEnabled || closeApproved) return;
+    event.preventDefault();
+    closeRequested = true;
+    mainWindow.webContents.send("scislide:close-document-requested");
+  });
   mainWindow.on("closed", () => {
     aiModule?.then((module) => module.cancelAllAi()).catch(() => undefined);
     mainWindow = null;
     documentPath = null;
+    openCandidates.clear();
+    closeConfirmationEnabled = false;
+    closeRequested = false;
+    closeApproved = false;
   });
   await mainWindow.loadURL(appUrl);
 }

@@ -8,6 +8,12 @@ import { createBlankSlide, createDemoDeck, newId } from "../src/lib/model";
 import type { Asset, Deck, FigureObject, SlideObject } from "../src/lib/model";
 import { importFigure, loadRecovery } from "../src/lib/persistence";
 import {
+  readClipboardEvent,
+  writeClipboardEvent,
+  readSystemClipboard,
+  writeSystemClipboard,
+} from "../src/lib/system-clipboard";
+import {
   loadWorkspaceRecovery,
   saveWorkspaceRecovery,
 } from "../src/lib/workspace-recovery";
@@ -23,6 +29,11 @@ vi.mock("../src/lib/workspace-recovery", async (original) => ({
   ...(await original<typeof import("../src/lib/workspace-recovery")>()),
   loadWorkspaceRecovery: vi.fn(),
   saveWorkspaceRecovery: vi.fn(),
+}));
+vi.mock("../src/lib/system-clipboard", async (original) => ({
+  ...(await original<typeof import("../src/lib/system-clipboard")>()),
+  readSystemClipboard: vi.fn(),
+  writeSystemClipboard: vi.fn(),
 }));
 vi.mock("../src/lib/export", () => ({
   exportDeckPdf: vi.fn(),
@@ -53,6 +64,7 @@ describe("editor convenience flows", () => {
   let host: HTMLDivElement;
   let root: Root;
   let saved: Deck;
+  let clipboardData: DataTransfer;
 
   beforeEach(() => {
     // Keep shortcut labels deterministic across CI operating systems.
@@ -90,6 +102,22 @@ describe("editor convenience flows", () => {
     vi.spyOn(Element.prototype, "clientWidth", "get").mockReturnValue(1600);
     vi.spyOn(Element.prototype, "clientHeight", "get").mockReturnValue(900);
     localStorage.clear();
+    const clipboardValues = new Map<string, string>();
+    clipboardData = {
+      files: [],
+      getData: (type: string) => clipboardValues.get(type) ?? "",
+      setData: (type: string, value: string) => {
+        clipboardValues.set(type, value);
+      },
+    } as unknown as DataTransfer;
+    vi.mocked(writeSystemClipboard)
+      .mockReset()
+      .mockImplementation(async (payload) => {
+        writeClipboardEvent(clipboardData, payload);
+      });
+    vi.mocked(readSystemClipboard)
+      .mockReset()
+      .mockImplementation(async () => readClipboardEvent(clipboardData));
     vi.mocked(loadRecovery).mockReset();
     vi.mocked(importFigure).mockReset();
     vi.mocked(loadWorkspaceRecovery).mockReset().mockResolvedValue(null);
@@ -154,6 +182,27 @@ describe("editor convenience flows", () => {
     await act(async () => {
       target.dispatchEvent(event);
     });
+    // Browsers emit a ClipboardEvent after an uncancelled native clipboard
+    // shortcut. Keep that event path distinct from the toolbar's async API.
+    const clipboardType = (
+      { c: "copy", x: "cut", v: "paste" } as Record<string, string>
+    )[value.toLowerCase()];
+    if (
+      !event.defaultPrevented &&
+      clipboardType &&
+      (options.ctrlKey || options.metaKey) &&
+      !options.shiftKey &&
+      !options.altKey
+    ) {
+      const native = new Event(clipboardType, {
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(native, "clipboardData", { value: clipboardData });
+      await act(async () => {
+        target.dispatchEvent(native);
+      });
+    }
     return event;
   }
 
@@ -250,14 +299,14 @@ describe("editor convenience flows", () => {
     expect(await persist()).toEqual(deck);
   });
 
-  it("exposes slide copy and paste buttons and keeps object clipboard actions separate", async () => {
+  it("exposes system paste buttons and pastes the current slide or object clipboard content", async () => {
     const deck = deckWith([rectangle("Plot")]);
     await render(deck);
-    expect(button("Paste copied slide").disabled).toBe(true);
+    expect(button("Paste from system clipboard").disabled).toBe(false);
     await click("Copy slide");
-    expect(button("Paste copied slide").disabled).toBe(false);
+    expect(button("Paste from system clipboard").disabled).toBe(false);
     await slide(1);
-    await click("Paste copied slide");
+    await click("Paste from system clipboard");
     expect((await persist()).slides.map((item) => item.title)).toEqual([
       "Source",
       "Destination",
@@ -268,11 +317,33 @@ describe("editor convenience flows", () => {
       host.querySelector<HTMLElement>('[aria-label="Slide canvas"]')!.focus(),
     );
     await key("c", { ctrlKey: true });
-    expect(button("Paste copied slide").disabled).toBe(true);
+    expect(button("Paste from system clipboard").disabled).toBe(false);
     await key("v", { ctrlKey: true });
     const current = await persist();
     expect(current.slides).toHaveLength(3);
     expect(current.slides[2].objects).toHaveLength(2);
+  });
+
+  it("copies objects through the toolbar and pastes on the active slide through its real button click", async () => {
+    const deck = deckWith([rectangle("Plot")]);
+    await render(deck);
+    await click("Select Plot");
+    await click("Copy objects");
+    expect(writeSystemClipboard).toHaveBeenCalledOnce();
+    const topPaste = host.querySelector<HTMLButtonElement>(
+      'button[title="Paste · Ctrl+V"]',
+    )!;
+    expect(topPaste).toBeTruthy();
+    await act(async () => topPaste.click());
+    expect(readSystemClipboard).toHaveBeenCalledOnce();
+    const current = await persist();
+    expect(current.slides[0].objects).toHaveLength(2);
+    expect(current.slides[1].objects).toHaveLength(0);
+    expect(current.slides[0].objects[1].id).not.toBe(
+      deck.slides[0].objects[0].id,
+    );
+    await key("z", { ctrlKey: true });
+    expect(await persist()).toEqual(deck);
   });
 
   it("adds slides immediately, repeats the last chosen layout and records one undo step per insertion", async () => {

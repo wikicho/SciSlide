@@ -9,7 +9,11 @@ import type { Deck, TextObject } from "../lib/model";
 import { wrapText } from "../lib/layout";
 import { hasInlineMath, inlineTextLayoutKey } from "../lib/inline-math";
 import { InlineMathText } from "./InlineMathText";
-import { exportTextFontFamily, exportTextFontWeight } from "../lib/text-fonts";
+import {
+  effectiveTextFontFamily,
+  exportTextFontFamily,
+  exportTextFontWeight,
+} from "../lib/text-fonts";
 import {
   getKeyboardPlatform,
   matchesShortcut,
@@ -55,10 +59,20 @@ export function InlineTextEditor({
     field.current?.select();
   }, []);
   const { x, y, width, height, rotation } = object.transform;
-  const minimumHeight = Math.max(height, object.fontSize * 1.6);
-  const [editorHeight, setEditorHeight] = useState(minimumHeight);
-  const previewObject = { ...object, text: editing.value };
+  const fontFamily = effectiveTextFontFamily(deck, object);
   const showPreview = !!deck && hasInlineMath(editing.value);
+  const minimumHeight = Math.max(height, object.fontSize * 1.6);
+  const sourceWidth = showPreview
+    ? Math.min(width, Math.max(1, deck.slideSize.width - 32))
+    : width;
+  const sourceMaximumHeight = showPreview
+    ? Math.max(1, Math.min(320, deck.slideSize.height - 64))
+    : Infinity;
+  const sourceMinimumHeight = showPreview
+    ? Math.min(sourceMaximumHeight, Math.max(96, object.fontSize * 2.6))
+    : minimumHeight;
+  const [editorHeight, setEditorHeight] = useState(sourceMinimumHeight);
+  const previewObject = { ...object, text: editing.value };
   const previewKey = deck ? inlineTextLayoutKey(previewObject, deck) : "";
   const [previewMetrics, setPreviewMetrics] = useState<{
     key: string;
@@ -79,13 +93,31 @@ export function InlineTextEditor({
       ),
     [],
   );
-  // Keep the rendered text in its slide position. Its source field floats below
-  // it (or above near the slide's bottom), without changing stored geometry.
+  // The source panel stays upright in slide coordinates, independently of the
+  // preview's rotation and frame height. Clamp it even when neither side fits.
+  const radians = (rotation * Math.PI) / 180;
+  const rotatedY = [
+    [-width / 2, -height / 2],
+    [width / 2, -height / 2],
+    [-width / 2, previewHeight - height / 2],
+    [width / 2, previewHeight - height / 2],
+  ].map(
+    ([dx, dy]) =>
+      y + height / 2 + dx * Math.sin(radians) + dy * Math.cos(radians),
+  );
+  const below = Math.max(...rotatedY) + 28;
+  const above = Math.min(...rotatedY) - editorHeight - 12;
+  const sourceX = showPreview
+    ? Math.max(16, Math.min(x, deck.slideSize.width - sourceWidth - 16))
+    : 0;
   const sourceY = showPreview
-    ? y + previewHeight + 28 + editorHeight > deck.slideSize.height &&
-      y >= editorHeight + 28
-      ? -editorHeight - 28
-      : previewHeight + 28
+    ? Math.max(
+        40,
+        Math.min(
+          below + editorHeight <= deck.slideSize.height - 16 ? below : above,
+          deck.slideSize.height - editorHeight - 16,
+        ),
+      )
     : 0;
   const heightCallback = useRef(onHeightChange);
   heightCallback.current = onHeightChange;
@@ -100,15 +132,18 @@ export function InlineTextEditor({
         textarea.scrollHeight ||
         wrapText(
           editing.value,
-          width,
+          sourceWidth,
           object.fontSize,
-          object.fontFamily,
+          fontFamily,
           object.fontWeight,
         ).length *
           object.fontSize *
           1.3;
       textarea.style.height = "100%";
-      const nextHeight = Math.max(minimumHeight, Math.ceil(contentHeight));
+      const nextHeight = Math.min(
+        sourceMaximumHeight,
+        Math.max(sourceMinimumHeight, Math.ceil(contentHeight)),
+      );
       setEditorHeight(nextHeight);
       if (!showPreview) heightCallback.current?.(nextHeight);
     };
@@ -128,10 +163,11 @@ export function InlineTextEditor({
     };
   }, [
     editing.value,
-    width,
-    minimumHeight,
+    sourceWidth,
+    sourceMinimumHeight,
+    sourceMaximumHeight,
     object.fontSize,
-    object.fontFamily,
+    fontFamily,
     object.fontWeight,
     showPreview,
   ]);
@@ -142,7 +178,11 @@ export function InlineTextEditor({
   return (
     <g
       data-inline-text-editor={object.id}
-      transform={`translate(${x} ${y}) rotate(${rotation} ${width / 2} ${height / 2})`}
+      transform={
+        showPreview
+          ? undefined
+          : `translate(${x} ${y}) rotate(${rotation} ${width / 2} ${height / 2})`
+      }
       onPointerDown={(event) => event.stopPropagation()}
       onDoubleClick={(event) => event.stopPropagation()}
     >
@@ -150,6 +190,7 @@ export function InlineTextEditor({
         <>
           <g
             data-inline-text-preview={object.id}
+            transform={`translate(${x} ${y}) rotate(${rotation} ${width / 2} ${height / 2})`}
             opacity={object.opacity}
             pointerEvents="none"
           >
@@ -160,9 +201,9 @@ export function InlineTextEditor({
             />
           </g>
           <rect
-            x={-6}
+            x={sourceX - 6}
             y={sourceY - 24}
-            width={width + 12}
+            width={sourceWidth + 12}
             height={editorHeight + 30}
             rx={4}
             fill="#ffffff"
@@ -170,7 +211,7 @@ export function InlineTextEditor({
             vectorEffect="non-scaling-stroke"
           />
           <text
-            x={0}
+            x={sourceX}
             y={sourceY - 8}
             fill="#6b7280"
             fontSize={12}
@@ -181,22 +222,27 @@ export function InlineTextEditor({
           </text>
         </>
       )}
-      <foreignObject y={sourceY} width={width} height={editorHeight}>
+      <foreignObject
+        x={sourceX}
+        y={sourceY}
+        width={sourceWidth}
+        height={editorHeight}
+      >
         <textarea
           ref={field}
           aria-label="Edit text on slide"
           aria-description={`Inline math uses $...$ or \\(...\\). ${shortcutLabel("insertInlineEquation", platform)} to insert or edit an equation. Enter for a new line. ${shortcutLabel("finishTextEditing", platform)} to finish. Escape to cancel.`}
-          className="inline-text-editor"
+          className={`inline-text-editor${showPreview ? " inline-text-source-editor" : ""}`}
           value={editing.value}
           maxLength={100_000}
           spellCheck={false}
           style={{
             color: showPreview ? "#253347" : object.color,
-            fontFamily: `${exportTextFontFamily(editing.value, object.fontFamily)}, sans-serif`,
+            fontFamily: `${exportTextFontFamily(editing.value, fontFamily)}, sans-serif`,
             fontSize: object.fontSize,
             fontWeight: exportTextFontWeight(
               editing.value,
-              object.fontFamily,
+              fontFamily,
               object.fontWeight,
             ),
             textAlign: object.align,

@@ -7,6 +7,8 @@ on:
       - .github/workflows/linux-release.yml
       - scripts/build-cli.mjs
       - scripts/package-desktop.mjs
+      - scripts/release-layout.mjs
+      - scripts/organize-release.mjs
       - scripts/package-linux.mjs
       - desktop/**
       - src/**
@@ -95,7 +97,7 @@ jobs:
         id: package
         run: |
           command -v dpkg-deb
-          node scripts/package-linux.mjs --arch=x64
+          node scripts/package-linux.mjs --arch=x64 --out=release/linux-deb
           version=$(node -p "require('./package.json').version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "SCISLIDE_VERSION=$version" >> "$GITHUB_ENV"

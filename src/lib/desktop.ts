@@ -123,6 +123,11 @@ export interface DesktopApi {
   } | null>;
   takeOpenDocument?(): ReturnType<DesktopApi["openDocument"]>;
   onOpenDocument?(callback: () => void): () => void;
+  acceptOpenDocument?(path: string): Promise<void>;
+  onCloseDocument?(callback: () => void): () => void;
+  confirmCloseDocument?(): Promise<void>;
+  writeClipboard?(value: { text: string; html: string }): Promise<void>;
+  readClipboard?(): Promise<{ text: string; html: string; png?: Uint8Array }>;
   saveDocument(request: {
     bytes: Uint8Array;
     suggestedName: string;

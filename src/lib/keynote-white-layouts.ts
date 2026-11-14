@@ -147,6 +147,7 @@ function text(
     type: "text",
     text: value,
     fontFamily: theme.fontFamily,
+    fontFamilySource: "deck",
     fontSize,
     fontWeight,
     color,

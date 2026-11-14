@@ -13,8 +13,13 @@ import type { RecoveredEquationDraft } from "../src/lib/workspace-recovery";
 
 /** Minimal transactional test database: writes become visible only on commit. */
 function testIndexedDB() {
-  const state: { value?: unknown; failNextWrite: boolean } = {
+  const state: {
+    value?: unknown;
+    failNextWrite: boolean;
+    failNextRead: boolean;
+  } = {
     failNextWrite: false,
+    failNextRead: false,
   };
   const database = {
     objectStoreNames: { contains: () => true },
@@ -49,7 +54,14 @@ function testIndexedDB() {
           request.onsuccess?.();
         }
         queueMicrotask(() => {
-          if (mode === "readwrite" && state.failNextWrite) {
+          if (mode === "readonly" && state.failNextRead) {
+            state.failNextRead = false;
+            transaction.error = new DOMException(
+              "Read unavailable",
+              "UnknownError",
+            );
+            transaction.onabort?.();
+          } else if (mode === "readwrite" && state.failNextWrite) {
             state.failNextWrite = false;
             transaction.error = new DOMException(
               "Quota exceeded",
@@ -204,7 +216,9 @@ describe("complete workspace recovery", () => {
     expect((await loadWorkspaceRecovery())?.deck.title).toBe(deck.title);
     spy.mockRestore();
     await saveWorkspaceRecovery({ ...deck, title: "Applied draft" });
-    expect(localStorage.getItem(WORKSPACE_RECOVERY_KEY)).toBeNull();
+    expect(
+      JSON.parse(localStorage.getItem(WORKSPACE_RECOVERY_KEY)!).savedAt,
+    ).toBeTruthy();
     expect((await loadWorkspaceRecovery())?.deck.title).toBe("Applied draft");
     expect((await loadWorkspaceRecovery())?.equationDrafts).toEqual([]);
   });
@@ -292,15 +306,150 @@ describe("complete workspace recovery", () => {
       throw new DOMException("Storage access denied", "SecurityError");
     });
     await expect(loadWorkspaceRecovery()).rejects.toThrow(
-      "Storage access denied",
+      "Existing data was preserved",
     );
     const mock = testIndexedDB();
     mock.state.value = { invalid: "latest-record" };
     vi.stubGlobal("indexedDB", mock.factory);
     await expect(loadWorkspaceRecovery()).rejects.toThrow(
-      "Storage access denied",
+      "Existing data was preserved",
     );
     expect(mock.state.value).toEqual({ invalid: "latest-record" });
+  });
+
+  it("chooses the newest valid snapshot across IndexedDB, local v2, and legacy storage", async () => {
+    const mock = testIndexedDB();
+    vi.stubGlobal("indexedDB", mock.factory);
+    const deck = createDemoDeck();
+    mock.state.value = {
+      deck: { ...deck, title: "IndexedDB old" },
+      equationDrafts: [],
+      savedAt: "2026-10-01T00:00:00.000Z",
+    };
+    const draft = unappliedDraft(deck);
+    localStorage.setItem(
+      WORKSPACE_RECOVERY_KEY,
+      JSON.stringify({
+        deck: { ...deck, title: "Local latest" },
+        equationDrafts: [draft],
+        savedAt: "2026-10-03T00:00:00.000Z",
+      }),
+    );
+    localStorage.setItem(
+      "scislide.recovery.v1",
+      JSON.stringify({
+        deck: { ...deck, title: "Legacy middle" },
+        savedAt: "2026-10-02T00:00:00.000Z",
+      }),
+    );
+    const recovered = await loadWorkspaceRecovery();
+    expect(recovered?.deck.title).toBe("Local latest");
+    expect(recovered?.equationDrafts).toEqual([draft]);
+    localStorage.setItem(
+      "scislide.recovery.v1",
+      JSON.stringify({
+        deck: { ...deck, title: "Legacy latest" },
+        savedAt: "2026-10-04T00:00:00.000Z",
+      }),
+    );
+    expect((await loadWorkspaceRecovery())?.deck.title).toBe("Legacy latest");
+    mock.state.value = {
+      deck: { ...deck, title: "IndexedDB latest" },
+      equationDrafts: [],
+      savedAt: "2026-10-05T00:00:00.000Z",
+    };
+    expect((await loadWorkspaceRecovery())?.deck.title).toBe(
+      "IndexedDB latest",
+    );
+  });
+
+  it("retains the legacy save date and treats undated legacy data as unknown age", async () => {
+    vi.stubGlobal("indexedDB", undefined);
+    const deck = createDemoDeck();
+    localStorage.setItem(
+      "scislide.recovery.v1",
+      JSON.stringify({
+        deck,
+        savedAt: "2025-01-01T00:00:00.000Z",
+      }),
+    );
+    expect((await loadWorkspaceRecovery())?.savedAt).toBe(
+      "2025-01-01T00:00:00.000Z",
+    );
+    localStorage.setItem("scislide.recovery.v1", JSON.stringify({ deck }));
+    expect((await loadWorkspaceRecovery())?.savedAt).toBe(
+      "1970-01-01T00:00:00.000Z",
+    );
+  });
+
+  it("restores local data after IndexedDB open or read failures", async () => {
+    vi.stubGlobal("indexedDB", undefined);
+    const deck = createDemoDeck();
+    await saveWorkspaceRecovery(deck, [unappliedDraft(deck)]);
+    vi.stubGlobal("indexedDB", {
+      open: () => {
+        throw new DOMException("Unavailable", "QuotaExceededError");
+      },
+    });
+    expect((await loadWorkspaceRecovery())?.deck.title).toBe(deck.title);
+    const mock = testIndexedDB();
+    mock.state.failNextRead = true;
+    vi.stubGlobal("indexedDB", mock.factory);
+    expect((await loadWorkspaceRecovery())?.equationDrafts).toHaveLength(1);
+  });
+
+  it("restores IndexedDB data when local storage is damaged or inaccessible", async () => {
+    const mock = testIndexedDB();
+    vi.stubGlobal("indexedDB", mock.factory);
+    const deck = createDemoDeck();
+    await saveWorkspaceRecovery(deck);
+    localStorage.setItem(WORKSPACE_RECOVERY_KEY, "{broken");
+    expect((await loadWorkspaceRecovery())?.deck.id).toBe(deck.id);
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("Storage access denied", "SecurityError");
+    });
+    expect((await loadWorkspaceRecovery())?.deck.id).toBe(deck.id);
+  });
+
+  it("orders local saves within the same millisecond without losing their saved date", async () => {
+    vi.stubGlobal("indexedDB", undefined);
+    vi.spyOn(Date, "now").mockReturnValue(
+      Date.parse("2020-01-01T00:00:00.000Z"),
+    );
+    const deck = createDemoDeck();
+    await saveWorkspaceRecovery(deck);
+    const first = (await loadWorkspaceRecovery())!.savedAt;
+    await saveWorkspaceRecovery({ ...deck, title: "Newer" });
+    const latest = (await loadWorkspaceRecovery())!;
+    expect(latest.savedAt > first).toBe(true);
+    expect(latest.deck.title).toBe("Newer");
+  });
+
+  it("preserves optional typography inheritance while leaving legacy drafts explicit", () => {
+    const deck = createDemoDeck();
+    const draft = unappliedDraft(deck);
+    const recovery = {
+      deck,
+      equationDrafts: [draft],
+      savedAt: draft.updatedAt,
+    };
+    expect(
+      validateWorkspaceRecovery(recovery).equationDrafts[0].draft
+        .inheritTypography,
+    ).toBeUndefined();
+    draft.draft.inheritTypography = true;
+    expect(
+      validateWorkspaceRecovery(recovery).equationDrafts[0].draft
+        .inheritTypography,
+    ).toBe(true);
+    expect(() =>
+      validateWorkspaceRecovery({
+        ...recovery,
+        equationDrafts: [
+          { ...draft, draft: { ...draft.draft, inheritTypography: "true" } },
+        ],
+      }),
+    ).toThrow("settings");
   });
 
   it("rejects damaged settings, bounds drafts, and drops drafts belonging to removed objects", () => {

@@ -1,7 +1,11 @@
 import { renderEquation } from "./equations";
 import type { RenderedEquation } from "./equations";
-import type { Deck, TextObject } from "./model";
-import { exportTextFontFamily, exportTextFontWeight } from "./text-fonts";
+import type { Deck, FontSetId, TextObject } from "./model";
+import {
+  effectiveTextFontFamily,
+  exportTextFontFamily,
+  exportTextFontWeight,
+} from "./text-fonts";
 
 export type InlineMathToken =
   | { type: "text"; text: string }
@@ -53,17 +57,29 @@ export interface InlineTextLayout {
   errors?: string[];
 }
 
+/** Latin Modern retains the familiar Computer Modern / LaTeX math letterforms. */
+export function inlineMathFont(
+  deck: Deck,
+  object?: Pick<TextObject, "inlineMathFontSetId">,
+): FontSetId {
+  return (
+    object?.inlineMathFontSetId ??
+    deck.theme.inlineMathFontSetId ??
+    "mathjax-modern"
+  );
+}
+
 /** Inputs that determine the displayed inline layout, excluding frame height. */
 export function inlineTextLayoutKey(object: TextObject, deck: Deck): string {
   return JSON.stringify([
     object.text,
     object.transform.width,
-    object.fontFamily,
+    effectiveTextFontFamily(deck, object),
     object.fontWeight,
     object.fontSize,
     object.color,
     object.align,
-    deck.theme.equation.fontSetId,
+    inlineMathFont(deck, object),
   ]);
 }
 
@@ -267,10 +283,11 @@ export async function layoutInlineText(
     .map((token) => token.text)
     .join("")
     .normalize("NFC");
-  const fontFamily = exportTextFontFamily(prose, object.fontFamily);
+  const requestedFamily = effectiveTextFontFamily(deck, object);
+  const fontFamily = exportTextFontFamily(prose, requestedFamily);
   const fontWeight = exportTextFontWeight(
     prose,
-    object.fontFamily,
+    requestedFamily,
     object.fontWeight,
   );
   const size = object.fontSize;
@@ -287,7 +304,7 @@ export async function layoutInlineText(
         try {
           return await renderEquation(
             token.latex,
-            deck.theme.equation.fontSetId,
+            inlineMathFont(deck, object),
             size,
             object.color,
             false,

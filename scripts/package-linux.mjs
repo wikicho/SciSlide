@@ -9,7 +9,6 @@ import {
   readFile,
   readdir,
   realpath,
-  rename,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -19,6 +18,14 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { linuxInstalledLauncher, packageDesktop } from "./package-desktop.mjs";
+import {
+  assertNoSymlinkParents,
+  assertAppDirectoryUnchanged,
+  defaultArtifactDirectory,
+  defaultAppDirectory,
+  guardAppDirectory,
+  publishReleaseEntries,
+} from "./release-layout.mjs";
 
 const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 const run = promisify(execFile);
@@ -64,7 +71,7 @@ export const LINUX_DEPENDS = [
 export function parseLinuxOptions(args) {
   const options = {
     arch: "x64",
-    out: "release/linux-deb",
+    out: undefined,
     overwrite: false,
     help: false,
   };
@@ -113,6 +120,7 @@ async function exists(filename) {
 }
 
 async function validateOutput(root, requested) {
+  await assertNoSymlinkParents(requested);
   for (const input of inputs)
     if (isWithin(path.join(root, input), requested))
       throw new Error(
@@ -205,9 +213,10 @@ export async function packageLinux(options = {}, dependencies = {}) {
   if (typeof target.overwrite !== "boolean")
     throw new Error("overwrite must be a boolean.");
   if (
-    typeof target.out !== "string" ||
-    !target.out ||
-    /[\0\r\n]/.test(target.out)
+    target.out !== undefined &&
+    (typeof target.out !== "string" ||
+      !target.out ||
+      /[\0\r\n]/.test(target.out))
   )
     throw new Error("out must be a non-empty path.");
   if (process.platform !== "linux")
@@ -236,7 +245,23 @@ export async function packageLinux(options = {}, dependencies = {}) {
       "Install dpkg (provides dpkg-deb) to build a Linux .deb package.",
     );
   }
-  const output = await validateOutput(root, path.resolve(root, target.out));
+  const output = await validateOutput(
+    root,
+    path.resolve(
+      root,
+      target.out ?? defaultArtifactDirectory(root, pkg.version, "linux"),
+    ),
+  );
+  const appOutput =
+    target.out === undefined
+      ? await validateOutput(root, defaultAppDirectory(root, pkg.version))
+      : output;
+  const finalAppFolder = path.join(appOutput, "SciSlide-linux-x64");
+  const originalApp = await guardAppDirectory(
+    finalAppFolder,
+    "linux",
+    target.overwrite,
+  );
   const debName = `SciSlide-${pkg.version}-linux-x64.deb`;
   const names = [debName, `${debName}.sha256`, "LINUX-INSTALL.md"];
   for (const name of names)
@@ -248,13 +273,14 @@ export async function packageLinux(options = {}, dependencies = {}) {
       root,
       platform: "linux",
       arch: "x64",
-      out: output,
-      overwrite: target.overwrite,
+      out: path.join(stage, "apps"),
+      overwrite: false,
     });
     if (
       !appFolder ||
       extra.length ||
-      path.resolve(appFolder) !== path.join(output, "SciSlide-linux-x64") ||
+      path.resolve(appFolder) !==
+        path.join(stage, "apps", "SciSlide-linux-x64") ||
       (await lstat(appFolder)).isSymbolicLink()
     )
       throw new Error(
@@ -451,14 +477,32 @@ exit 0
       `${await sha256(path.join(stage, debName))}  ${debName}\n`,
     );
     await writeFile(path.join(stage, "LINUX-INSTALL.md"), usage);
-    // Publish completed artifacts only after build, validation and hashing.
-    for (const name of names) {
-      const destination = path.join(output, name);
-      await guardArtifact(destination, target.overwrite);
-      await rename(path.join(stage, name), destination);
-    }
+    await assertAppDirectoryUnchanged(
+      finalAppFolder,
+      "linux",
+      target.overwrite,
+      originalApp,
+    );
+    // The app and its installers/checksums advance together, or all prior outputs return.
+    const publish = dependencies.publishReleaseEntries ?? publishReleaseEntries;
+    await publish(
+      [
+        {
+          source: appFolder,
+          destination: finalAppFolder,
+          kind: "directory",
+          expectedDestination: originalApp,
+        },
+        ...names.map((name) => ({
+          source: path.join(stage, name),
+          destination: path.join(output, name),
+          kind: "file",
+        })),
+      ],
+      { overwrite: target.overwrite },
+    );
     return {
-      appFolder,
+      appFolder: finalAppFolder,
       deb: path.join(output, debName),
       checksum: path.join(output, `${debName}.sha256`),
     };
@@ -475,7 +519,7 @@ if (
     const options = parseLinuxOptions(process.argv.slice(2));
     if (options.help)
       console.log(
-        "Usage: node scripts/package-linux.mjs [--arch=x64] [--out=release/linux-deb] [--overwrite]\nBuild the editor first (pnpm build). Creates an amd64 .deb, SHA-256 checksum, desktop launcher and Linux instructions. Requires Linux and dpkg-deb.",
+        "Usage: node scripts/package-linux.mjs [--arch=x64] [--out=directory] (default: release/v<version>/linux) [--overwrite]\nBuild the editor first (pnpm build). Creates an amd64 .deb, SHA-256 checksum, desktop launcher and Linux instructions. Requires Linux and dpkg-deb.",
       );
     else {
       const result = await packageLinux(options);

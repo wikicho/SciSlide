@@ -5,6 +5,8 @@ import { createThemeDeck } from "../src/lib/deck-themes";
 import {
   hasInlineMath,
   inlinePlainText,
+  inlineMathFont,
+  inlineTextLayoutKey,
   layoutInlineText,
   MAX_INLINE_MATH_SPANS,
   parseInlineMath,
@@ -168,6 +170,39 @@ describe("shared inline text layout", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
+  it.each(["mathjax-stix2", "mathjax-fira"] as const)(
+    "defaults existing %s decks to LaTeX-style inline math and keys an explicit preference",
+    async (equationFont) => {
+      const current = structuredClone(deck);
+      current.theme.equation.fontSetId = equationFont;
+      const originalTheme = structuredClone(current.theme);
+      const object = text(String.raw`Value $U(1)_{L_\mu-L_\tau}$`);
+      const renderer = fakeMath();
+      await layoutInlineText(object, current);
+      expect(renderer).toHaveBeenCalledWith(
+        String.raw`U(1)_{L_\mu-L_\tau}`,
+        "mathjax-modern",
+        40,
+        object.color,
+        false,
+      );
+      expect(current.theme).toEqual(originalTheme);
+      const key = inlineTextLayoutKey(object, current);
+      current.theme.equation.fontSetId = "mathjax-modern";
+      expect(inlineTextLayoutKey(object, current)).toBe(key);
+      current.theme.inlineMathFontSetId = "mathjax-fira";
+      expect(inlineTextLayoutKey(object, current)).not.toBe(key);
+      await layoutInlineText(object, current);
+      expect(renderer).toHaveBeenLastCalledWith(
+        String.raw`U(1)_{L_\mu-L_\tau}`,
+        "mathjax-fira",
+        40,
+        object.color,
+        false,
+      );
+    },
+  );
+
   it.each(["left", "center", "right"] as const)(
     "aligns the whole mixed line %s with one baseline",
     async (align) => {
@@ -180,7 +215,7 @@ describe("shared inline text layout", () => {
       const line = layout.lines[0];
       expect(renderer).toHaveBeenCalledWith(
         "x",
-        "mathjax-stix2",
+        "mathjax-modern",
         40,
         "#234567",
         false,
@@ -466,7 +501,7 @@ describe("shared inline text layout", () => {
       "mathjax-modern",
     ] as const) {
       const current = structuredClone(deck);
-      current.theme.equation.fontSetId = fontSetId;
+      current.theme.inlineMathFontSetId = fontSetId;
       const layout = await layoutInlineText(
         text(`Energy $${source}$ remains.`),
         current,
@@ -517,7 +552,7 @@ describe("shared inline text layout", () => {
       "mathjax-modern",
     ] as const) {
       const current = structuredClone(deck);
-      current.theme.equation.fontSetId = fontSetId;
+      current.theme.inlineMathFontSetId = fontSetId;
       const equation = await equations.renderEquation(
         "x",
         fontSetId,
@@ -595,7 +630,7 @@ describe("shared inline text layout", () => {
           if (run.type !== "math") continue;
           const equation = await equations.renderEquation(
             run.latex,
-            deck.theme.equation.fontSetId,
+            inlineMathFont(deck),
             object.fontSize,
             object.color,
             false,

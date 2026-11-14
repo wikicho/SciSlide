@@ -134,7 +134,18 @@ const specifics: Record<string, Record<string, Schema>> = {
     text: { ...text(100_000), default: "" },
     fontFamily: {
       ...text(200),
-      description: "Defaults to the deck text font.",
+      description:
+        "Defaults to the deck text font. Setting a family makes it an explicit override unless fontFamilySource is deck.",
+    },
+    fontFamilySource: {
+      ...nullable({ enum: ["deck"] }),
+      description:
+        "deck follows later deck font changes; null restores an explicit family.",
+    },
+    inlineMathFontSetId: {
+      ...nullable(fontSet),
+      description:
+        "Override the text object's inline equation font; null restores the deck inline font.",
     },
     fontSize: { ...number(4, 500), default: 40 },
     fontWeight: { ...number(100, 1000), default: 400 },
@@ -247,6 +258,11 @@ const pageNumbers = object({
 const themePatch = object({
   fontFamily: text(200),
   equation: object({ fontSetId: fontSet, fontSize: number(4, 500), color }),
+  inlineMathFontSetId: {
+    ...nullable(fontSet),
+    description:
+      "Set the deck's independent inline math font; null restores the Latin Modern default.",
+  },
 });
 const deckPatch = object({
   title: text(),

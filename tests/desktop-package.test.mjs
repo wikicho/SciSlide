@@ -8,6 +8,7 @@ import {
   readFile,
   readdir,
   realpath,
+  rename,
   rm,
   symlink,
   writeFile,
@@ -19,6 +20,10 @@ import {
   packageDesktop,
   parsePackagingOptions,
 } from "../scripts/package-desktop.mjs";
+import {
+  defaultAppDirectory,
+  publishReleaseEntries,
+} from "../scripts/release-layout.mjs";
 
 async function fixture(t) {
   const root = await realpath(
@@ -47,6 +52,19 @@ async function fixture(t) {
   await writeFile(
     path.join(root, "node_modules/electron/package.json"),
     JSON.stringify({ version: "44.5.1" }),
+  );
+  await writeFile(
+    path.join(root, "node_modules/electron/checksums.json"),
+    JSON.stringify(
+      Object.fromEntries(
+        ["darwin", "linux", "win32"].flatMap((platform) =>
+          ["arm64", "x64"].map((arch) => [
+            `electron-v44.5.1-${platform}-${arch}.zip`,
+            "a".repeat(64),
+          ]),
+        ),
+      ),
+    ),
   );
   await writeFile(path.join(root, "desktop/main.cjs"), "// host");
   await writeFile(path.join(root, "desktop/update-cli.mjs"), "// update entry");
@@ -78,6 +96,32 @@ async function fixture(t) {
     "editable example",
   );
   return root;
+}
+
+async function stagedApp(options) {
+  const app = path.join(
+    options.out,
+    `SciSlide-${options.platform}-${options.arch}`,
+  );
+  const resources =
+    options.platform === "darwin"
+      ? path.join(app, "SciSlide.app", "Contents", "Resources")
+      : path.join(app, "resources");
+  await mkdir(resources, { recursive: true });
+  await writeFile(path.join(resources, "app.asar"), "new app archive");
+  return [app];
+}
+
+async function previousApp(root) {
+  const output = defaultAppDirectory(root, "0.2.1");
+  const app = path.join(output, "SciSlide-linux-x64");
+  await mkdir(path.join(app, "resources"), { recursive: true });
+  await writeFile(
+    path.join(app, "resources", "app.asar"),
+    "previous app archive",
+  );
+  await writeFile(path.join(app, "keep.txt"), "previous extra file");
+  return { app, output };
 }
 
 test("CLI options select one validated target and preserve current-platform defaults", () => {
@@ -120,12 +164,19 @@ test("CLI options select one validated target and preserve current-platform defa
 test("Mac package carries portable and installed usage/examples, metadata, and staged dependencies", async (t) => {
   const root = await fixture(t);
   let stage;
+  let packageOutput;
   const apps = await packageDesktop(
     { root, platform: "darwin", arch: "arm64" },
     {
       packager: async (options) => {
         stage = options.dir;
-        assert.equal(options.out, path.join(root, "release"));
+        packageOutput = options.out;
+        assert.equal(
+          path.dirname(options.out),
+          defaultAppDirectory(root, "0.2.1"),
+        );
+        assert.match(path.basename(options.out), /^\.scislide-package-output-/);
+        assert.equal(options.overwrite, false);
         assert.equal(options.appBundleId, "com.scislide.app");
         assert.equal(
           options.appCategoryType,
@@ -153,6 +204,10 @@ test("Mac package carries portable and installed usage/examples, metadata, and s
         assert.equal(options.asar, true);
         assert.equal(options.prune, false);
         assert.equal(options.electronVersion, "44.5.1");
+        assert.deepEqual(options.download, {
+          checksums: { "electron-v44.5.1-darwin-arm64.zip": "a".repeat(64) },
+        });
+        assert.equal(options.electronZipDir, undefined);
         assert.equal(
           await readFile(path.join(stage, "dist/index.html"), "utf8"),
           "renderer",
@@ -188,6 +243,10 @@ test("Mac package carries portable and installed usage/examples, metadata, and s
     },
   );
   await assert.rejects(lstat(stage), { code: "ENOENT" });
+  await assert.rejects(lstat(packageOutput), { code: "ENOENT" });
+  assert.deepEqual(apps, [
+    path.join(defaultAppDirectory(root, "0.2.1"), "SciSlide-darwin-arm64"),
+  ]);
   const resources = path.join(apps[0], "SciSlide.app/Contents/Resources");
   for (const base of [apps[0], resources]) {
     assert.equal(
@@ -250,12 +309,14 @@ test("A failed packaging call cleans only its unique temporary stage", async (t)
   const unrelated = path.join(root, "keep.txt");
   await writeFile(unrelated, "keep");
   let stage;
+  let packageOutput;
   await assert.rejects(
     packageDesktop(
       { root, platform: "linux", arch: "x64" },
       {
         packager: async (options) => {
           stage = options.dir;
+          packageOutput = options.out;
           throw new Error("packaging interrupted");
         },
       },
@@ -263,7 +324,358 @@ test("A failed packaging call cleans only its unique temporary stage", async (t)
     /packaging interrupted/,
   );
   await assert.rejects(lstat(stage), { code: "ENOENT" });
+  await assert.rejects(lstat(packageOutput), { code: "ENOENT" });
   assert.equal(await readFile(unrelated, "utf8"), "keep");
+});
+
+test("an explicit output remains exact while builds use a private staged directory", async (t) => {
+  const root = await fixture(t);
+  const output = path.join(root, "custom output");
+  let staging;
+  const apps = await packageDesktop(
+    { root, platform: "linux", arch: "x64", out: "custom output" },
+    {
+      packager: async (options) => {
+        staging = options.out;
+        assert.equal(path.dirname(staging), output);
+        assert.equal(options.overwrite, false);
+        return stagedApp(options);
+      },
+    },
+  );
+  assert.deepEqual(apps, [path.join(output, "SciSlide-linux-x64")]);
+  assert.deepEqual(await readdir(output), ["SciSlide-linux-x64"]);
+  await assert.rejects(lstat(staging), { code: "ENOENT" });
+});
+
+test("unsafe package versions fail before creating release outputs", async (t) => {
+  const root = await fixture(t);
+  await writeFile(
+    path.join(root, "package.json"),
+    JSON.stringify({
+      name: "scislide",
+      version: "../../outside",
+      main: "desktop/main.cjs",
+    }),
+  );
+  let invoked = false;
+  await assert.rejects(
+    packageDesktop(
+      { root, platform: "linux", arch: "x64" },
+      {
+        packager: async () => {
+          invoked = true;
+          return [];
+        },
+      },
+    ),
+    /safe semantic version/,
+  );
+  assert.equal(invoked, false);
+  await assert.rejects(lstat(path.join(root, "release")), { code: "ENOENT" });
+});
+
+test("runtime checksums reject malformed maps, unsafe filenames, wrong digests and mismatched versions before packaging", async (t) => {
+  const archive = "electron-v44.5.1-linux-x64.zip";
+  const invalid = [
+    "{",
+    "null",
+    "[]",
+    "{}",
+    JSON.stringify({ [archive]: "a".repeat(63) }),
+    JSON.stringify({ [archive]: 42 }),
+    JSON.stringify({
+      [archive]: "a".repeat(64),
+      "../outside.zip": "b".repeat(64),
+    }),
+    JSON.stringify({
+      [archive]: "a".repeat(64),
+      "bad\nfilename.zip": "b".repeat(64),
+    }),
+    JSON.stringify({ "electron-v44.5.0-linux-x64.zip": "a".repeat(64) }),
+    JSON.stringify({ "electron-v44.5.1-linux-arm64.zip": "a".repeat(64) }),
+    JSON.stringify({
+      [archive]: "a".repeat(64),
+      ...Object.fromEntries(
+        Array.from({ length: 513 }, (_, index) => [
+          `extra-${index}.zip`,
+          "a".repeat(64),
+        ]),
+      ),
+    }),
+    " ".repeat(1024 * 1024 + 1),
+  ];
+  for (const source of invalid) {
+    const root = await fixture(t);
+    await writeFile(
+      path.join(root, "node_modules/electron/checksums.json"),
+      source,
+    );
+    let called = false;
+    await assert.rejects(
+      packageDesktop(
+        { root, platform: "linux", arch: "x64" },
+        {
+          packager: async () => {
+            called = true;
+            return [];
+          },
+        },
+      ),
+      /Electron dependency/,
+    );
+    assert.equal(called, false);
+    await assert.rejects(lstat(path.join(root, "release")), { code: "ENOENT" });
+  }
+  const root = await fixture(t);
+  await writeFile(
+    path.join(root, "node_modules/electron/package.json"),
+    JSON.stringify({ version: "../../44.5.1" }),
+  );
+  await assert.rejects(
+    packageDesktop({ root, platform: "linux", arch: "x64" }),
+    /valid runtime version/,
+  );
+});
+
+test("runtime checksum file links and non-file entries are rejected without reading their target", async (t) => {
+  for (const link of [false, true]) {
+    const root = await fixture(t);
+    const filename = path.join(root, "node_modules/electron/checksums.json");
+    await rm(filename);
+    if (link) {
+      const directory = path.join(root, "outside-checksums");
+      await mkdir(directory);
+      await writeFile(path.join(directory, "keep.txt"), "untouched");
+      await symlink(
+        directory,
+        filename,
+        process.platform === "win32" ? "junction" : "dir",
+      );
+    } else await mkdir(filename);
+    await assert.rejects(
+      packageDesktop({ root, platform: "linux", arch: "x64" }),
+      /regular, bounded checksums.json/,
+    );
+    await assert.rejects(lstat(path.join(root, "release")), { code: "ENOENT" });
+  }
+});
+
+test("successful overwrite publishes only after CLI and examples are complete", async (t) => {
+  const root = await fixture(t);
+  const { app, output } = await previousApp(root);
+  const result = await packageDesktop(
+    { root, platform: "linux", arch: "x64", overwrite: true },
+    {
+      packager: async (options) => {
+        assert.equal(options.overwrite, false);
+        assert.equal(
+          await readFile(path.join(app, "resources", "app.asar"), "utf8"),
+          "previous app archive",
+        );
+        return stagedApp(options);
+      },
+      publishReleaseEntries: async (entries, options) => {
+        assert.equal(
+          await readFile(path.join(app, "keep.txt"), "utf8"),
+          "previous extra file",
+        );
+        assert.equal(
+          await readFile(
+            path.join(
+              entries[0].source,
+              "resources",
+              "scislide-cli",
+              "agent.cjs",
+            ),
+            "utf8",
+          ),
+          "// bundled agent CLI",
+        );
+        assert.equal(
+          await readFile(
+            path.join(entries[0].source, "examples", "example.scislide"),
+            "utf8",
+          ),
+          "editable example",
+        );
+        await publishReleaseEntries(entries, options);
+      },
+    },
+  );
+  assert.deepEqual(result, [app]);
+  assert.equal(
+    await readFile(path.join(app, "resources", "app.asar"), "utf8"),
+    "new app archive",
+  );
+  await assert.rejects(lstat(path.join(app, "keep.txt")), { code: "ENOENT" });
+  assert.deepEqual(await readdir(output), ["SciSlide-linux-x64"]);
+});
+
+for (const failure of ["packager", "postprocessing", "publication"]) {
+  test(`${failure} failure preserves the entire previous app and cleans staging`, async (t) => {
+    const root = await fixture(t);
+    const { app, output } = await previousApp(root);
+    let sourceStage;
+    let packageStage;
+    let published = false;
+    await assert.rejects(
+      packageDesktop(
+        { root, platform: "linux", arch: "x64", overwrite: true },
+        {
+          packager: async (options) => {
+            sourceStage = options.dir;
+            packageStage = options.out;
+            const apps = await stagedApp(options);
+            if (failure === "packager") throw new Error("packager interrupted");
+            if (failure === "postprocessing")
+              await rm(path.join(root, "examples"), { recursive: true });
+            return apps;
+          },
+          publishReleaseEntries: async (entries, options) => {
+            published = true;
+            return publishReleaseEntries(entries, options, {
+              rename: async (source, destination) => {
+                if (
+                  source === entries[0].source &&
+                  destination === entries[0].destination
+                )
+                  throw new Error("publication interrupted");
+                return rename(source, destination);
+              },
+            });
+          },
+        },
+      ),
+      failure === "postprocessing"
+        ? { code: "ENOENT" }
+        : new RegExp(`${failure} interrupted`),
+    );
+    assert.equal(published, failure === "publication");
+    assert.equal(
+      await readFile(path.join(app, "resources", "app.asar"), "utf8"),
+      "previous app archive",
+    );
+    assert.equal(
+      await readFile(path.join(app, "keep.txt"), "utf8"),
+      "previous extra file",
+    );
+    assert.deepEqual(await readdir(output), ["SciSlide-linux-x64"]);
+    await assert.rejects(lstat(sourceStage), { code: "ENOENT" });
+    await assert.rejects(lstat(packageStage), { code: "ENOENT" });
+  });
+}
+
+test("packager return paths cannot escape staging or select the previous app", async (t) => {
+  for (const invalid of [
+    "previous",
+    "outside",
+    "empty",
+    "multiple",
+    "extra-output",
+  ]) {
+    await t.test(invalid, async (t) => {
+      const root = await fixture(t);
+      const { app, output } = await previousApp(root);
+      let staging;
+      await assert.rejects(
+        packageDesktop(
+          { root, platform: "linux", arch: "x64", overwrite: true },
+          {
+            packager: async (options) => {
+              staging = options.out;
+              const apps = await stagedApp(options);
+              if (invalid === "previous") return [app];
+              if (invalid === "outside") return [path.join(root, "outside")];
+              if (invalid === "empty") return [];
+              if (invalid === "multiple") return [apps[0], apps[0]];
+              await writeFile(
+                path.join(staging, "extra.txt"),
+                "unrelated output",
+              );
+              return apps;
+            },
+          },
+        ),
+        /expected single/,
+      );
+      assert.equal(
+        await readFile(path.join(app, "keep.txt"), "utf8"),
+        "previous extra file",
+      );
+      assert.deepEqual(await readdir(output), ["SciSlide-linux-x64"]);
+      await assert.rejects(lstat(staging), { code: "ENOENT" });
+    });
+  }
+});
+
+test("linked staged app, resource and sidecar paths never write outside staging", async (t) => {
+  const linkType = process.platform === "win32" ? "junction" : "dir";
+  for (const linked of ["app", "resources", "cli", "bin", "examples"]) {
+    await t.test(linked, async (t) => {
+      const root = await fixture(t);
+      const { app, output } = await previousApp(root);
+      const outside = path.join(root, "outside");
+      await mkdir(outside);
+      await writeFile(path.join(outside, "keep.txt"), "external data");
+      await assert.rejects(
+        packageDesktop(
+          { root, platform: "linux", arch: "x64", overwrite: true },
+          {
+            packager: async (options) => {
+              const [generated] = await stagedApp(options);
+              const destination =
+                linked === "app"
+                  ? generated
+                  : linked === "resources"
+                    ? path.join(generated, "resources")
+                    : linked === "cli"
+                      ? path.join(generated, "resources", "scislide-cli")
+                      : path.join(generated, linked);
+              await rm(destination, { recursive: true, force: true });
+              await symlink(outside, destination, linkType);
+              return [generated];
+            },
+          },
+        ),
+        /regular staged app directories|unexpected CLI or example destination/,
+      );
+      assert.deepEqual(await readdir(outside), ["keep.txt"]);
+      assert.equal(
+        await readFile(path.join(outside, "keep.txt"), "utf8"),
+        "external data",
+      );
+      assert.equal(
+        await readFile(path.join(app, "keep.txt"), "utf8"),
+        "previous extra file",
+      );
+      assert.deepEqual(await readdir(output), ["SciSlide-linux-x64"]);
+    });
+  }
+});
+
+test("a changed or unrecognized destination during packaging is left intact", async (t) => {
+  const root = await fixture(t);
+  const { app, output } = await previousApp(root);
+  await assert.rejects(
+    packageDesktop(
+      { root, platform: "linux", arch: "x64", overwrite: true },
+      {
+        packager: async (options) => {
+          const apps = await stagedApp(options);
+          await rm(path.join(app, "resources"), { recursive: true });
+          await writeFile(path.join(app, "new.txt"), "new unrelated data");
+          return apps;
+        },
+      },
+    ),
+    /unrecognized app directory/,
+  );
+  assert.equal(
+    await readFile(path.join(app, "new.txt"), "utf8"),
+    "new unrelated data",
+  );
+  assert.deepEqual(await readdir(output), ["SciSlide-linux-x64"]);
 });
 
 test("Windows x64 package carries Windows instructions and editable examples", async (t) => {
@@ -597,7 +1009,7 @@ for (const platform of ["linux", "darwin"]) {
 
 test("Existing unrecognized app directories and symlinks cannot be overwritten", async (t) => {
   const root = await fixture(t);
-  const out = path.join(root, "release");
+  const out = defaultAppDirectory(root, "0.2.1");
   const app = path.join(out, "SciSlide-linux-x64");
   await mkdir(app, { recursive: true });
   await writeFile(path.join(app, "keep.txt"), "keep");
@@ -620,6 +1032,13 @@ test("Existing unrecognized app directories and symlinks cannot be overwritten",
     /outside the packaged inputs/,
   );
   await rm(app, { recursive: true });
+  await writeFile(app, "regular file destination");
+  await assert.rejects(
+    packageDesktop({ root, platform: "linux", arch: "x64", overwrite: true }),
+    /non-directory or symlink/,
+  );
+  assert.equal(await readFile(app, "utf8"), "regular file destination");
+  await rm(app);
   const directoryLinkType = process.platform === "win32" ? "junction" : "dir";
   await symlink(path.join(root, "dist"), app, directoryLinkType);
   await assert.rejects(
@@ -640,4 +1059,64 @@ test("Existing unrecognized app directories and symlinks cannot be overwritten",
     }),
     /outside the packaged inputs/,
   );
+});
+
+test("existing app archive ancestors cannot be symlinks to unrelated payloads", async (t) => {
+  for (const [platform, linked] of [
+    ["linux", "resources"],
+    ["darwin", "SciSlide.app"],
+    ["darwin", "SciSlide.app/Contents"],
+    ["darwin", "SciSlide.app/Contents/Resources"],
+  ]) {
+    await t.test(`${platform} ${linked}`, async (t) => {
+      const root = await fixture(t);
+      const app = path.join(
+        defaultAppDirectory(root, "0.2.1"),
+        `SciSlide-${platform}-x64`,
+      );
+      const linkedPath = path.join(app, linked);
+      const archive = path.join(
+        app,
+        platform === "darwin"
+          ? "SciSlide.app/Contents/Resources/app.asar"
+          : "resources/app.asar",
+      );
+      const outside = path.join(root, "outside");
+      const outsideArchive = path.join(
+        outside,
+        path.relative(linkedPath, archive),
+      );
+      await mkdir(path.dirname(linkedPath), { recursive: true });
+      await mkdir(path.dirname(outsideArchive), { recursive: true });
+      await writeFile(outsideArchive, "unrelated app payload");
+      await writeFile(path.join(app, "keep.txt"), "keep original app tree");
+      await symlink(
+        outside,
+        linkedPath,
+        process.platform === "win32" ? "junction" : "dir",
+      );
+      let packaged = false;
+      await assert.rejects(
+        packageDesktop(
+          { root, platform, arch: "x64", overwrite: true },
+          {
+            packager: async () => {
+              packaged = true;
+              return [];
+            },
+          },
+        ),
+        /symlink/,
+      );
+      assert.equal(packaged, false);
+      assert.equal(
+        await readFile(outsideArchive, "utf8"),
+        "unrelated app payload",
+      );
+      assert.equal(
+        await readFile(path.join(app, "keep.txt"), "utf8"),
+        "keep original app tree",
+      );
+    });
+  }
 });

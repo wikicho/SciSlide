@@ -1,18 +1,18 @@
-# SciSlide 0.6.4 — Linux x64
+# SciSlide 0.6.6 — Linux x64
 
 The Debian package contains SciSlide and its Electron runtime for **x64 (Intel/AMD 64-bit)** Linux. Debian calls this architecture **amd64**. Ubuntu 24.04 x64 is the packaging target; other Debian/Ubuntu releases need separate desktop validation. MathJax editing uses bundled fonts and equation resources without Node.js, TeX or a development server.
 
-Version **0.6.3.1** adds the headless agent CLI and four-part update version support. The canvas object traversal, pane toggles, inline equation editing, Local LaTeX compile shortcut and verified installer downloads introduced in v0.6.3 remain available. LibreOffice Impress-style shortcuts and drag-and-drop slide ordering remain available. Source builds and the published Debian package use the same editor version.
+Version **0.6.3.1** adds the headless agent CLI and four-part update version support. The canvas object traversal, pane toggles, inline equation editing, Local LaTeX compile shortcut and verified installer downloads introduced in v0.6.3 remain available. LibreOffice Impress-style shortcuts and drag-and-drop slide ordering remain available. The current development source is **0.6.6**. The links below target the 0.6.6 development prerelease; release assets appear after the release workflow completes.
 
 ## Install, launch and remove
 
-Download the `.deb` and its matching `.sha256` from the [v0.6.4 development prerelease](https://github.com/wikicho/SciSlide/releases/tag/v0.6.4), or download a Linux workflow artifact and extract it first. Keep Linux Debian distribution files in `release/linux-deb/` when working in the source checkout. A local source build uses that directory by default.
+Download the `.deb` and its matching `.sha256` from the [v0.6.6 development prerelease](https://github.com/wikicho/SciSlide/releases/tag/v0.6.6), or download a Linux workflow artifact and extract it first. Local source builds keep Debian distribution files in `release/v<version>/linux/` and the unpacked application in `release/work/v<version>/`. CI uses an explicit output directory for its upload steps.
 
 From the folder containing both files:
 
 ```sh
-sha256sum -c SciSlide-0.6.4-linux-x64.deb.sha256
-sudo apt install ./SciSlide-0.6.4-linux-x64.deb
+sha256sum -c SciSlide-0.6.6-linux-x64.deb.sha256
+sudo apt install ./SciSlide-0.6.6-linux-x64.deb
 scislide
 ```
 
@@ -56,20 +56,20 @@ pnpm desktop:package:linux --arch=x64
 The command builds the editor and creates:
 
 ```text
-release/linux-deb/SciSlide-linux-x64/
-release/linux-deb/SciSlide-0.6.4-linux-x64.deb
-release/linux-deb/SciSlide-0.6.4-linux-x64.deb.sha256
-release/linux-deb/LINUX-INSTALL.md
+release/work/v0.6.6/SciSlide-linux-x64/
+release/v0.6.6/linux/SciSlide-0.6.6-linux-x64.deb
+release/v0.6.6/linux/SciSlide-0.6.6-linux-x64.deb.sha256
+release/v0.6.6/linux/LINUX-INSTALL.md
 ```
 
-Only x64 is supported by this Debian distribution command. `--out` selects another output directory; `--overwrite` replaces recognized generated outputs. The standalone application folder produced by this command can also be launched with `release/linux-deb/SciSlide-linux-x64/scislide`, with all runtime files kept together. Its Chromium sandbox still requires a supported host environment. Do not run the editor as root.
+Only x64 is supported by this Debian distribution command. `--out` selects another output directory; `--overwrite` replaces recognized generated outputs. The standalone application folder produced by this command can also be launched with `release/work/v0.6.6/SciSlide-linux-x64/scislide`, with all runtime files kept together. Its Chromium sandbox still requires a supported host environment. Do not run the editor as root.
 
 Verify and install a current local build with:
 
 ```sh
-cd release/linux-deb
-sha256sum -c SciSlide-0.6.4-linux-x64.deb.sha256
-sudo apt install ./SciSlide-0.6.4-linux-x64.deb
+cd release/v0.6.6/linux
+sha256sum -c SciSlide-0.6.6-linux-x64.deb.sha256
+sudo apt install ./SciSlide-0.6.6-linux-x64.deb
 scislide
 ```
 

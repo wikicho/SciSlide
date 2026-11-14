@@ -7,7 +7,6 @@ import {
   readFile,
   readdir,
   realpath,
-  rename,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -19,6 +18,14 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import JSZip from "jszip";
 import { packageDesktop } from "./package-desktop.mjs";
+import {
+  assertNoSymlinkParents,
+  assertAppDirectoryUnchanged,
+  defaultArtifactDirectory,
+  defaultAppDirectory,
+  guardAppDirectory,
+  publishReleaseEntries,
+} from "./release-layout.mjs";
 
 const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 const run = promisify(execFile);
@@ -26,7 +33,7 @@ const run = promisify(execFile);
 export function parseWindowsOptions(args) {
   const options = {
     arch: "x64",
-    out: "release",
+    out: undefined,
     overwrite: false,
     portableOnly: false,
     help: false,
@@ -85,12 +92,15 @@ async function exists(filename) {
 }
 
 async function validateOutput(root, requestedOutput) {
+  await assertNoSymlinkParents(requestedOutput);
   const inputs = [
     "dist",
+    "dist-cli",
     "desktop",
     "third-party-licenses",
     "examples",
     "node_modules",
+    "public",
   ];
   for (const input of inputs) {
     if (isWithin(path.join(root, input), requestedOutput)) {
@@ -102,7 +112,10 @@ async function validateOutput(root, requestedOutput) {
   await mkdir(requestedOutput, { recursive: true });
   const output = await realpath(requestedOutput);
   for (const input of inputs) {
-    if (isWithin(await realpath(path.join(root, input)), output)) {
+    if (
+      (await exists(path.join(root, input))) &&
+      isWithin(await realpath(path.join(root, input)), output)
+    ) {
       throw new Error(
         "The output directory must be outside packaged inputs and node_modules.",
       );
@@ -244,6 +257,13 @@ export async function packageWindows(options = {}, dependencies = {}) {
   }
   if (target.portableOnly && target.iscc)
     throw new Error("--iscc cannot be combined with --portable-only.");
+  if (
+    target.out !== undefined &&
+    (typeof target.out !== "string" ||
+      !target.out ||
+      /[\0\r\n]/.test(target.out))
+  )
+    throw new Error("out must be a non-empty path.");
   if (!target.portableOnly && process.platform !== "win32") {
     throw new Error(
       "The Windows installer requires native Windows and Inno Setup 6.7 or newer. Use --portable-only on this computer.",
@@ -265,7 +285,23 @@ export async function packageWindows(options = {}, dependencies = {}) {
   const compiler = target.portableOnly
     ? null
     : await findCompiler(root, target.iscc);
-  const output = await validateOutput(root, path.resolve(root, target.out));
+  const output = await validateOutput(
+    root,
+    path.resolve(
+      root,
+      target.out ?? defaultArtifactDirectory(root, pkg.version, "windows"),
+    ),
+  );
+  const appOutput =
+    target.out === undefined
+      ? await validateOutput(root, defaultAppDirectory(root, pkg.version))
+      : output;
+  const finalAppFolder = path.join(appOutput, "SciSlide-win32-x64");
+  const originalApp = await guardAppDirectory(
+    finalAppFolder,
+    "win32",
+    target.overwrite,
+  );
   const stem = `SciSlide-${pkg.version}-windows-x64`;
   const portable = `${stem}-portable.zip`;
   const installer = `${stem}-setup-unsigned.exe`;
@@ -281,13 +317,15 @@ export async function packageWindows(options = {}, dependencies = {}) {
       root,
       platform: "win32",
       arch: "x64",
-      out: output,
-      overwrite: target.overwrite,
+      out: path.join(stage, "apps"),
+      overwrite: false,
     });
     if (
       !appFolder ||
       extra.length ||
-      path.resolve(appFolder) !== path.join(output, "SciSlide-win32-x64")
+      path.resolve(appFolder) !==
+        path.join(stage, "apps", "SciSlide-win32-x64") ||
+      (await lstat(appFolder)).isSymbolicLink()
     ) {
       throw new Error(
         "Packaging did not return the expected single Windows x64 app.",
@@ -327,15 +365,32 @@ export async function packageWindows(options = {}, dependencies = {}) {
       );
     }
     await writeFile(path.join(stage, "WINDOWS-INSTALL.md"), usage);
-    // Do not replace earlier archives/checksums until every artifact has been built successfully.
-    for (const name of names) {
-      const destination = path.join(output, name);
-      await guardArtifact(destination, target.overwrite);
-      if (target.overwrite) await rm(destination, { force: true });
-      await rename(path.join(stage, name), destination);
-    }
+    await assertAppDirectoryUnchanged(
+      finalAppFolder,
+      "win32",
+      target.overwrite,
+      originalApp,
+    );
+    // The app and its installers/checksums advance together, or all prior outputs return.
+    const publish = dependencies.publishReleaseEntries ?? publishReleaseEntries;
+    await publish(
+      [
+        {
+          source: appFolder,
+          destination: finalAppFolder,
+          kind: "directory",
+          expectedDestination: originalApp,
+        },
+        ...names.map((name) => ({
+          source: path.join(stage, name),
+          destination: path.join(output, name),
+          kind: "file",
+        })),
+      ],
+      { overwrite: target.overwrite },
+    );
     return {
-      appFolder,
+      appFolder: finalAppFolder,
       portable: path.join(output, portable),
       installer: compiler ? path.join(output, installer) : null,
     };
@@ -352,7 +407,7 @@ if (
     const options = parseWindowsOptions(process.argv.slice(2));
     if (options.help) {
       console.log(
-        "Usage: node scripts/package-windows.mjs [--arch=x64] [--out=release] [--overwrite] [--portable-only] [--iscc=path/to/ISCC.exe]\nBuild the editor first (pnpm build). Windows creates a portable ZIP and an unsigned per-user installer. Other platforms require --portable-only.",
+        "Usage: node scripts/package-windows.mjs [--arch=x64] [--out=directory] (default: release/v<version>/windows) [--overwrite] [--portable-only] [--iscc=path/to/ISCC.exe]\nBuild the editor first (pnpm build). Windows creates a portable ZIP and an unsigned per-user installer. Other platforms require --portable-only.",
       );
     } else {
       const result = await packageWindows(options);

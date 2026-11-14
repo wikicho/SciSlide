@@ -1,7 +1,25 @@
+import type { Deck, TextObject } from "./model";
+
 /** Families available without an additional user-supplied font asset. */
 export const KOREAN_FONT_FAMILY = "Nanum Gothic";
 export const TEXT_FONT_WEIGHTS = [400, 500, 600, 700] as const;
 export type TextFontWeight = (typeof TEXT_FONT_WEIGHTS)[number];
+
+/** Old files keep explicit families; only an opt-in marker follows the deck. */
+export function effectiveTextFontFamily(
+  deck: Pick<Deck, "theme"> | undefined,
+  object: Pick<TextObject, "fontFamily" | "fontFamilySource">,
+): string {
+  return object.fontFamilySource === "deck" && deck
+    ? deck.theme.fontFamily
+    : object.fontFamily;
+}
+
+/** Keep a compatible fallback while restoring continuing deck inheritance. */
+export function useDeckTextFont(object: TextObject, deck: Pick<Deck, "theme">) {
+  object.fontFamily = deck.theme.fontFamily;
+  object.fontFamilySource = "deck";
+}
 
 export const PDF_GENERIC_FONT_FAMILIES = [
   "serif",

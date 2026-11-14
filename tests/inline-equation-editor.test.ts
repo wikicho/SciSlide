@@ -504,7 +504,7 @@ describe("inline equation editing through the App", () => {
     await settle();
     expect(equations.renderEquation).toHaveBeenCalledWith(
       "U(1)",
-      deck.theme.equation.fontSetId,
+      "mathjax-modern",
       original.fontSize,
       original.color,
       false,

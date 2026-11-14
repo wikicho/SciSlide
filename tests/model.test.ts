@@ -79,6 +79,19 @@ describe("document model", () => {
     expect(original.title).not.toBe("Edited");
   });
 
+  it("accepts an independent inline font preference and rejects unavailable fonts", () => {
+    const deck = createDemoDeck();
+    expect(validateDeck(deck).theme.inlineMathFontSetId).toBeUndefined();
+    deck.theme.inlineMathFontSetId = "mathjax-modern";
+    expect(validateDeck(deck).theme.inlineMathFontSetId).toBe("mathjax-modern");
+    expect(() =>
+      validateDeck({
+        ...deck,
+        theme: { ...deck.theme, inlineMathFontSetId: "system-font" },
+      }),
+    ).toThrow(/Inline math font.*unavailable math font/);
+  });
+
   it.each(["0.1.0", "0.2.0", "0.3.0", "0.4.0"])(
     "migrates %s without adding page numbers or hiding legacy objects",
     (formatVersion) => {

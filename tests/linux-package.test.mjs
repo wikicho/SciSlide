@@ -8,6 +8,7 @@ import {
   readFile,
   readdir,
   realpath,
+  rename,
   rm,
   symlink,
   writeFile,
@@ -22,6 +23,7 @@ import {
   verifyLinuxX64,
 } from "../scripts/package-linux.mjs";
 import { linuxInstalledLauncher } from "../scripts/package-desktop.mjs";
+import { publishReleaseEntries } from "../scripts/release-layout.mjs";
 
 const run = promisify(execFile);
 const linux = process.platform === "linux";
@@ -153,7 +155,7 @@ async function fakeApp(options, main = elf()) {
 test("Linux arguments target x64 and reject unsupported or ambiguous options", () => {
   const defaults = parseLinuxOptions([]);
   assert.equal(defaults.arch, "x64");
-  assert.equal(defaults.out, "release/linux-deb");
+  assert.equal(defaults.out, undefined);
   assert.equal(defaults.overwrite, false);
   assert.equal(defaults.help, false);
   const options = parseLinuxOptions([
@@ -256,11 +258,20 @@ test(
     );
     assert.equal(packaged.platform, "linux");
     assert.equal(packaged.arch, "x64");
-    assert.equal(packaged.out, path.join(root, "release/linux-deb"));
+    assert.equal(path.basename(packaged.out), "apps");
+    assert.match(
+      path.basename(path.dirname(packaged.out)),
+      /^\.scislide-linux-/,
+    );
+    assert.equal(
+      path.dirname(path.dirname(packaged.out)),
+      path.join(root, "release/v0.3.0/linux"),
+    );
+    await assert.rejects(lstat(packaged.out), { code: "ENOENT" });
     assert.equal(packaged.overwrite, false);
     assert.equal(
       result.appFolder,
-      path.join(root, "release/linux-deb/SciSlide-linux-x64"),
+      path.join(root, "release/work/v0.3.0/SciSlide-linux-x64"),
     );
     assert.equal(path.basename(result.deb), "SciSlide-0.3.0-linux-x64.deb");
     assert.equal(result.checksum, `${result.deb}.sha256`);
@@ -411,13 +422,13 @@ test(
     );
     assert.equal(
       await readFile(
-        path.join(root, "release/linux-deb/LINUX-INSTALL.md"),
+        path.join(root, "release/v0.3.0/linux/LINUX-INSTALL.md"),
         "utf8",
       ),
       "Ubuntu / Linux x64 installation instructions\n",
     );
     assert.ok(
-      (await readdir(path.join(root, "release/linux-deb"))).every(
+      (await readdir(path.join(root, "release/v0.3.0/linux"))).every(
         (entry) => !entry.startsWith(".scislide-linux-"),
       ),
     );
@@ -548,7 +559,7 @@ test(
       );
       await assert.rejects(
         lstat(
-          path.join(root, "release/linux-deb/SciSlide-0.3.0-linux-x64.deb"),
+          path.join(root, "release/v0.3.0/linux/SciSlide-0.3.0-linux-x64.deb"),
         ),
         { code: "ENOENT" },
       );
@@ -564,6 +575,15 @@ test(
     const first = await packageLinux({ root }, { packageDesktop: fakeApp });
     const originalDeb = await readFile(first.deb);
     const originalChecksum = await readFile(first.checksum);
+    const originalApp = await readFile(
+      path.join(first.appFolder, "resources/app.asar"),
+    );
+    const originalExecutable = await readFile(
+      path.join(first.appFolder, "scislide"),
+    );
+    const originalGuide = await readFile(
+      path.join(path.dirname(first.deb), "LINUX-INSTALL.md"),
+    );
     let called = false;
     await assert.rejects(
       packageLinux(
@@ -581,7 +601,14 @@ test(
       packageLinux(
         { root, overwrite: true },
         {
-          packageDesktop: fakeApp,
+          packageDesktop: async (options) => {
+            const apps = await fakeApp(options);
+            await writeFile(
+              path.join(apps[0], "resources/app.asar"),
+              "failed replacement app",
+            );
+            return apps;
+          },
           run: async (command, args, options) => {
             if (command === "dpkg-deb" && args.includes("--build")) {
               failedBuild = true;
@@ -596,8 +623,20 @@ test(
     assert.equal(failedBuild, true);
     assert.deepEqual(await readFile(first.deb), originalDeb);
     assert.deepEqual(await readFile(first.checksum), originalChecksum);
+    assert.deepEqual(
+      await readFile(path.join(first.appFolder, "resources/app.asar")),
+      originalApp,
+    );
+    assert.deepEqual(
+      await readFile(path.join(first.appFolder, "scislide")),
+      originalExecutable,
+    );
+    assert.deepEqual(
+      await readFile(path.join(path.dirname(first.deb), "LINUX-INSTALL.md")),
+      originalGuide,
+    );
     assert.ok(
-      (await readdir(path.join(root, "release/linux-deb"))).every(
+      (await readdir(path.join(root, "release/v0.3.0/linux"))).every(
         (entry) => !entry.startsWith(".scislide-linux-"),
       ),
     );
@@ -640,7 +679,7 @@ test(
   linuxOnly,
   async (t) => {
     const root = await fixture(t);
-    await mkdir(path.join(root, "release/linux-deb"), { recursive: true });
+    await mkdir(path.join(root, "release/v0.3.0/linux"), { recursive: true });
     const source = path.join(root, "package.json");
     const original = await readFile(source);
     let called = false;
@@ -649,7 +688,7 @@ test(
       "SciSlide-0.3.0-linux-x64.deb.sha256",
       "LINUX-INSTALL.md",
     ]) {
-      const filename = path.join(root, "release/linux-deb", name);
+      const filename = path.join(root, "release/v0.3.0/linux", name);
       await symlink(source, filename);
       await assert.rejects(
         packageLinux(
@@ -697,10 +736,10 @@ test(
         },
       ),
     );
-    await rm(path.join(root, "release/linux-deb/SciSlide-linux-x64"), {
-      recursive: true,
-      force: true,
-    });
+    await assert.rejects(
+      lstat(path.join(root, "release/work/v0.3.0/SciSlide-linux-x64")),
+      { code: "ENOENT" },
+    );
     await assert.rejects(
       packageLinux(
         { root },
@@ -718,10 +757,10 @@ test(
         },
       ),
     );
-    await rm(path.join(root, "release/linux-deb/SciSlide-linux-x64"), {
-      recursive: true,
-      force: true,
-    });
+    await assert.rejects(
+      lstat(path.join(root, "release/work/v0.3.0/SciSlide-linux-x64")),
+      { code: "ENOENT" },
+    );
     const external = path.join(root, "keep-external-readme.md");
     const keep = Buffer.from(
       "Existing external document — preserve verbatim.\n",
@@ -747,7 +786,9 @@ test(
     assert.equal(appsCreated, 3);
     assert.equal(archiveBuilt, false);
     await assert.rejects(
-      lstat(path.join(root, "release/linux-deb/SciSlide-0.3.0-linux-x64.deb")),
+      lstat(
+        path.join(root, "release/v0.3.0/linux/SciSlide-0.3.0-linux-x64.deb"),
+      ),
       {
         code: "ENOENT",
       },
@@ -761,5 +802,142 @@ test(
   async (t) => {
     const root = await fixture(t);
     await assert.rejects(packageLinux({ root }));
+  },
+);
+
+test(
+  "an explicit Linux output keeps the app and completed artifacts at the requested location",
+  actualDeb,
+  async (t) => {
+    const root = await fixture(t);
+    const destination = path.join(root, "custom output");
+    const result = await packageLinux(
+      { root, out: "custom output" },
+      { packageDesktop: fakeApp },
+    );
+    assert.equal(
+      result.appFolder,
+      path.join(destination, "SciSlide-linux-x64"),
+    );
+    assert.equal(
+      result.deb,
+      path.join(destination, "SciSlide-0.3.0-linux-x64.deb"),
+    );
+    assert.equal(result.checksum, `${result.deb}.sha256`);
+    assert.deepEqual(
+      (await readdir(destination)).sort(),
+      [
+        "SciSlide-linux-x64",
+        "SciSlide-0.3.0-linux-x64.deb",
+        "SciSlide-0.3.0-linux-x64.deb.sha256",
+        "LINUX-INSTALL.md",
+      ].toSorted(),
+    );
+    await assert.rejects(lstat(path.join(root, "release")), { code: "ENOENT" });
+  },
+);
+
+test(
+  "a Linux checksum publication failure restores the complete app, Debian package, checksum, and guide",
+  actualDeb,
+  async (t) => {
+    const root = await fixture(t);
+    const first = await packageLinux({ root }, { packageDesktop: fakeApp });
+    const guide = path.join(path.dirname(first.deb), "LINUX-INSTALL.md");
+    const files = [
+      first.deb,
+      first.checksum,
+      guide,
+      path.join(first.appFolder, "resources/app.asar"),
+      path.join(first.appFolder, "scislide"),
+      path.join(first.appFolder, "README.md"),
+    ];
+    const original = await Promise.all(files.map((file) => readFile(file)));
+    await writeFile(
+      path.join(root, "desktop/LINUX.md"),
+      "Changed Linux instructions\n",
+    );
+    let failed = false;
+    await assert.rejects(
+      packageLinux(
+        { root, overwrite: true },
+        {
+          packageDesktop: async (options) => {
+            const apps = await fakeApp(options);
+            await writeFile(
+              path.join(apps[0], "resources/app.asar"),
+              "new app payload",
+            );
+            return apps;
+          },
+          publishReleaseEntries: (entries, options) =>
+            publishReleaseEntries(entries, options, {
+              rename: async (source, destination) => {
+                if (
+                  !failed &&
+                  source.includes(".scislide-linux-") &&
+                  source.endsWith(".deb.sha256")
+                ) {
+                  failed = true;
+                  throw new Error("Linux checksum publication interrupted");
+                }
+                return rename(source, destination);
+              },
+            }),
+        },
+      ),
+      /Linux checksum publication interrupted/,
+    );
+    assert.equal(failed, true);
+    assert.deepEqual(
+      await Promise.all(files.map((file) => readFile(file))),
+      original,
+    );
+    assert.deepEqual(
+      (await readdir(path.dirname(first.deb))).sort(),
+      [
+        path.basename(first.deb),
+        `${path.basename(first.deb)}.sha256`,
+        "LINUX-INSTALL.md",
+      ].toSorted(),
+    );
+    assert.deepEqual(await readdir(path.dirname(first.appFolder)), [
+      "SciSlide-linux-x64",
+    ]);
+  },
+);
+
+test(
+  "a late Linux sidecar collision publishes neither the app nor the Debian package",
+  actualDeb,
+  async (t) => {
+    const root = await fixture(t);
+    const destination = path.join(root, "release/v0.3.0/linux");
+    const checksum = path.join(
+      destination,
+      "SciSlide-0.3.0-linux-x64.deb.sha256",
+    );
+    await assert.rejects(
+      packageLinux(
+        { root },
+        {
+          packageDesktop: async (options) => {
+            const apps = await fakeApp(options);
+            await writeFile(checksum, "another build owns this checksum");
+            return apps;
+          },
+        },
+      ),
+      /Output already exists/,
+    );
+    assert.deepEqual(await readdir(destination), [path.basename(checksum)]);
+    assert.equal(
+      await readFile(checksum, "utf8"),
+      "another build owns this checksum",
+    );
+    await assert.rejects(
+      lstat(path.join(root, "release/work/v0.3.0/SciSlide-linux-x64")),
+      { code: "ENOENT" },
+    );
   },
 );

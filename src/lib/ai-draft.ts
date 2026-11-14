@@ -239,6 +239,7 @@ export function createAISlides(
     type: "text",
     text,
     fontFamily: deck.theme.fontFamily,
+    fontFamilySource: "deck",
     fontSize,
     fontWeight,
     color: deck.theme.equation.color,

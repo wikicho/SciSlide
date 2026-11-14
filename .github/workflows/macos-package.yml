@@ -12,6 +12,8 @@ on:
     paths:
       - .github/workflows/macos-package.yml
       - scripts/package-desktop.mjs
+      - scripts/release-layout.mjs
+      - scripts/organize-release.mjs
       - scripts/package-macos.mjs
       - desktop/**
       - src/**
@@ -68,7 +70,7 @@ jobs:
           pnpm build
 
       - name: Build Apple Silicon and Intel installers with native Apple tools
-        run: node scripts/package-macos.mjs --arch=all --implementation=native
+        run: node scripts/package-macos.mjs --arch=all --implementation=native --out=release
 
       - name: Verify installer payloads and architecture
         run: |

@@ -26,6 +26,7 @@ import {
   FilePlus2,
   FolderOpen,
   ImagePlus,
+  History,
   Video,
   Layers,
   LockKeyhole,
@@ -98,11 +99,19 @@ import {
 } from "./lib/object-clipboard";
 import type { ObjectClipboard } from "./lib/object-clipboard";
 import {
+  readClipboardEvent,
+  writeClipboardEvent,
+  readSystemClipboard,
+  writeSystemClipboard,
+} from "./lib/system-clipboard";
+import type { ClipboardReadResult } from "./lib/system-clipboard";
+import {
   captureSlideClipboard,
   pasteSlideClipboard,
   type SlideClipboard,
 } from "./lib/slide-clipboard";
 import { ObjectLayers } from "./components/ObjectLayers";
+import { SelectionSummary } from "./components/SelectionSummary";
 import { traverseObjects } from "./lib/object-traversal";
 import { matchPlaybackShortcut } from "./lib/playback-shortcuts";
 import { FigureTools } from "./components/FigureTools";
@@ -140,6 +149,8 @@ import { snapMove, snapResize, type SmartGuide } from "./lib/smart-guides";
 import { SlideScene } from "./components/SlideScene";
 import { CommitNumberInput } from "./components/CommitNumberInput";
 import { InlineEquationDialog } from "./components/InlineEquationDialog";
+import { inlineMathFont } from "./lib/inline-math";
+import { effectiveTextFontFamily, useDeckTextFont } from "./lib/text-fonts";
 import { EquationEditorDialog } from "./components/EquationEditorDialog";
 import { ToolbarMenu } from "./components/ToolbarMenu";
 import { SpeakerNotes } from "./components/SpeakerNotes";
@@ -154,6 +165,17 @@ import { SlideList } from "./components/SlideList";
 import { MathSupportDialog } from "./components/MathSupportDialog";
 import { SlideTemplateDialog } from "./components/SlideTemplateDialog";
 import { ThemeChooser } from "./components/ThemeChooser";
+import { SaveChangesDialog } from "./components/SaveChangesDialog";
+import { RecoveryHistoryDialog } from "./components/RecoveryHistoryDialog";
+import {
+  listDocumentRecoveries,
+  loadDocumentRecovery,
+  saveDocumentRecovery,
+  deleteDocumentRecovery,
+} from "./lib/recovery-history";
+import type { DocumentRecoverySummary } from "./lib/recovery-history";
+import { getFigureExportWarnings } from "./lib/figure-export-compatibility";
+import { FigureExportNotice } from "./components/FigureExportNotice";
 import { KeyboardShortcutsDialog } from "./components/KeyboardShortcutsDialog";
 import {
   getKeyboardPlatform,
@@ -201,7 +223,9 @@ const FIGURE_FILE_TYPES =
   ".pdf,.svg,.png,.jpg,.jpeg,application/pdf,image/svg+xml,image/png,image/jpeg";
 type FigureImportTarget = {
   deckId: string;
+  session: number;
   slideId: string;
+  position?: { x: number; y: number };
   objectId?: string;
   placeholderId?: string;
 };
@@ -213,6 +237,9 @@ type LocalRender = NonNullable<
 
 const clone = <T,>(v: T): T => structuredClone(v);
 const numeric = (n: number) => Math.round(n * 10) / 10;
+function sameDocument(current: Deck, saved: Deck): boolean {
+  return current === saved || JSON.stringify(current) === JSON.stringify(saved);
+}
 function isTextInput(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
@@ -233,6 +260,19 @@ function isTextInput(target: EventTarget | null): boolean {
       "hidden",
     ].includes(field.type);
   return !!field;
+}
+/** Retain deleted objects' drafts in memory for Undo, but exclude them from the active document. */
+function activeEquationDrafts(deck: Deck, drafts: RecoveredEquationDraft[]) {
+  return drafts.filter(
+    (entry) =>
+      entry.deckId === deck.id &&
+      deck.slides
+        .find((slide) => slide.id === entry.slideId)
+        ?.objects.some(
+          (object) =>
+            object.id === entry.equationId && object.type === "equation",
+        ),
+  );
 }
 function isEquationShortcutTarget(target: EventTarget | null): boolean {
   const element = target instanceof Element ? target : null;
@@ -299,6 +339,23 @@ export default function App() {
   const [canResumeWorkspace, setCanResumeWorkspace] =
     useState(!!initialRecovery);
   const workspaceActive = useRef(false);
+  const documentSession = useRef(0);
+  const recoverySessionId = useRef(newId());
+  const lastHistoryError = useRef("");
+  const [showRecoveryHistory, setShowRecoveryHistory] = useState(false);
+  const [historyEntries, setHistoryEntries] = useState<
+    DocumentRecoverySummary[]
+  >([]);
+  const [historyUnavailable, setHistoryUnavailable] = useState(0);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const historyRequest = useRef(0);
+  const transitioning = useRef(false);
+  const savingDocument = useRef(false);
+  const [saveChanges, setSaveChanges] = useState<{
+    resolve: (choice: "save" | "discard" | "cancel" | "recover") => void;
+  } | null>(null);
   type TextEdit = {
     deckId: string;
     slideId: string;
@@ -340,27 +397,10 @@ export default function App() {
     deck: Deck;
     kind: "saved" | "downloaded" | "opened";
   } | null>(null);
-  const fileMatchesSaved = useMemo(() => {
-    if (!lastFileSave) return false;
-    if (lastFileSave.deck === deck) return true;
-    const { assets, ...document } = deck;
-    const { assets: savedAssets, ...savedDocument } = lastFileSave.deck;
-    return (
-      assets.length === savedAssets.length &&
-      assets.every((asset, index) => {
-        const saved = savedAssets[index];
-        return (
-          asset.id === saved.id &&
-          asset.name === saved.name &&
-          asset.mime === saved.mime &&
-          asset.width === saved.width &&
-          asset.height === saved.height &&
-          asset.dataUrl === saved.dataUrl
-        );
-      }) &&
-      JSON.stringify(document) === JSON.stringify(savedDocument)
-    );
-  }, [deck, lastFileSave]);
+  const fileMatchesSaved = useMemo(
+    () => !!lastFileSave && sameDocument(deck, lastFileSave.deck),
+    [deck, lastFileSave],
+  );
   const paneFocus = useRef<"inspector" | "objects" | null>(null);
   const textEditingRef = useRef<TextEdit | null>(null);
   const textContentComposing = useRef(false);
@@ -370,17 +410,9 @@ export default function App() {
   const [equationApplying, setEquationApplying] = useState(false);
   const equationApplyingRef = useRef(false);
   const [pdfFigure, setPdfFigure] = useState<PdfFigureRequest | null>(null);
+  const [dropActive, setDropActive] = useState(false);
   const closePdfFigure = useCallback(() => setPdfFigure(null), []);
-  const [clipboardKind, setClipboardKind] = useState<
-    "objects" | "slide" | null
-  >(null);
-  const hasClipboard = clipboardKind !== null;
   const [presenterUrl, setPresenterUrl] = useState<string | null>(null);
-  const clipboard = useRef<
-    | { kind: "objects"; value: ObjectClipboard }
-    | { kind: "slide"; value: SlideClipboard }
-    | null
-  >(null);
   const pasteSequence = useRef({ deckId: "", slideId: "", count: 0 });
   const recoveryWritable = useRef(false);
   const recoveredDrafts = useRef<RecoveredEquationDraft[]>([]);
@@ -395,6 +427,7 @@ export default function App() {
   const presenterState = useRef({ slideId: "", step: 0 });
   const replaceFigureInput = useRef<HTMLInputElement>(null);
   const replaceFigureTarget = useRef<{
+    session: number;
     deckId: string;
     slideId: string;
     objectId: string;
@@ -529,10 +562,16 @@ export default function App() {
       paneFocus.current === "inspector" ? inspectorRef : objectListRef;
     paneFocus.current = null;
     target.current?.focus();
-  }, [inspectorVisible, objectListVisible]);
+  }, [inspectorVisible, objectListVisible, inspectorTab, selected]);
   const slide = deck.slides.find((s) => s.id === slideId) ?? deck.slides[0];
   const slideIndex = deck.slides.indexOf(slide),
     object = slide.objects.find((o) => o.id === selected[0]);
+  const selectedObjects = slide.objects.filter((o) => selected.includes(o.id));
+  const multipleObjectsSelected = selectedObjects.length > 1;
+  const equationDraftCount = activeEquationDrafts(
+    deck,
+    recoveredDrafts.current,
+  ).length;
   const inlineEquationObject =
     inlineEquationEdit?.deckId === deck.id
       ? deck.slides
@@ -609,17 +648,37 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [toast]);
   useEffect(() => {
-    if (!recoveryLoaded || !recoveryWritable.current || showThemeChooser)
+    if (
+      !recoveryLoaded ||
+      !recoveryWritable.current ||
+      showThemeChooser ||
+      showRecoveryHistory
+    )
       return;
     let live = true;
+    const session = documentSession.current;
+    const historyId = recoverySessionId.current;
+    const drafts = structuredClone(
+      activeEquationDrafts(deck, recoveredDrafts.current),
+    );
+    setRecoveryStatus("Saving locally…");
     const timer = setTimeout(() => {
-      saveWorkspaceRecovery(deck, recoveredDrafts.current)
+      if (session !== documentSession.current) return;
+      void saveDocumentRecovery(historyId, deck, drafts).catch(
+        (error: Error) => {
+          if (!live || lastHistoryError.current === error.message) return;
+          lastHistoryError.current = error.message;
+          setHistoryError(error.message);
+          notify(`Document history: ${error.message}`);
+        },
+      );
+      saveWorkspaceRecovery(deck, drafts)
         .then((storage) => {
           if (live)
             setRecoveryStatus(
               storage === "indexeddb"
-                ? "Recovered locally"
-                : "Recovered locally · limited storage",
+                ? "Saved locally"
+                : "Saved locally · limited storage",
             );
         })
         .catch(() => {
@@ -632,7 +691,14 @@ export default function App() {
       live = false;
       clearTimeout(timer);
     };
-  }, [deck, draftRevision, recoveryLoaded, showThemeChooser, notify]);
+  }, [
+    deck,
+    draftRevision,
+    recoveryLoaded,
+    showThemeChooser,
+    showRecoveryHistory,
+    notify,
+  ]);
   const commit = useCallback((next: Deck, key = "") => {
     const now = Date.now();
     if (
@@ -969,7 +1035,16 @@ export default function App() {
     !busy &&
     !compileBusy,
   );
-  const setDraft = (next: EquationDraft) => {
+  const setDraft = (next: EquationDraft, restoreTypography = false) => {
+    const previous = draftRef.current;
+    if (
+      !restoreTypography &&
+      next.inheritTypography === previous.inheritTypography &&
+      (next.font !== previous.font ||
+        next.size !== previous.size ||
+        next.color !== previous.color)
+    )
+      next = { ...next, inheritTypography: false };
     draftRef.current = next;
     setEquationDraft(next);
     if (!activeEquation) return;
@@ -1007,6 +1082,10 @@ export default function App() {
         font: activeEquation.style.fontSetId ?? deck.theme.equation.fontSetId,
         size: activeEquation.style.fontSize ?? deck.theme.equation.fontSize,
         color: activeEquation.style.color ?? deck.theme.equation.color,
+        inheritTypography:
+          !activeEquation.style.fontSetId &&
+          activeEquation.style.fontSize === undefined &&
+          activeEquation.style.color === undefined,
         renderer: activeEquation.renderer ?? "mathjax",
         engine: activeEquation.localTex?.engine ?? "latex",
         preamble: activeEquation.localTex?.preamble ?? DEFAULT_LOCAL_PREAMBLE,
@@ -1112,6 +1191,7 @@ export default function App() {
       notify((error as Error).message);
       return;
     }
+    const session = documentSession.current;
     const jobId = newId();
     setEquationEditorId(activeEquation.id);
     compileJob.current = jobId;
@@ -1126,7 +1206,8 @@ export default function App() {
     };
     try {
       const result = await desktop.compileTex({ jobId, ...snapshot });
-      if (compileJob.current !== jobId) return;
+      if (compileJob.current !== jobId || documentSession.current !== session)
+        return;
       const current = draftRef.current;
       if (
         localTexInputFingerprint({
@@ -1176,6 +1257,7 @@ export default function App() {
       isObjectLocked(activeEquation, slide.objects)
     )
       return;
+    const session = documentSession.current;
     equationApplyingRef.current = true;
     setEquationApplying(true);
     try {
@@ -1216,6 +1298,7 @@ export default function App() {
         (candidate) => candidate.id === activeEquation.id,
       );
       if (
+        documentSession.current !== session ||
         current.id !== deck.id ||
         !currentSlide ||
         currentEquation?.type !== "equation" ||
@@ -1240,13 +1323,15 @@ export default function App() {
               render: draftTexRender,
             };
           else delete o.localTex;
-          o.style = {
-            fontSetId: draft.font as NonNullable<
-              EquationObject["style"]["fontSetId"]
-            >,
-            fontSize: draft.size,
-            color: draft.color,
-          };
+          o.style = draft.inheritTypography
+            ? {}
+            : {
+                fontSetId: draft.font as NonNullable<
+                  EquationObject["style"]["fontSetId"]
+                >,
+                fontSize: draft.size,
+                color: draft.color,
+              };
           o.transform.width = r.width;
           o.transform.height = r.height;
         }
@@ -1282,45 +1367,66 @@ export default function App() {
     document.activeElement?.closest<HTMLButtonElement>(
       ".slide-list [data-slide-id]",
     );
-  const copySlide = (sourceId = slide.id, cut = false) => {
+  const copySlide = async (
+    sourceId = slide.id,
+    cut = false,
+    event?: ClipboardEvent,
+  ) => {
     if (busy || (cut && deckRef.current.slides.length < 2)) return;
     finishTextEditing();
     cancelGesture();
     const current = deckRef.current;
-    const source = current.slides.find((s) => s.id === sourceId);
+    const source = current.slides.find(
+      (candidate) => candidate.id === sourceId,
+    );
     if (!source) return;
-    clipboard.current = {
-      kind: "slide",
+    const session = documentSession.current;
+    const before = JSON.stringify(source);
+    const payload = {
+      kind: "slide" as const,
       value: captureSlideClipboard(current, source),
     };
-    setClipboardKind("slide");
-    if (cut) {
-      const index = current.slides.indexOf(source);
-      const nextId = current.slides[index ? index - 1 : 1].id;
-      removeSlide(sourceId);
-      setTimeout(() => focusSlideCard(nextId), 0);
-    } else {
-      focusSlideCard(sourceId);
+    try {
+      if (event?.clipboardData) {
+        writeClipboardEvent(event.clipboardData, payload);
+        event.preventDefault();
+      } else await writeSystemClipboard(payload);
+      if (session !== documentSession.current) return;
+      if (cut) {
+        const latest = deckRef.current;
+        const candidate = latest.slides.find((slide) => slide.id === sourceId);
+        if (
+          !candidate ||
+          latest.slides.length < 2 ||
+          JSON.stringify(candidate) !== before
+        ) {
+          notify("Slide copied. The changed original was kept.");
+          return;
+        }
+        const index = latest.slides.indexOf(candidate);
+        const nextId = latest.slides[index ? index - 1 : 1].id;
+        removeSlide(sourceId);
+        setTimeout(() => focusSlideCard(nextId), 0);
+      } else focusSlideCard(sourceId);
+      notify(
+        cut
+          ? "Slide cut. Paste after any slide."
+          : "Slide copied. Paste after any slide.",
+      );
+    } catch (error) {
+      notify((error as Error).message);
     }
-    notify(
-      cut
-        ? "Slide cut. Paste after any slide."
-        : "Slide copied. Paste after any slide.",
-    );
   };
   const pasteSlide = (
     afterId = focusedSlideCard()?.dataset.slideId ?? slide.id,
+    snapshot?: SlideClipboard,
   ) => {
-    if (busy || clipboard.current?.kind !== "slide") return;
+    if (busy || !snapshot) return;
     finishTextEditing();
     cancelGesture();
     const next = cloneDeck(deckRef.current);
     try {
-      const pasted = pasteSlideClipboard(
-        next,
-        afterId,
-        clipboard.current.value,
-      );
+      const pasted = pasteSlideClipboard(next, afterId, snapshot);
       validateDeck(next);
       commit(next);
       switchSlide(pasted.id);
@@ -1438,6 +1544,8 @@ export default function App() {
     metadata: {},
   });
   const insert = async (type: "text" | "equation" | "rect" | "ellipse") => {
+    const session = documentSession.current;
+    const targetSlideId = slide.id;
     cancelGesture();
     setDrawingTool(null);
     let o: SlideObject;
@@ -1447,6 +1555,7 @@ export default function App() {
         type: "text",
         text: "Write your idea here",
         fontFamily: deck.theme.fontFamily,
+        fontFamilySource: "deck",
         fontSize: 40,
         fontWeight: 400,
         color: getDeckTheme(deck)?.palette.ink ?? "#132d40",
@@ -1478,7 +1587,16 @@ export default function App() {
         stroke: "#259f87",
         strokeWidth: 2,
       } as ShapeObject;
-    change((d) => d.slides.find((s) => s.id === slide.id)!.objects.push(o));
+    if (
+      session !== documentSession.current ||
+      !deckRef.current.slides.some(
+        (candidate) => candidate.id === targetSlideId,
+      )
+    )
+      return;
+    change((d) =>
+      d.slides.find((s) => s.id === targetSlideId)!.objects.push(o),
+    );
     setSelected([o.id]);
     if (o.type === "text") beginTextEditing(o);
     else if (o.type === "equation" && !inlineEquationEditRef.current)
@@ -1524,61 +1642,148 @@ export default function App() {
     );
     notify("Objects ungrouped.");
   };
-  const copyObjects = (cut = false) => {
-    const ids = cut
-      ? editableSelection(slide.objects, selected)
-      : expandSelection(slide.objects, selected);
-    const copied = captureObjectClipboard(deck, slide, ids);
-    if (!copied) return;
-    clipboard.current = { kind: "objects", value: copied };
-    pasteSequence.current = { deckId: "", slideId: "", count: 0 };
-    setClipboardKind("objects");
-    if (cut) {
-      change((d) => {
-        const current = d.slides.find((s) => s.id === slide.id)!;
-        current.objects = current.objects.filter((o) => !ids.includes(o.id));
-        cleanupGroups(current.objects);
-        pruneUnusedAssets(d);
-      });
-      setSelected([]);
-    }
-    notify(
-      cut
-        ? "Objects cut. Paste on any slide."
-        : "Objects copied. Paste on any slide.",
+  const copyObjects = async (cut = false, event?: ClipboardEvent) => {
+    finishTextEditing();
+    const current = deckRef.current;
+    const source = current.slides.find(
+      (candidate) => candidate.id === slide.id,
     );
+    if (busy || !source) return;
+    const ids = cut
+      ? editableSelection(source.objects, selected)
+      : expandSelection(source.objects, selected);
+    const copied = captureObjectClipboard(current, source, ids);
+    if (!copied) return;
+    const session = documentSession.current;
+    const before = JSON.stringify(
+      source.objects.filter((candidate) => ids.includes(candidate.id)),
+    );
+    const payload = { kind: "objects" as const, value: copied };
+    try {
+      if (event?.clipboardData) {
+        writeClipboardEvent(event.clipboardData, payload);
+        event.preventDefault();
+      } else await writeSystemClipboard(payload);
+      pasteSequence.current = { deckId: "", slideId: "", count: 0 };
+      if (session !== documentSession.current) return;
+      if (cut) {
+        const latest = deckRef.current.slides.find(
+          (candidate) => candidate.id === source.id,
+        );
+        if (
+          !latest ||
+          JSON.stringify(
+            latest.objects.filter((candidate) => ids.includes(candidate.id)),
+          ) !== before
+        ) {
+          notify("Objects copied. The changed originals were kept.");
+          return;
+        }
+        change((next) => {
+          const destination = next.slides.find(
+            (candidate) => candidate.id === source.id,
+          )!;
+          destination.objects = destination.objects.filter(
+            (candidate) => !ids.includes(candidate.id),
+          );
+          cleanupGroups(destination.objects);
+          pruneUnusedAssets(next);
+        });
+        setSelected([]);
+      }
+      notify(
+        cut
+          ? "Objects cut. Paste on any slide."
+          : "Objects copied. Paste on any slide.",
+      );
+    } catch (error) {
+      notify((error as Error).message);
+    }
   };
-  const pasteObjects = () => {
-    if (clipboard.current?.kind !== "objects") return;
+  const pasteObjects = (snapshot: ObjectClipboard, targetSlideId: string) => {
     cancelGesture();
     setDrawingTool(null);
     const next = cloneDeck(deckRef.current);
     try {
       const previous = pasteSequence.current;
       const count =
-        previous.deckId === next.id && previous.slideId === slide.id
+        previous.deckId === next.id && previous.slideId === targetSlideId
           ? previous.count + 1
           : 1;
-      const ids = pasteObjectClipboard(
-        next,
-        slide.id,
-        clipboard.current.value,
-        {
-          x: count * 32,
-          y: count * 32,
-        },
-      );
+      const ids = pasteObjectClipboard(next, targetSlideId, snapshot, {
+        x: count * 32,
+        y: count * 32,
+      });
       validateDeck(next);
       commit(next);
-      pasteSequence.current = { deckId: next.id, slideId: slide.id, count };
+      pasteSequence.current = {
+        deckId: next.id,
+        slideId: targetSlideId,
+        count,
+      };
+      switchSlide(targetSlideId);
       setSelected(ids);
-    } catch (e) {
-      notify((e as Error).message);
+    } catch (error) {
+      notify((error as Error).message);
     }
   };
-  const pasteClipboard = () => {
-    if (clipboard.current?.kind === "slide") pasteSlide();
-    else pasteObjects();
+  const applyClipboardContent = async (
+    result: ClipboardReadResult,
+    target: FigureImportTarget,
+  ) => {
+    if (
+      documentSession.current !== target.session ||
+      deckRef.current.id !== target.deckId ||
+      !deckRef.current.slides.some(
+        (candidate) => candidate.id === target.slideId,
+      )
+    )
+      return;
+    if (result.kind === "internal") {
+      finishTextEditing();
+      if (result.payload.kind === "slide")
+        pasteSlide(target.slideId, result.payload.value);
+      else pasteObjects(result.payload.value, target.slideId);
+    } else if (result.kind === "files") {
+      await importExternalFiles(result.files, target);
+    } else if (result.kind === "text") {
+      finishTextEditing();
+      cancelGesture();
+      const next = deckRef.current;
+      const text: TextObject = {
+        ...base("text"),
+        type: "text",
+        text: result.text,
+        fontFamily: next.theme.fontFamily,
+        fontFamilySource: "deck",
+        fontSize: 40,
+        fontWeight: 400,
+        color: getDeckTheme(next)?.palette.ink ?? "#132d40",
+        align: "left",
+      };
+      change((candidate) =>
+        candidate.slides
+          .find((slide) => slide.id === target.slideId)!
+          .objects.push(text),
+      );
+      switchSlide(target.slideId);
+      setSelected([text.id]);
+    }
+  };
+  const pasteClipboard = async (
+    afterId = focusedSlideCard()?.dataset.slideId ?? slide.id,
+  ) => {
+    if (busy || transitioning.current) return;
+    const target: FigureImportTarget = {
+      deckId: deckRef.current.id,
+      session: documentSession.current,
+      slideId: afterId,
+    };
+    try {
+      await applyClipboardContent(await readSystemClipboard(), target);
+    } catch (error) {
+      notify((error as Error).message);
+    }
   };
   const distribute = (axis: "x" | "y") => {
     const next = cloneDeck(deckRef.current);
@@ -1629,6 +1834,7 @@ export default function App() {
   const moveLayer = (id: string, direction: "up" | "down") =>
     moveLayers([id], direction);
   const insertLibraryEquation = async (entry: EquationLibraryEntry) => {
+    const session = documentSession.current;
     const currentDeckId = deck.id,
       currentSlideId = slide.id;
     try {
@@ -1645,6 +1851,7 @@ export default function App() {
         equation.transform.height = rendered.height;
       }
       if (
+        documentSession.current !== session ||
         deckRef.current.id !== currentDeckId ||
         presenterState.current.slideId !== currentSlideId ||
         !deckRef.current.slides.some((s) => s.id === currentSlideId)
@@ -1717,25 +1924,27 @@ export default function App() {
     }
     if (changed) commit(next);
   };
-  const save = async (saveAs = false) => {
-    if (busy) return;
+  const save = async (saveAs = false): Promise<boolean> => {
+    if (busy || savingDocument.current) return false;
     finishTextEditing();
+    savingDocument.current = true;
+    const session = documentSession.current;
+    const snapshot = deckRef.current;
     setBusy("Packaging deck");
     try {
-      const snapshot = deckRef.current;
       const archive = await buildDeckArchive(snapshot),
         suggestedName = `${snapshot.title || "Untitled"}.scislide`;
+      if (session !== documentSession.current) return false;
       if (desktop) {
         const result = await desktop.saveDocument({
           bytes: new Uint8Array(await archive.arrayBuffer()),
           suggestedName,
           saveAs,
         });
-        if (result) {
-          setDocumentFilename(result.name);
-          setLastFileSave({ deck: snapshot, kind: "saved" });
-          notify("프레젠테이션을 저장했습니다.");
-        }
+        if (!result || session !== documentSession.current) return false;
+        setDocumentFilename(result.name);
+        setLastFileSave({ deck: snapshot, kind: "saved" });
+        notify("프레젠테이션을 저장했습니다.");
       } else {
         downloadBlob(archive, suggestedName);
         setLastFileSave({ deck: snapshot, kind: "downloaded" });
@@ -1743,96 +1952,274 @@ export default function App() {
           "다운로드를 시작했습니다. 브라우저 다운로드 폴더를 확인해주세요.",
         );
       }
+      return sameDocument(deckRef.current, snapshot);
     } catch (e) {
       notify((e as Error).message);
+      return false;
     } finally {
+      savingDocument.current = false;
       setBusy("");
     }
   };
+  const confirmDocumentChange = async (): Promise<boolean> => {
+    finishTextEditing();
+    const hasDrafts =
+      activeEquationDrafts(deckRef.current, recoveredDrafts.current).length > 0;
+    if (
+      (!workspaceActive.current && !canResumeWorkspace) ||
+      (!hasDrafts &&
+        lastFileSave &&
+        sameDocument(deckRef.current, lastFileSave.deck))
+    )
+      return true;
+    const choice = await new Promise<"save" | "discard" | "cancel" | "recover">(
+      (resolve) => {
+        setSaveChanges({ resolve });
+      },
+    );
+    setSaveChanges(null);
+    if (choice === "cancel") return false;
+    if (choice === "discard") return true;
+    if (choice === "recover") {
+      try {
+        await saveDocumentRecovery(
+          recoverySessionId.current,
+          deckRef.current,
+          activeEquationDrafts(deckRef.current, recoveredDrafts.current),
+        );
+        return true;
+      } catch (error) {
+        notify((error as Error).message);
+        return false;
+      }
+    }
+    if (hasDrafts) {
+      notify(
+        "적용 전 수식 초안이 있습니다. 파일에 저장하려면 먼저 적용하거나, Keep recovery and continue로 복구본을 보관해주세요.",
+      );
+      return false;
+    }
+    return save();
+  };
+  const replaceDocument = (
+    next: Deck,
+    filename: string,
+    kind?: "saved" | "opened",
+    equationDrafts: RecoveredEquationDraft[] = [],
+  ) => {
+    documentSession.current += 1;
+    recoverySessionId.current = newId();
+    lastHistoryError.current = "";
+    const compileId = compileJob.current;
+    compileJob.current = null;
+    if (compileId)
+      void desktop?.cancelCompile(compileId).catch(() => undefined);
+    setCompileBusy(false);
+    finishTextEditing(false);
+    cancelGesture();
+    undo.current = [];
+    redo.current = [];
+    lastCommit.current = { key: "", time: 0 };
+    recoveredDrafts.current = structuredClone(equationDrafts);
+    setDraftRevision((revision) => revision + 1);
+    setEquationEditorId(null);
+    setPdfFigure(null);
+    setMetrics({});
+    deckRef.current = next;
+    setDeck(next);
+    setHistoryTick((tick) => tick + 1);
+    switchSlide(next.slides[0].id);
+    workspaceActive.current = true;
+    setShowThemeChooser(false);
+    setThemeChooserFromEditor(false);
+    setCanResumeWorkspace(true);
+    setDocumentFilename(filename);
+    setLastFileSave(kind ? { deck: next, kind } : null);
+  };
+  const refreshHistoryEntries = async () => {
+    const result = await listDocumentRecoveries();
+    setHistoryEntries(result.entries);
+    setHistoryUnavailable(result.unavailableCount);
+  };
+  const openRecoveryHistory = async () => {
+    if (busy || transitioning.current) return;
+    finishTextEditing();
+    const request = ++historyRequest.current;
+    setShowRecoveryHistory(true);
+    setHistoryLoading(true);
+    setHistoryError("");
+    let preservationError = "";
+    try {
+      if (workspaceActive.current || canResumeWorkspace) {
+        try {
+          await saveDocumentRecovery(
+            recoverySessionId.current,
+            deckRef.current,
+            activeEquationDrafts(deckRef.current, recoveredDrafts.current),
+          );
+        } catch (error) {
+          preservationError = (error as Error).message;
+        }
+      }
+      const result = await listDocumentRecoveries();
+      if (request !== historyRequest.current) return;
+      setHistoryEntries(result.entries);
+      setHistoryUnavailable(result.unavailableCount);
+      setHistoryError(preservationError);
+    } catch (error) {
+      if (request === historyRequest.current)
+        setHistoryError((error as Error).message);
+    } finally {
+      if (request === historyRequest.current) setHistoryLoading(false);
+    }
+  };
+  const closeRecoveryHistory = () => {
+    if (historyBusy) return;
+    historyRequest.current += 1;
+    setHistoryLoading(false);
+    setShowRecoveryHistory(false);
+  };
+  const restoreHistoryDocument = async (id: string) => {
+    if (historyBusy || transitioning.current) return;
+    transitioning.current = true;
+    const request = ++historyRequest.current;
+    const session = documentSession.current;
+    setHistoryBusy(true);
+    setHistoryError("");
+    try {
+      const recovery = await loadDocumentRecovery(id);
+      if (!recovery)
+        throw new Error("This recovery copy is no longer available.");
+      if (
+        request !== historyRequest.current ||
+        session !== documentSession.current ||
+        !(await confirmDocumentChange())
+      )
+        return;
+      await desktop?.clearDocument();
+      replaceDocument(recovery.deck, "", undefined, recovery.equationDrafts);
+      setShowRecoveryHistory(false);
+      notify(
+        "Recovery copy opened. Save as .scislide to keep a portable file.",
+      );
+    } catch (error) {
+      setHistoryError((error as Error).message);
+    } finally {
+      transitioning.current = false;
+      setHistoryBusy(false);
+    }
+  };
+  const removeHistoryDocument = async (id: string) => {
+    if (historyBusy || transitioning.current) return;
+    setHistoryBusy(true);
+    setHistoryError("");
+    try {
+      await deleteDocumentRecovery(id);
+      if (id === recoverySessionId.current) recoverySessionId.current = newId();
+      await refreshHistoryEntries();
+    } catch (error) {
+      setHistoryError((error as Error).message);
+    } finally {
+      setHistoryBusy(false);
+    }
+  };
   const openDesktopDocument = async (pending = false): Promise<boolean> => {
-    if (busy || openingDesktopDocument.current) return false;
+    if (busy || openingDesktopDocument.current || transitioning.current)
+      return false;
     if (!desktop) {
       openInput.current?.click();
       return false;
     }
     openingDesktopDocument.current = true;
+    transitioning.current = true;
+    const session = documentSession.current;
     setBusy("Opening deck");
     try {
       const result = pending
         ? await desktop.takeOpenDocument?.()
         : await desktop.openDocument();
       if (!result) return false;
-      finishTextEditing();
-      cancelGesture();
       const next = await readDeckArchive(
         new Blob([new Uint8Array(result.bytes).buffer]),
       );
-      commit(next);
-      switchSlide(next.slides[0].id);
-      workspaceActive.current = true;
-      setShowThemeChooser(false);
-      setCanResumeWorkspace(true);
-      setDocumentFilename(result.name);
-      setLastFileSave({ deck: next, kind: "saved" });
+      setBusy("");
+      if (
+        session !== documentSession.current ||
+        !(await confirmDocumentChange())
+      )
+        return false;
+      if (desktop.acceptOpenDocument)
+        await desktop.acceptOpenDocument(result.path);
+      replaceDocument(next, result.name, "saved");
       notify("프레젠테이션을 불러왔습니다.");
       return true;
     } catch (e) {
-      await desktop.clearDocument();
-      setDocumentFilename("");
       notify((e as Error).message);
-      // A bad external file must not prevent the next queued file from opening.
       return pending;
     } finally {
       openingDesktopDocument.current = false;
+      transitioning.current = false;
       setBusy("");
       if (pendingDesktopOpen.current)
         setDocumentOpenRevision((revision) => revision + 1);
     }
   };
   const newPresentation = () => {
-    if (busy) return;
+    if (busy || transitioning.current) return;
     finishTextEditing();
     cancelGesture();
     setDrawingTool(null);
     setThemeChooserFromEditor(workspaceActive.current);
     setShowThemeChooser(true);
   };
-  const createPresentation = (themeId: DeckThemeId | "demo") => {
-    const next =
-      themeId === "demo" ? createDemoDeck() : createThemeDeck(themeId);
-    commit(next);
-    switchSlide(next.slides[0].id);
-    workspaceActive.current = true;
-    setCanResumeWorkspace(true);
-    setShowThemeChooser(false);
-    setThemeChooserFromEditor(false);
-    setDocumentFilename("");
-    setLastFileSave(null);
-    void desktop?.clearDocument();
+  const createPresentation = async (themeId: DeckThemeId | "demo") => {
+    if (busy || transitioning.current) return;
+    transitioning.current = true;
+    try {
+      const next =
+        themeId === "demo" ? createDemoDeck() : createThemeDeck(themeId);
+      if (!(await confirmDocumentChange())) return;
+      await desktop?.clearDocument();
+      replaceDocument(next, "");
+    } catch (e) {
+      notify((e as Error).message);
+    } finally {
+      transitioning.current = false;
+    }
   };
   const open = async (file: File) => {
+    if (busy || transitioning.current) return;
+    transitioning.current = true;
+    const session = documentSession.current;
     setBusy("Opening deck");
     try {
       const next = await readDeckArchive(file);
-      commit(next);
-      switchSlide(next.slides[0].id);
-      workspaceActive.current = true;
-      setShowThemeChooser(false);
-      setCanResumeWorkspace(true);
-      setDocumentFilename(file.name);
-      setLastFileSave({ deck: next, kind: "opened" });
+      setBusy("");
+      if (
+        session !== documentSession.current ||
+        !(await confirmDocumentChange())
+      )
+        return;
+      await desktop?.clearDocument();
+      replaceDocument(next, file.name, "opened");
       notify("프레젠테이션을 불러왔습니다.");
     } catch (e) {
       notify((e as Error).message);
     } finally {
+      transitioning.current = false;
       setBusy("");
     }
   };
   const applyFigureAsset = (asset: Asset, target: FigureImportTarget) => {
     const current = deckRef.current;
     const targetSlide = current.slides.find((s) => s.id === target.slideId);
-    if (current.id !== target.deckId || !targetSlide)
+    if (
+      documentSession.current !== target.session ||
+      current.id !== target.deckId ||
+      !targetSlide
+    )
       throw new Error("The destination slide is no longer available.");
+    const exportWarnings = getFigureExportWarnings(asset);
     if (target.objectId) {
       const existing = targetSlide.objects.find(
         (o) => o.id === target.objectId,
@@ -1850,7 +2237,11 @@ export default function App() {
         figure.assetId = asset.id;
         pruneUnusedAssets(d);
       });
-      notify("Figure replaced. Layout and crop preserved.");
+      notify(
+        exportWarnings.length
+          ? exportWarnings.join(" ")
+          : "Figure replaced. Layout and crop preserved.",
+      );
       return;
     }
     const scale = Math.min(1, 800 / asset.width, 600 / asset.height);
@@ -1860,8 +2251,20 @@ export default function App() {
       assetId: asset.id,
       alt: asset.name,
       transform: {
-        x: 180,
-        y: 220,
+        x: Math.max(
+          0,
+          Math.min(
+            current.slideSize.width - asset.width * scale,
+            target.position?.x ?? 180,
+          ),
+        ),
+        y: Math.max(
+          0,
+          Math.min(
+            current.slideSize.height - asset.height * scale,
+            target.position?.y ?? 220,
+          ),
+        ),
         width: asset.width * scale,
         height: asset.height * scale,
         rotation: 0,
@@ -1886,6 +2289,7 @@ export default function App() {
     });
     switchSlide(target.slideId);
     setSelected([figure.id]);
+    if (exportWarnings.length) notify(exportWarnings.join(" "));
   };
   const importFigureFile = async (file: File, target: FigureImportTarget) => {
     if (busy) return;
@@ -1905,9 +2309,105 @@ export default function App() {
       setBusy("");
     }
   };
+  const importExternalFiles = async (
+    files: File[],
+    target: FigureImportTarget,
+  ) => {
+    if (busy || transitioning.current || !files.length) return;
+    if (files.length === 1 && /\.scislide$/i.test(files[0].name)) {
+      await open(files[0]);
+      return;
+    }
+    if (
+      files.length === 1 &&
+      (files[0].type === "application/pdf" || /\.pdf$/i.test(files[0].name))
+    ) {
+      await importFigureFile(files[0], target);
+      return;
+    }
+    if (
+      files.some(
+        (file) =>
+          !["image/png", "image/jpeg", "image/svg+xml"].includes(file.type) &&
+          !/\.(png|jpe?g|svg)$/i.test(file.name),
+      )
+    ) {
+      notify(
+        "Drop PNG, JPEG or SVG images, a single PDF, or a single .scislide document.",
+      );
+      return;
+    }
+    finishTextEditing();
+    cancelGesture();
+    setDrawingTool(null);
+    setBusy("Importing figures");
+    try {
+      // Decode the whole batch before making one undoable document change.
+      const assets = await Promise.all(files.map((file) => importFigure(file)));
+      if (assets.length === 1) {
+        applyFigureAsset(assets[0], target);
+        return;
+      }
+      const current = deckRef.current;
+      if (
+        documentSession.current !== target.session ||
+        current.id !== target.deckId ||
+        !current.slides.some((slide) => slide.id === target.slideId)
+      )
+        throw new Error("The destination slide is no longer available.");
+      const exportWarnings = assets.flatMap(getFigureExportWarnings);
+      const ids: string[] = [];
+      change((next) => {
+        const destination = next.slides.find(
+          (slide) => slide.id === target.slideId,
+        )!;
+        assets.forEach((asset, index) => {
+          const scale = Math.min(1, 800 / asset.width, 600 / asset.height);
+          const width = asset.width * scale,
+            height = asset.height * scale;
+          const figure: FigureObject = {
+            ...base("figure"),
+            type: "figure",
+            assetId: asset.id,
+            alt: asset.name,
+            transform: {
+              x: Math.max(
+                0,
+                Math.min(
+                  next.slideSize.width - width,
+                  (target.position?.x ?? 180) + index * 28,
+                ),
+              ),
+              y: Math.max(
+                0,
+                Math.min(
+                  next.slideSize.height - height,
+                  (target.position?.y ?? 220) + index * 28,
+                ),
+              ),
+              width,
+              height,
+              rotation: 0,
+            },
+          };
+          ids.push(figure.id);
+          next.assets.push(asset);
+          destination.objects.push(figure);
+        });
+      });
+      switchSlide(target.slideId);
+      setSelected(ids);
+      if (exportWarnings.length) notify([...new Set(exportWarnings)].join(" "));
+    } catch (error) {
+      notify((error as Error).message);
+    } finally {
+      setBusy("");
+    }
+  };
   const addFigure = (file: File) =>
-    importFigureFile(file, {
+    importExternalFiles([file], {
       deckId: deck.id,
+      session: documentSession.current,
       slideId: slide.id,
       placeholderId: selectedMediaPlaceholder(slide, selected, "photo")?.id,
     });
@@ -1932,6 +2432,7 @@ export default function App() {
     // Keep the destination stable while the file is being read.
     const targetSlideId = slide.id;
     const targetDeckId = deck.id;
+    const session = documentSession.current;
     const placeholderId = selectedMediaPlaceholder(
       slide,
       selected,
@@ -1940,6 +2441,7 @@ export default function App() {
     try {
       const asset = await importVideo(file);
       if (
+        documentSession.current !== session ||
         deckRef.current.id !== targetDeckId ||
         !deckRef.current.slides.some((s) => s.id === targetSlideId)
       )
@@ -2196,7 +2698,7 @@ export default function App() {
       busy: !!busy,
       canUndo: !!undo.current.length,
       canRedo: !!redo.current.length,
-      canPaste: hasClipboard,
+      canPaste: true, // External system content can be pasted without a prior copy here.
       hasSelection: !!selected.length,
       hasUnlockedSelection: !!unlocked.length,
       hasLockedSelection: slide.objects.some(
@@ -2446,6 +2948,8 @@ export default function App() {
     }
   };
   const hasOtherEditorDialog =
+    showRecoveryHistory ||
+    !!saveChanges ||
     showHelp ||
     showAiDraft ||
     !!pdfFigure ||
@@ -2536,6 +3040,13 @@ export default function App() {
   });
   useEffect(() =>
     desktop?.onCommand((command) => {
+      if (
+        isTextInput(document.activeElement) &&
+        ["undo", "redo", "cut", "copy", "paste", "selectAll"].includes(command)
+      ) {
+        document.execCommand(command);
+        return;
+      }
       if (hasOtherEditorDialog || presenting) return;
       if (equationEditorOpen) {
         if (
@@ -2598,15 +3109,32 @@ export default function App() {
         finishTextEditing();
         void saveWorkspaceRecovery(
           deckRef.current,
-          recoveredDrafts.current,
+          activeEquationDrafts(deckRef.current, recoveredDrafts.current),
         ).catch(() => undefined);
+        if (!showRecoveryHistory)
+          void saveDocumentRecovery(
+            recoverySessionId.current,
+            deckRef.current,
+            activeEquationDrafts(deckRef.current, recoveredDrafts.current),
+          ).catch(() => undefined);
       }
     };
     const hidden = () => {
       if (document.visibilityState === "hidden") flush();
     };
-    const unload = () => {
+    const unload = (event: BeforeUnloadEvent) => {
       flush();
+      if (
+        !desktop &&
+        workspaceActive.current &&
+        (!lastFileSave ||
+          !sameDocument(deckRef.current, lastFileSave.deck) ||
+          activeEquationDrafts(deckRef.current, recoveredDrafts.current)
+            .length > 0)
+      ) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
       presenter.current?.popup.close();
     };
     document.addEventListener("visibilitychange", hidden);
@@ -2615,7 +3143,54 @@ export default function App() {
       document.removeEventListener("visibilitychange", hidden);
       window.removeEventListener("beforeunload", unload);
     };
-  }, [finishTextEditing]);
+  }, [finishTextEditing, lastFileSave, showRecoveryHistory]);
+  useEffect(() =>
+    desktop?.onCloseDocument?.(() => {
+      if (busy || transitioning.current) return;
+      transitioning.current = true;
+      void confirmDocumentChange()
+        .then(async (confirmed) => {
+          if (confirmed) await desktop?.confirmCloseDocument?.();
+        })
+        .catch((error: Error) => notify(error.message))
+        .finally(() => {
+          transitioning.current = false;
+        });
+    }),
+  );
+  useEffect(() => {
+    const preventNavigation = (event: DragEvent) => {
+      if (Array.from(event.dataTransfer?.types ?? []).includes("Files"))
+        event.preventDefault();
+    };
+    document.addEventListener("dragover", preventNavigation);
+    document.addEventListener("drop", preventNavigation);
+    return () => {
+      document.removeEventListener("dragover", preventNavigation);
+      document.removeEventListener("drop", preventNavigation);
+    };
+  }, []);
+  const saveChangesDialog = saveChanges && (
+    <SaveChangesDialog
+      title={deck.title || "Untitled presentation"}
+      allowRecovery
+      draftCount={equationDraftCount}
+      onChoose={(choice) => saveChanges.resolve(choice)}
+    />
+  );
+  const recoveryHistoryDialog = showRecoveryHistory && (
+    <RecoveryHistoryDialog
+      entries={historyEntries}
+      unavailableCount={historyUnavailable}
+      loading={historyLoading}
+      busy={historyBusy}
+      suspended={!!saveChanges}
+      error={historyError}
+      onClose={closeRecoveryHistory}
+      onRestore={(id) => void restoreHistoryDocument(id)}
+      onRemove={(id) => void removeHistoryDocument(id)}
+    />
+  );
   const position = (
     e: { clientX: number; clientY: number },
     svg: SVGSVGElement,
@@ -3007,6 +3582,47 @@ export default function App() {
     cancelGesture,
   ]);
   useEffect(() => {
+    const editable = (event: ClipboardEvent) =>
+      isTextInput(event.target) || isTextInput(document.activeElement);
+    const blocked = () =>
+      !!busy ||
+      hasEditorDialog ||
+      presenting ||
+      showThemeChooser ||
+      transitioning.current;
+    const copy = (event: ClipboardEvent) => {
+      if (editable(event) || blocked() || !event.clipboardData) return;
+      const card = focusedSlideCard();
+      if (card?.dataset.slideId)
+        void copySlide(card.dataset.slideId, event.type === "cut", event);
+      else void copyObjects(event.type === "cut", event);
+    };
+    const paste = (event: ClipboardEvent) => {
+      if (editable(event) || blocked() || !event.clipboardData) return;
+      try {
+        const result = readClipboardEvent(event.clipboardData);
+        if (result.kind === "empty") return;
+        event.preventDefault();
+        void applyClipboardContent(result, {
+          deckId: deckRef.current.id,
+          session: documentSession.current,
+          slideId: focusedSlideCard()?.dataset.slideId ?? slide.id,
+        }).catch((error: Error) => notify(error.message));
+      } catch (error) {
+        event.preventDefault();
+        notify((error as Error).message);
+      }
+    };
+    window.addEventListener("copy", copy);
+    window.addEventListener("cut", copy);
+    window.addEventListener("paste", paste);
+    return () => {
+      window.removeEventListener("copy", copy);
+      window.removeEventListener("cut", copy);
+      window.removeEventListener("paste", paste);
+    };
+  });
+  useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (
         e.defaultPrevented ||
@@ -3046,6 +3662,12 @@ export default function App() {
           action &&
           ["zoomIn", "zoomOut", "fitSlide"].includes(action));
       if (hasEditorDialog) {
+        if (
+          isTextInput(e.target) &&
+          action &&
+          ["cut", "copy", "paste", "selectAll", "undo", "redo"].includes(action)
+        )
+          return;
         if (action && !bareCanvasKey) e.preventDefault();
         return;
       }
@@ -3112,6 +3734,7 @@ export default function App() {
           !e.target.closest(".slide-list")
         )
           return;
+        if (["copy", "cut", "paste"].includes(action)) return;
         e.preventDefault();
         if (!e.repeat) executeShortcut(action);
         return;
@@ -3174,7 +3797,7 @@ export default function App() {
         e.key !== "Escape" &&
         e.target instanceof Element &&
         e.target.closest(
-          'button,a[href],input[type="range"],input[type="color"],input[type="file"]',
+          'button,summary,a[href],input[type="range"],input[type="color"],input[type="file"]',
         )
       )
         return;
@@ -3241,10 +3864,13 @@ export default function App() {
   if (showThemeChooser)
     return (
       <>
+        {saveChangesDialog}
+        {recoveryHistoryDialog}
         <ThemeChooser
           onChoose={createPresentation}
           onHelp={() => setShowHelp(true)}
           onOpen={() => void openDesktopDocument()}
+          onRecover={() => void openRecoveryHistory()}
           onResume={
             canResumeWorkspace
               ? () => {
@@ -3259,7 +3885,9 @@ export default function App() {
               ? () => setShowThemeChooser(false)
               : undefined
           }
-          busy={!!busy || !recoveryLoaded}
+          busy={
+            !!busy || !recoveryLoaded || showRecoveryHistory || !!saveChanges
+          }
         />
         {showHelp && (
           <KeyboardShortcutsDialog
@@ -3291,6 +3919,8 @@ export default function App() {
   if (presenting)
     return (
       <div className="presentation-view">
+        {saveChangesDialog}
+        {recoveryHistoryDialog}
         <SlideScene
           key={slide.id}
           deck={deck}
@@ -3375,7 +4005,7 @@ export default function App() {
           />
           <span>
             <span
-              className={`status-dot ${fileMatchesSaved ? "is-saved" : "is-unsaved"}`}
+              className={`status-dot ${fileMatchesSaved && equationDraftCount === 0 ? "is-saved" : "is-unsaved"}`}
             />
             <span
               className="file-save-state"
@@ -3394,6 +4024,15 @@ export default function App() {
                       : "Downloaded .scislide"
                   : "Unsaved changes"}
             </span>
+            {equationDraftCount > 0 && (
+              <span
+                className="equation-draft-state"
+                title="Apply equation drafts to include them in the .scislide file. Unapplied drafts are kept in local recovery."
+              >
+                {equationDraftCount} equation{" "}
+                {equationDraftCount === 1 ? "draft" : "drafts"} · local only
+              </span>
+            )}
             <span
               className="recovery-state"
               title="Local recovery is separate from saving a portable .scislide file"
@@ -3492,6 +4131,13 @@ export default function App() {
             </IconButton>
           </div>
 
+          <button
+            type="button"
+            className="tool"
+            onClick={() => void openRecoveryHistory()}
+          >
+            <History size={16} /> Recovered documents
+          </button>
           <button type="button" className="tool" onClick={startWithPresenter}>
             <Presentation size={16} /> Presenter display
           </button>
@@ -3544,12 +4190,9 @@ export default function App() {
               <Scissors size={17} /> <span>Cut objects</span>
             </IconButton>
             <IconButton
-              title={shortcutTitle(
-                clipboardKind === "slide" ? "Paste slide" : "Paste objects",
-                "paste",
-              )}
-              disabled={!hasClipboard}
-              onClick={pasteClipboard}
+              title={shortcutTitle("Paste", "paste")}
+              disabled={!!busy || hasEditorDialog}
+              onClick={() => void pasteClipboard()}
             >
               <ClipboardPaste size={17} /> <span>Paste</span>
             </IconButton>
@@ -3797,10 +4440,10 @@ export default function App() {
               <Copy size={14} /> Copy
             </button>
             <button
-              aria-label="Paste copied slide"
-              title={shortcutTitle("Paste slide", "paste")}
-              disabled={clipboardKind !== "slide" || !!busy || hasEditorDialog}
-              onClick={() => pasteSlide(slide.id)}
+              aria-label="Paste from system clipboard"
+              title={shortcutTitle("Paste from system clipboard", "paste")}
+              disabled={!!busy || hasEditorDialog}
+              onClick={() => void pasteClipboard(slide.id)}
             >
               <ClipboardPaste size={14} /> Paste
             </button>
@@ -3867,21 +4510,82 @@ export default function App() {
                 </IconButton>
               </div>
             </div>
-            <span className="canvas-hint">
+            <span className="canvas-hint" id="canvas-interaction-hint">
               <MousePointer2 size={13} />{" "}
               {drawingTool
                 ? `Drag to draw ${drawingTool === "rect" ? "rectangle" : drawingTool} · Shift to constrain · Escape to cancel`
                 : textEditing
                   ? `Editing text · ${shortcutLabel("finishTextEditing", keyboardPlatform)} to finish · Esc to cancel`
-                  : "Double-click text to edit · drag to align"}
+                  : multipleObjectsSelected
+                    ? `${selectedObjects.length} objects selected · Shift-click to change selection · Esc to clear`
+                    : object && isObjectLocked(object, slide.objects)
+                      ? "Locked object · Unlock in Layers to edit"
+                      : object?.type === "text"
+                        ? "Enter or double-click to edit · Arrow keys to move"
+                        : object?.type === "equation"
+                          ? "Double-click to edit equation · Arrow keys to move"
+                          : object
+                            ? "Drag to move · Arrow keys to nudge · Shift for larger steps"
+                            : slide.objects.length === 0
+                              ? "Start with text, an equation, or a figure"
+                              : "Click to select · Shift-click for more · Tab through objects"}
             </span>
           </div>
           <div
-            className={`canvas-viewport ${grid ? "show-grid" : ""}`}
+            className={`canvas-viewport ${grid ? "show-grid" : ""} ${dropActive ? "file-drop-active" : ""}`}
             ref={canvasRef}
             tabIndex={0}
             role="region"
             aria-label="Slide canvas"
+            aria-describedby="canvas-interaction-hint"
+            onDragOver={(event) => {
+              if (
+                !Array.from(event.dataTransfer.types).includes("Files") ||
+                isTextInput(event.target) ||
+                hasEditorDialog ||
+                busy
+              )
+                return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "copy";
+              setDropActive(true);
+            }}
+            onDragLeave={(event) => {
+              if (
+                !(event.relatedTarget instanceof Node) ||
+                !event.currentTarget.contains(event.relatedTarget)
+              )
+                setDropActive(false);
+            }}
+            onDrop={(event) => {
+              setDropActive(false);
+              if (isTextInput(event.target) || hasEditorDialog || busy) return;
+              const files = Array.from(event.dataTransfer.files);
+              if (!files.length) {
+                if (
+                  Array.from(event.dataTransfer.types).some((type) =>
+                    ["text/html", "text/uri-list"].includes(type),
+                  )
+                ) {
+                  event.preventDefault();
+                  notify(
+                    "Drag a local image file here. Web image URLs are not supported.",
+                  );
+                }
+                return;
+              }
+              event.preventDefault();
+              const svg =
+                canvasRef.current?.querySelector<SVGSVGElement>(
+                  "svg.slide-scene",
+                );
+              void importExternalFiles(files, {
+                deckId: deckRef.current.id,
+                session: documentSession.current,
+                slideId: slide.id,
+                position: svg ? position(event, svg) : undefined,
+              });
+            }}
             aria-description="Tab selects objects from back to front. Shift+Tab selects backwards. At either end, Tab moves focus to the surrounding controls."
             onPointerDownCapture={(event) => {
               if (
@@ -3894,6 +4598,11 @@ export default function App() {
                 canvasRef.current?.focus({ preventScroll: true });
             }}
           >
+            {dropActive && (
+              <div className="file-drop-hint" role="status">
+                Drop images, PDF or a .scislide document
+              </div>
+            )}
             <div
               className="slide-paper"
               style={{ width: `${(fitWidth * zoom) / 100}px` }}
@@ -4094,7 +4803,28 @@ export default function App() {
           >
             {object && inspectorTab !== "document" && (
               <>
-                <div className="object-heading">
+                {multipleObjectsSelected && (
+                  <SelectionSummary
+                    objects={selectedObjects}
+                    arranging={inspectorTab === "arrange"}
+                    onArrange={() => {
+                      paneFocus.current = "inspector";
+                      setInspectorTab("arrange");
+                    }}
+                    onEdit={(id) => {
+                      finishTextEditing();
+                      cancelGesture();
+                      setDrawingTool(null);
+                      paneFocus.current = "inspector";
+                      setSelected([id]);
+                      setInspectorTab("style");
+                    }}
+                  />
+                )}
+                <div
+                  className="object-heading"
+                  hidden={multipleObjectsSelected}
+                >
                   <span className="object-type-icon">
                     {object.type === "equation" ? (
                       <Sigma size={22} />
@@ -4132,7 +4862,7 @@ export default function App() {
                 </div>
 
                 <div
-                  hidden={inspectorTab !== "style"}
+                  hidden={inspectorTab !== "style" || multipleObjectsSelected}
                   data-inspector-section="style"
                 >
                   {activeEquation && (
@@ -4217,6 +4947,71 @@ export default function App() {
                         equation to edit it. Use <code>{"\\$"}</code> for a
                         dollar sign.
                       </p>
+                      <Field label="Text font">
+                        <select
+                          aria-label="Text font"
+                          value={
+                            object.fontFamilySource === "deck"
+                              ? "deck"
+                              : object.fontFamily
+                          }
+                          onChange={(event) =>
+                            updateObject(object.id, (candidate) => {
+                              if (candidate.type !== "text") return;
+                              if (event.target.value === "deck")
+                                useDeckTextFont(candidate, deck);
+                              else {
+                                candidate.fontFamily = event.target.value;
+                                delete candidate.fontFamilySource;
+                              }
+                            })
+                          }
+                        >
+                          <option value="deck">
+                            Use deck default ({deck.theme.fontFamily})
+                          </option>
+                          <option value="Inter">Inter</option>
+                          <option value="Nanum Gothic">Nanum Gothic</option>
+                          {!["Inter", "Nanum Gothic"].includes(
+                            object.fontFamily,
+                          ) && (
+                            <option value={object.fontFamily}>
+                              {object.fontFamily} (existing font)
+                            </option>
+                          )}
+                        </select>
+                      </Field>
+                      <p className="field-hint">
+                        {effectiveTextFontFamily(deck, object)} ·{" "}
+                        {object.fontFamilySource === "deck"
+                          ? "Follows future changes to the deck text font."
+                          : "This object uses its own text font."}
+                      </p>
+                      <Field label="Inline math font">
+                        <select
+                          aria-label="Text inline math font"
+                          value={object.inlineMathFontSetId ?? "deck"}
+                          onChange={(event) =>
+                            updateObject(object.id, (candidate) => {
+                              if (candidate.type !== "text") return;
+                              if (event.target.value === "deck")
+                                delete candidate.inlineMathFontSetId;
+                              else
+                                candidate.inlineMathFontSetId = event.target
+                                  .value as EquationFontId;
+                            })
+                          }
+                        >
+                          <option value="deck">
+                            Use deck inline math default
+                          </option>
+                          {FONT_OPTIONS.map((font) => (
+                            <option key={font.id} value={font.id}>
+                              {font.label}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
                       <div className="field-row">
                         <Field label="Size">
                           <CommitNumberInput
@@ -4477,6 +5272,11 @@ export default function App() {
                   {object.type === "figure" && (
                     <div className="inspector-section">
                       <div className="section-label">FIGURE</div>
+                      <FigureExportNotice
+                        asset={deck.assets.find(
+                          (asset) => asset.id === object.assetId,
+                        )}
+                      />
                       <button
                         className="button light figure-replace"
                         disabled={
@@ -4484,6 +5284,7 @@ export default function App() {
                         }
                         onClick={() => {
                           replaceFigureTarget.current = {
+                            session: documentSession.current,
                             deckId: deck.id,
                             slideId: slide.id,
                             objectId: object.id,
@@ -4699,7 +5500,10 @@ export default function App() {
                   hidden={inspectorTab !== "arrange"}
                   data-inspector-section="arrange"
                 >
-                  <div className="inspector-section">
+                  <div
+                    className="inspector-section"
+                    hidden={multipleObjectsSelected}
+                  >
                     <div className="section-label">POSITION & SIZE</div>
                     {object.groupId && (
                       <p className="field-hint">
@@ -4834,6 +5638,13 @@ export default function App() {
                   </div>
                   <div className="inspector-section">
                     <div className="section-label">ARRANGE</div>
+                    {selectionLayoutUnits(slide.objects, selected, metrics)
+                      .length < 3 && (
+                      <p className="field-hint">
+                        Select at least 3 unlocked objects or groups to
+                        distribute them.
+                      </p>
+                    )}
                     <div className="arrange-buttons">
                       <button
                         disabled={
@@ -4891,7 +5702,9 @@ export default function App() {
                       </button>
                       <button
                         className="danger"
-                        disabled={object.locked}
+                        disabled={
+                          !editableSelection(slide.objects, selected).length
+                        }
                         onClick={deleteObjects}
                       >
                         <Trash2 size={14} /> Delete
@@ -4905,11 +5718,41 @@ export default function App() {
               <>
                 <div className="inspector-empty">
                   <MousePointer2 size={27} />
-                  <h2>Your ideas, precisely placed.</h2>
+                  <h2>
+                    {slide.objects.length === 0
+                      ? "Start this slide"
+                      : "Select an object"}
+                  </h2>
                   <p>
-                    Select an object to edit its content, typography, and
-                    position.
+                    {slide.objects.length === 0
+                      ? "Add your first idea. You can edit text directly on the slide and adjust its style here."
+                      : "Click an object on the slide to edit it here. Shift-click to select more; use Tab on the canvas to move between objects."}
                   </p>
+                  {slide.objects.length === 0 && (
+                    <div className="empty-slide-actions">
+                      <button
+                        className="button"
+                        disabled={!!busy || hasEditorDialog}
+                        onClick={() => void insert("text")}
+                      >
+                        <Type size={16} /> Add text
+                      </button>
+                      <button
+                        className="button"
+                        disabled={!!busy || hasEditorDialog}
+                        onClick={() => executeShortcut("insertEquation")}
+                      >
+                        <Sigma size={16} /> Add equation
+                      </button>
+                      <button
+                        className="button"
+                        disabled={!!busy || hasEditorDialog}
+                        onClick={() => imageInput.current?.click()}
+                      >
+                        <ImagePlus size={16} /> Add figure
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="inspector-section">
@@ -4958,6 +5801,58 @@ export default function App() {
               </div>
               <div className="inspector-section">
                 <div className="section-label">DECK TYPOGRAPHY</div>
+                <Field label="Default text font">
+                  <select
+                    aria-label="Default text font"
+                    value={deck.theme.fontFamily}
+                    onChange={(event) =>
+                      change((next) => {
+                        next.theme.fontFamily = event.target.value;
+                      })
+                    }
+                  >
+                    <option value="Inter">Inter</option>
+                    <option value="Nanum Gothic">Nanum Gothic</option>
+                    {!["Inter", "Nanum Gothic"].includes(
+                      deck.theme.fontFamily,
+                    ) && (
+                      <option value={deck.theme.fontFamily}>
+                        {deck.theme.fontFamily} (existing font)
+                      </option>
+                    )}
+                  </select>
+                </Field>
+                <p className="field-hint">
+                  Applies to new text and objects using the deck default. Math
+                  fonts keep their own settings.
+                </p>
+                <button
+                  className="text-button"
+                  disabled={
+                    !slide.objects.some(
+                      (candidate) =>
+                        candidate.type === "text" &&
+                        selected.includes(candidate.id) &&
+                        !isObjectLocked(candidate, slide.objects),
+                    )
+                  }
+                  onClick={() =>
+                    change((next) => {
+                      const destination = next.slides.find(
+                        (candidate) => candidate.id === slide.id,
+                      )!;
+                      for (const candidate of destination.objects)
+                        if (
+                          candidate.type === "text" &&
+                          selected.includes(candidate.id) &&
+                          !isObjectLocked(candidate, destination.objects)
+                        )
+                          useDeckTextFont(candidate, next);
+                    })
+                  }
+                >
+                  Use deck text font for selected text
+                </button>
                 <Field label="Default math font">
                   <select
                     aria-label="Default math font"
@@ -4980,6 +5875,30 @@ export default function App() {
                 </Field>
                 <p className="field-hint">
                   Applies to equations using deck typography.
+                </p>
+                <Field label="Inline math font">
+                  <select
+                    aria-label="Inline math font"
+                    value={inlineMathFont(deck)}
+                    onChange={(e) =>
+                      change((d) => {
+                        d.theme.inlineMathFontSetId = e.target
+                          .value as NonNullable<
+                          Deck["theme"]["inlineMathFontSetId"]
+                        >;
+                      })
+                    }
+                  >
+                    {FONT_OPTIONS.map((font) => (
+                      <option key={font.id} value={font.id}>
+                        {font.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <p className="field-hint">
+                  Latin Modern uses the traditional LaTeX math style in text
+                  boxes.
                 </p>
               </div>
               <div className="inspector-section">
@@ -5472,12 +6391,16 @@ export default function App() {
               className="text-button"
               disabled={draft.renderer === "local-latex"}
               onClick={() =>
-                setDraft({
-                  ...draft,
-                  font: deck.theme.equation.fontSetId,
-                  size: deck.theme.equation.fontSize,
-                  color: deck.theme.equation.color,
-                })
+                setDraft(
+                  {
+                    ...draft,
+                    font: deck.theme.equation.fontSetId,
+                    size: deck.theme.equation.fontSize,
+                    color: deck.theme.equation.color,
+                    inheritTypography: true,
+                  },
+                  true,
+                )
               }
             >
               Reset to deck typography
@@ -5488,7 +6411,7 @@ export default function App() {
       {inlineEquationEdit && inlineEquationObject?.type === "text" && (
         <InlineEquationDialog
           initialLatex={inlineEquationEdit.range.latex}
-          font={deck.theme.equation.fontSetId}
+          font={inlineMathFont(deck, inlineEquationObject)}
           fontSize={inlineEquationObject.fontSize}
           color={inlineEquationObject.color}
           platform={keyboardPlatform}
@@ -5506,6 +6429,8 @@ export default function App() {
           onCancel={() => closeInlineEquationEditor()}
         />
       )}
+      {saveChangesDialog}
+      {recoveryHistoryDialog}
       {showEquationLibrary && (
         <EquationLibraryDialog
           onClose={() => setShowEquationLibrary(false)}

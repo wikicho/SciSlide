@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { webcrypto } from "node:crypto";
 import JSZip from "jszip";
+import { version as APP_VERSION } from "../package.json";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
   cleanupGroups,
@@ -271,7 +272,7 @@ describe("drawing document compatibility", () => {
     );
     expect(manifest).toMatchObject({
       formatVersion: "0.5.0",
-      producer: { name: "SciSlide", version: "0.5.3" },
+      producer: { name: "SciSlide", version: APP_VERSION },
     });
     const loaded = await readDeckArchive(archive);
     expect(loaded.formatVersion).toBe("0.5.0");

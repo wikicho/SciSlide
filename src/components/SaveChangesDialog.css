@@ -1,0 +1,54 @@
+.modal-backdrop.save-changes-backdrop {
+  z-index: 2000;
+}
+.save-changes-dialog {
+  width: min(560px, calc(100vw - 32px));
+  padding: 28px;
+  border-radius: 16px;
+  background: #fff;
+  color: #1f2937;
+  box-shadow: 0 24px 64px #0004;
+}
+.save-changes-dialog h2 {
+  margin: 0 0 12px;
+  font-size: 21px;
+}
+.save-changes-dialog p {
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.save-changes-recovery-hint {
+  color: #64748b;
+  font-size: 13px;
+}
+.save-changes-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+}
+.save-changes-actions button {
+  padding: 9px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+.save-changes-actions .primary-button {
+  background: #4338ca;
+  border-color: #4338ca;
+  color: #fff;
+}
+
+.save-changes-drafts {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 13px;
+}
+.save-changes-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

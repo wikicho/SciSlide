@@ -66,6 +66,7 @@ function textDeck(object: TextObject) {
   const deck = createThemeDeck("scientific");
   deck.slides[0].objects = [object];
   deck.theme.equation.fontSetId = "mathjax-fira";
+  deck.theme.inlineMathFontSetId = "mathjax-fira";
   deck.theme.equation.fontSize = 99;
   deck.theme.equation.color = "#ff0000";
   deck.pageNumbers = undefined;
@@ -297,6 +298,44 @@ describe("inline mathematics inside editable slide text", () => {
     );
   });
 
+  it("uses actual Latin Modern glyphs by default in existing decks while retaining the prose font", async () => {
+    const source = String.raw`Constraining $U(1)_{L_\mu - L_\tau}$ with $N_\mathrm{eff}$ Bounds`;
+    const object = textObject({ text: source });
+    const deck = textDeck(object);
+    delete deck.theme.inlineMathFontSetId;
+    await scene(object, deck);
+    await settle(
+      () =>
+        host.querySelectorAll("[data-inline-math-fragment] path").length > 1,
+    );
+    const glyphs = (element: Element) =>
+      [...element.querySelectorAll("path")].map((path) =>
+        path.getAttribute("d"),
+      );
+    for (const fragment of host.querySelectorAll(
+      "[data-inline-math-fragment]",
+    )) {
+      const expected = await actualMath.renderEquation(
+        fragment.getAttribute("data-inline-math-fragment")!,
+        "mathjax-modern",
+        object.fontSize,
+        object.color,
+        false,
+      );
+      expect(glyphs(fragment)).toEqual(
+        glyphs(new DOMParser().parseFromString(expected.svg, "image/svg+xml")),
+      );
+    }
+    expect(
+      [...mathGroup()!.querySelectorAll("text")].every(
+        (element) => element.getAttribute("font-family") === "Inter",
+      ),
+    ).toBe(true);
+    expect(object.text).toBe(source);
+    expect(deck.theme.equation.fontSetId).toBe("mathjax-fira");
+    expect(deck.theme.inlineMathFontSetId).toBeUndefined();
+  });
+
   it("reflows when the text width changes and retypesets inherited math style changes", async () => {
     const object = textObject({
       text: String.raw`A field $\alpha+\beta$ changes the scale with $x^2$ after inflation.`,
@@ -328,6 +367,7 @@ describe("inline mathematics inside editable slide text", () => {
       ...deck,
       theme: {
         ...deck.theme,
+        inlineMathFontSetId: "mathjax-modern" as const,
         equation: {
           ...deck.theme.equation,
           fontSetId: "mathjax-modern" as const,

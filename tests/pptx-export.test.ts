@@ -261,6 +261,31 @@ describe("PowerPoint export packages", () => {
     ).toContain("Second slide speaker note");
   });
 
+  it("retains an imported SVG's validated embedded font in its PowerPoint image", async () => {
+    const font = btoa("\u0000\u0001\u0000\u0000" + "\u0000".repeat(8));
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><style>@font-face{font-family:Plot;src:url(data:font/ttf;base64,${font})}</style><text font-family="Plot" y="30">Plot label</text></svg>`;
+    const source = deck([figure()]);
+    source.assets = [
+      {
+        id: "asset-1",
+        name: "font-plot.svg",
+        mime: "image/svg+xml",
+        width: 200,
+        height: 100,
+        dataUrl: `data:image/svg+xml,${encodeURIComponent(svg)}`,
+      },
+    ];
+    const zip = await exported(source);
+    const files = Object.keys(zip.files).filter(
+      (path) => path.startsWith("ppt/media/") && path.endsWith(".svg"),
+    );
+    expect(files).toHaveLength(1);
+    const embedded = await zip.file(files[0])!.async("string");
+    expect(embedded).toContain("@font-face");
+    expect(embedded).toContain("data:font/ttf;base64,");
+    expect(embedded).toContain("slide-0-object-0-font-0");
+  });
+
   it("keeps ordinary text and drawings editable with object order, transforms and transparency", async () => {
     const source = deck([
       text(),

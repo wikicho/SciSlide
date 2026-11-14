@@ -1,4 +1,4 @@
-# SciSlide 0.6.4 — macOS development installer
+# SciSlide 0.6.6 — macOS development installer
 
 Choose the installer that matches your Mac: **arm64** for Apple Silicon (M1 or later), or **x64** for Intel. The installer copies SciSlide to `/Applications/SciSlide.app`. Node.js, a development server and TeX are not required for MathJax editing.
 
@@ -8,7 +8,7 @@ Quit an existing SciSlide window before installing an update. Both architectures
 
 ## Command-line update downloads
 
-v0.6.4 includes a launcher inside the installed app:
+v0.6.6 includes a launcher inside the installed app:
 
 ```sh
 /Applications/SciSlide.app/Contents/Resources/scislide-cli/bin/scislide --check-update
@@ -28,7 +28,7 @@ The CLI chooses the `.pkg` matching the running app's arm64/x64 architecture, ve
 
 ## Headless agent commands
 
-v0.6.3.1 includes `schema`, `create`, `inspect`, `validate`, `apply`, `unpack`, `pack` and `export`. Run `scislide --cli schema` to discover native objects and edit operations. These commands return JSON and create/edit `.scislide` documents or export SVG/PDF without an editor window or a separate Node installation. Use the launcher path above when `scislide` is not on PATH. See the [agent CLI guide](https://github.com/wikicho/SciSlide/blob/v0.6.3.1/docs/AGENT_CLI.md) for examples and export limits.
+v0.6.3.1 includes `schema`, `create`, `inspect`, `validate`, `apply`, `unpack`, `pack` and `export`. Run `scislide --cli schema` to discover native objects and edit operations. These commands return JSON and create/edit `.scislide` documents or export SVG/PDF without an editor window or a separate Node installation. Use the launcher path above when `scislide` is not on PATH. See the [agent CLI guide](https://github.com/wikicho/SciSlide/blob/v0.6.6/docs/AGENT_CLI.md) for examples and export limits.
 
 ## Use the editor
 
@@ -86,7 +86,7 @@ The editor is a prototype. Modern Korean body text is supported through bundled 
 Each installer has a matching `.sha256` file. To verify a download, put the installer and checksum file in the same folder and run:
 
 ```sh
-shasum -a 256 -c SciSlide-0.6.4-macos-arm64-unsigned.pkg.sha256
+shasum -a 256 -c SciSlide-0.6.6-macos-arm64-unsigned.pkg.sha256
 ```
 
 Use the x64 filename for an Intel installer. This checks that the file matches its accompanying checksum; it does not certify the publisher or replace Apple's code signing and notarization.
@@ -99,10 +99,10 @@ From the project root, build the editor and both macOS installers:
 
 ```sh
 pnpm build
-node scripts/package-macos.mjs --arch=all --out=release/macos-pkg
+node scripts/package-macos.mjs --arch=all
 ```
 
-The installers, matching checksums and this guide are written to `release/macos-pkg/`. The default pure-JavaScript installer implementation also works on Linux; use `--implementation=native` on macOS to package with Apple's command-line tools. Neither method signs or notarizes the application.
+The installers, matching checksums and this guide are written to `release/v<version>/macos/`. Temporary unpacked apps are removed after a complete installer build; `--out` selects an exact custom directory. The default pure-JavaScript installer implementation also works on Linux; use `--implementation=native` on macOS to package with Apple's command-line tools. Neither method signs or notarizes the application.
 
 ## AI content drafts
 

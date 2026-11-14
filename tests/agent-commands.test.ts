@@ -191,6 +191,59 @@ describe("native agent deck creation and discovery", () => {
 });
 
 describe("atomic native agent operations", () => {
+  it.each(["mathjax-fira", "mathjax-stix2", "mathjax-modern"] as const)(
+    "sets the independent %s inline preference and preserves it through other typography changes",
+    (font) => {
+      const original = blank();
+      const selected = applyAgentOperations(original, [
+        { op: "deck.update", patch: { theme: { inlineMathFontSetId: font } } },
+      ]).deck;
+      expect(selected.theme).toEqual({
+        ...original.theme,
+        inlineMathFontSetId: font,
+      });
+      const changed = applyAgentOperations(selected, [
+        {
+          op: "deck.update",
+          patch: {
+            theme: {
+              fontFamily: "Nanum Gothic",
+              equation: { fontSetId: "mathjax-fira" },
+            },
+          },
+        },
+        { op: "deck.update", patch: { theme: "minimal-black" } },
+      ]).deck;
+      expect(changed.theme.inlineMathFontSetId).toBe(font);
+      expect(inspectDeck(changed).theme.inlineMathFontSetId).toBe(font);
+      expect(original.theme.inlineMathFontSetId).toBeUndefined();
+    },
+  );
+
+  it("removes only the deck inline preference with null and rejects unsupported fonts atomically", () => {
+    const source = blank();
+    source.theme.inlineMathFontSetId = "mathjax-fira";
+    const reset = applyAgentOperations(source, [
+      { op: "deck.update", patch: { theme: { inlineMathFontSetId: null } } },
+    ]).deck;
+    const { inlineMathFontSetId: _inline, ...otherSettings } = source.theme;
+    expect(reset.theme).toEqual(otherSettings);
+    expect(Object.hasOwn(reset.theme, "inlineMathFontSetId")).toBe(false);
+    for (const invalid of ["Inter", "mathjax-missing", 42, {}, []]) {
+      expect(() =>
+        applyAgentOperations(source, [
+          { op: "deck.update", patch: { title: "Must not survive" } },
+          {
+            op: "deck.update",
+            patch: { theme: { inlineMathFontSetId: invalid } },
+          },
+        ]),
+      ).toThrow();
+      expect(source.title).toBe("Original deck");
+      expect(source.theme.inlineMathFontSetId).toBe("mathjax-fira");
+    }
+  });
+
   it("roundtrips slide/object ordering, stable IDs and partial transforms through native JSON", () => {
     const original = blank();
     const originalSnapshot = structuredClone(original);

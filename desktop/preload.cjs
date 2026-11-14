@@ -78,6 +78,24 @@ contextBridge.exposeInMainWorld("scislideDesktop", {
     return () =>
       ipcRenderer.removeListener("scislide:document-requested", listener);
   },
+  acceptOpenDocument: (selectedPath) =>
+    ipcRenderer.invoke("scislide:accept-open-document", selectedPath),
+  onCloseDocument: (callback) => {
+    if (typeof callback !== "function")
+      throw new TypeError("A document listener must be a function.");
+    const listener = () => callback();
+    ipcRenderer.on("scislide:close-document-requested", listener);
+    void ipcRenderer.invoke("scislide:watch-close-document", true);
+    return () => {
+      ipcRenderer.removeListener("scislide:close-document-requested", listener);
+      void ipcRenderer.invoke("scislide:watch-close-document", false);
+    };
+  },
+  confirmCloseDocument: () =>
+    ipcRenderer.invoke("scislide:confirm-close-document"),
+  writeClipboard: (value) =>
+    ipcRenderer.invoke("scislide:write-clipboard", value),
+  readClipboard: () => ipcRenderer.invoke("scislide:read-clipboard"),
   saveDocument: (request) =>
     ipcRenderer.invoke("scislide:save-document", request),
   clearDocument: () => ipcRenderer.invoke("scislide:clear-document"),

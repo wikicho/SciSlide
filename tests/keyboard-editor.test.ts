@@ -213,7 +213,12 @@ describe("OS-specific keyboard commands in the editor", () => {
   }
 
   function enableDesktop(platform = "darwin") {
+    let clipboardContent = { text: "", html: "" };
     const bridge = {
+      writeClipboard: vi.fn(async (value: { text: string; html: string }) => {
+        clipboardContent = value;
+      }),
+      readClipboard: vi.fn(async () => clipboardContent),
       platform,
       setCommandAvailability: vi.fn().mockResolvedValue(undefined),
       detectTex: vi.fn<() => Promise<TexCapabilities>>().mockResolvedValue({
@@ -227,6 +232,7 @@ describe("OS-specific keyboard commands in the editor", () => {
       cancelCompile: vi.fn().mockResolvedValue(undefined),
       openDocument: vi.fn().mockResolvedValue(null),
       takeOpenDocument: vi.fn().mockResolvedValue(null),
+      acceptOpenDocument: vi.fn().mockResolvedValue(undefined),
       clearDocument: vi.fn().mockResolvedValue(undefined),
       chooseTexDirectory: vi
         .fn<() => Promise<TexCapabilities | null>>()
@@ -260,7 +266,7 @@ describe("OS-specific keyboard commands in the editor", () => {
     return bridge;
   }
 
-  it("opens a launch document after workspace recovery finishes and dismisses the theme chooser", async () => {
+  it("opens a launch document after recovery and explicit discard of the recovered work", async () => {
     const bridge = enableDesktop("linux");
     const loaded = { ...existingDeck(), title: "Opened from the file manager" };
     let finishRecovery!: (value: null) => void;
@@ -280,6 +286,12 @@ describe("OS-specific keyboard commands in the editor", () => {
     await act(async () => finishRecovery(null));
     expect(vi.mocked(readDeckArchive)).toHaveBeenCalledOnce();
     expect(bridge.openDocument).not.toHaveBeenCalled();
+    expect(bridge.acceptOpenDocument).not.toHaveBeenCalled();
+    expect(host.querySelector('[role="alertdialog"]')).toBeTruthy();
+    await click("Discard changes");
+    expect(bridge.acceptOpenDocument).toHaveBeenCalledExactlyOnceWith(
+      "/tmp/Research.scislide",
+    );
     expect(host.querySelector(".theme-chooser")).toBeNull();
     expect(
       host.querySelector<HTMLInputElement>('[aria-label="Presentation title"]')
@@ -297,18 +309,25 @@ describe("OS-specific keyboard commands in the editor", () => {
       .mockResolvedValueOnce({
         bytes: new Uint8Array([0x50, 0x4b]),
         name: "Broken.scislide",
+        path: "/tmp/Broken.scislide",
       })
       .mockResolvedValueOnce({
         bytes: new Uint8Array([0x50, 0x4b]),
         name: "Valid.scislide",
+        path: "/tmp/Valid.scislide",
       });
     vi.mocked(readDeckArchive)
       .mockRejectedValueOnce(new Error("Invalid archive"))
       .mockResolvedValueOnce(loaded);
     await act(async () => nativeBridge.document?.());
-    expect(bridge.clearDocument).toHaveBeenCalledOnce();
+    expect(bridge.clearDocument).not.toHaveBeenCalled();
     expect(vi.mocked(readDeckArchive)).toHaveBeenCalledTimes(2);
     expect(bridge.openDocument).not.toHaveBeenCalled();
+    expect(bridge.acceptOpenDocument).not.toHaveBeenCalled();
+    await click("Discard changes");
+    expect(bridge.acceptOpenDocument).toHaveBeenCalledExactlyOnceWith(
+      "/tmp/Valid.scislide",
+    );
     expect(host.textContent).toContain("Valid.scislide");
     expect(await persist()).toEqual(loaded);
   });
@@ -335,6 +354,8 @@ describe("OS-specific keyboard commands in the editor", () => {
         name: "Read.scislide",
       }),
     );
+    expect(host.querySelector('[role="alertdialog"]')).toBeTruthy();
+    await click("Discard changes");
     expect(button("Save .scislide").matches(":disabled")).toBe(false);
     expect(await persist()).toEqual(loaded);
   });
@@ -353,6 +374,8 @@ describe("OS-specific keyboard commands in the editor", () => {
     await act(async () => nativeBridge.document?.());
     expect(bridge.takeOpenDocument).toHaveBeenCalledTimes(calls);
     await click("Close keyboard shortcuts");
+    expect(host.querySelector('[role="alertdialog"]')).toBeTruthy();
+    await click("Discard changes");
     expect(host.textContent).toContain("Queued.scislide");
     expect(await persist()).toEqual(loaded);
   });
@@ -662,14 +685,25 @@ describe("OS-specific keyboard commands in the editor", () => {
       'input[aria-label="No shape fill"]',
     )!;
     await act(async () => checkbox.focus());
-    expect(
-      (await key("c", { ctrlKey: true }, document.activeElement!))
-        .defaultPrevented,
-    ).toBe(true);
-    expect(
-      (await key("v", { ctrlKey: true }, document.activeElement!))
-        .defaultPrevented,
-    ).toBe(true);
+    const contents = new Map<string, string>();
+    const data = {
+      files: [],
+      setData: (type: string, value: string) => contents.set(type, value),
+      getData: (type: string) => contents.get(type) ?? "",
+    };
+    for (const [keyName, type] of [
+      ["c", "copy"],
+      ["v", "paste"],
+    ]) {
+      expect(
+        (await key(keyName, { ctrlKey: true }, document.activeElement!))
+          .defaultPrevented,
+      ).toBe(false);
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "clipboardData", { value: data });
+      await act(async () => document.activeElement!.dispatchEvent(event));
+      expect(event.defaultPrevented).toBe(true);
+    }
     expect((await persist()).slides[0].objects).toHaveLength(3);
     await key("z", { ctrlKey: true }, document.activeElement!);
     await key("z", { ctrlKey: true }, document.activeElement!);
@@ -1602,7 +1636,7 @@ describe("OS-specific keyboard commands in the editor", () => {
     await click("Select Research panel");
     await act(async () => button("Slide 2: Second").focus());
     const states = () => bridge.setCommandAvailability.mock.calls.at(-1)?.[0];
-    expect(states()).toMatchObject({ copy: true, cut: true, paste: false });
+    expect(states()).toMatchObject({ copy: true, cut: true, paste: true });
     await command("copy");
     expect(states()).toMatchObject({ paste: true });
     await command("paste");
@@ -2642,4 +2676,73 @@ describe("OS-specific keyboard commands in the editor", () => {
       expect(await persist()).toEqual(deck);
     },
   );
+
+  it("returns focus to the visible File trigger after dismissing help opened from its menu", async () => {
+    await render("Linux x86_64");
+    const trigger = host.querySelector<HTMLElement>(
+      '[aria-label="File menu"]',
+    )!;
+    await act(async () => trigger.focus());
+    await key("ArrowDown", {}, trigger);
+    await act(async () => button("Keyboard shortcuts").focus());
+    await click("Keyboard shortcuts");
+    expect(
+      host.querySelector('[role="dialog"]')?.contains(document.activeElement),
+    ).toBe(true);
+    await key("Escape", {}, document.activeElement!);
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    expect(trigger.closest("details")?.open).toBe(false);
+    expect(document.activeElement).toBe(trigger);
+    expect(await persist()).toEqual(deck);
+  });
+
+  it("keeps Delete and Backspace on a pointer-opened menu trigger from deleting selected canvas objects", async () => {
+    await render("Linux x86_64");
+    await click("Select Research panel");
+    const trigger = host.querySelector<HTMLElement>(
+      '[aria-label="File menu"]',
+    )!;
+    await act(async () => {
+      trigger.focus();
+      trigger.dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          detail: 1,
+        }),
+      );
+    });
+    expect(trigger.closest("details")?.open).toBe(true);
+    expect(document.activeElement).toBe(trigger);
+    for (const value of ["Delete", "Backspace"]) {
+      await key(value, {}, trigger);
+      expect(await persist()).toEqual(deck);
+      expect(button("Undo").disabled).toBe(true);
+      expect(button("Select Research panel").getAttribute("aria-pressed")).toBe(
+        "true",
+      );
+    }
+  });
+
+  it("routes F5 from a focused menu trigger to presentation and prevents browser reload", async () => {
+    await render("Linux x86_64");
+    const trigger = host.querySelector<HTMLElement>(
+      '[aria-label="File menu"]',
+    )!;
+    await act(async () => {
+      trigger.focus();
+      trigger.dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          detail: 1,
+        }),
+      );
+    });
+    const event = await key("F5", {}, trigger);
+    expect(event.defaultPrevented).toBe(true);
+    expect(host.querySelector(".presentation-view")).toBeTruthy();
+    expect(trigger.closest("details")?.open).toBe(false);
+    expect(await persist()).toEqual(deck);
+  });
 });

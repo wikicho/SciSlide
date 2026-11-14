@@ -1,5 +1,7 @@
 // @vitest-environment node
 import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { inflateSync } from "node:zlib";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
@@ -349,6 +351,77 @@ describe("genuine Node-only scientific exports", () => {
       ),
     ).toBe(true);
     expect(source).not.toContain("/Subtype /Image");
+  });
+
+  it("round-trips an imported TrueType SVG through the real PDF converter with its figure font embedded", async () => {
+    const font = await readFile(path.join(options.fontsDir, "inter-400.ttf"));
+    const source = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120"><style>@font-face{font-family:PaperFont;font-weight:400;src:url(data:font/ttf;base64,${font.toString("base64")}) format('truetype')}.label{font-family:PaperFont;fill:#19334d;font-size:32px}</style><text class="label" x="12" y="48">Embedded HEP glyphs</text></svg>`;
+    const imported = await importFigure(
+      new File([source], "embedded-plot.svg", { type: "image/svg+xml" }),
+    );
+    const deck = deckWith("Native slide text");
+    deck.assets = [imported];
+    deck.slides[0].objects.push({
+      id: "embedded-plot",
+      type: "figure",
+      name: "Embedded plot",
+      assetId: imported.id,
+      alt: "Embedded HEP glyphs",
+      transform: { x: 80, y: 400, width: 800, height: 240, rotation: 0 },
+      opacity: 1,
+      visible: true,
+      locked: false,
+      metadata: {},
+    });
+    const restored = await readDeckArchive(await buildDeckArchive(deck));
+    const bytes = await renderAgentPdf(restored, options);
+    const pdf = Buffer.from(bytes).toString("latin1");
+    expect(pdf).toContain("/BaseFont /slide-0-object-1-font-0");
+    expect(pdf).toContain("/FontFile2");
+    expect(pdf).toContain("/ToUnicode");
+    expect(pdfStreams(bytes).some((stream) => /\bBT\b/.test(stream))).toBe(
+      true,
+    );
+    expect(pdf).not.toContain("/Subtype /Image");
+  });
+
+  it("exports the accepted scientific equation template with genuine embedded fonts and selectable vector text", async () => {
+    const source = await readFile(
+      new URL("../examples/scientific-equation-template.svg", import.meta.url),
+    );
+    const imported = await importFigure(
+      new File([source], "scientific-equation-template.svg", {
+        type: "image/svg+xml",
+      }),
+    );
+    const deck = deckWith("Template round trip");
+    deck.assets = [imported];
+    deck.slides[0].objects = [
+      {
+        id: "scientific-template",
+        type: "figure",
+        name: "Scientific template",
+        assetId: imported.id,
+        alt: "Energy-momentum relation",
+        transform: { x: 0, y: 0, width: 1600, height: 900, rotation: 0 },
+        opacity: 1,
+        visible: true,
+        locked: false,
+        metadata: {},
+      },
+    ];
+    const restored = await readDeckArchive(await buildDeckArchive(deck));
+    const bytes = await renderAgentPdf(restored, options);
+    const pdf = Buffer.from(bytes).toString("latin1");
+    expect(pdf).toContain("/BaseFont /slide-0-object-0-font-0");
+    expect(pdf).toContain("/FontFile2");
+    expect(pdf).toContain("/ToUnicode");
+    expect(
+      pdfStreams(bytes).some(
+        (stream) => /\bBT\b/.test(stream) && /\bTj\b/.test(stream),
+      ),
+    ).toBe(true);
+    expect(pdf).not.toContain("/Subtype /Image");
   });
 
   it("keeps unsupported actual text weights rejected despite passive context font aliases", async () => {

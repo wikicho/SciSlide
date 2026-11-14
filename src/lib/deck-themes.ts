@@ -341,6 +341,7 @@ function createBasicCover(deck: Deck, definition: DeckThemeDefinition): Slide {
     metadata: {},
     text: value,
     fontFamily: deck.theme.fontFamily,
+    fontFamilySource: "deck",
     fontSize: size,
     fontWeight: weight,
     color,

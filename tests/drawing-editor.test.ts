@@ -11,14 +11,21 @@ import type {
   FigureObject,
 } from "../src/lib/model";
 import { lineWorldEndpoints, shapeFromDrag } from "../src/lib/drawing";
-import { loadRecovery, saveRecovery } from "../src/lib/persistence";
+import { loadRecovery } from "../src/lib/persistence";
+import {
+  loadWorkspaceRecovery,
+  saveWorkspaceRecovery,
+} from "../src/lib/workspace-recovery";
 
 // Exercise real App state, history, pointer dispatch, SlideScene and ShapeView.
 // Recovery and unrelated export entrypoints are mocked; blank decks need no typesetting.
 vi.mock("../src/lib/persistence", async (original) => ({
   ...(await original<typeof import("../src/lib/persistence")>()),
   loadRecovery: vi.fn(),
-  saveRecovery: vi.fn(),
+}));
+vi.mock("../src/lib/workspace-recovery", () => ({
+  loadWorkspaceRecovery: vi.fn(),
+  saveWorkspaceRecovery: vi.fn(),
 }));
 vi.mock("../src/lib/export", () => ({
   exportDeckPdf: vi.fn(),
@@ -116,9 +123,11 @@ describe("drawing editor gestures and history", () => {
       },
     });
     vi.mocked(loadRecovery).mockReset();
-    vi.mocked(saveRecovery).mockReset();
-    vi.mocked(saveRecovery).mockImplementation((deck) => {
+    vi.mocked(loadWorkspaceRecovery).mockReset().mockResolvedValue(null);
+    vi.mocked(saveWorkspaceRecovery).mockReset();
+    vi.mocked(saveWorkspaceRecovery).mockImplementation(async (deck) => {
       saved = structuredClone(deck);
+      return "localStorage";
     });
     host = document.createElement("div");
     document.body.append(host);
@@ -170,6 +179,11 @@ describe("drawing editor gestures and history", () => {
 
   async function render(deck: Deck) {
     vi.mocked(loadRecovery).mockReturnValue(deck);
+    vi.mocked(loadWorkspaceRecovery).mockResolvedValue({
+      deck,
+      equationDrafts: [],
+      savedAt: "2026-11-14T00:00:00.000Z",
+    });
     await act(async () => root.render(createElement(App)));
     await click("Resume previous work");
     await persist();

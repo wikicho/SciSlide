@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import { version as APP_VERSION } from "../../package.json";
 import DOMPurify from "dompurify";
 import {
   MAX_VIDEO_BYTES,
@@ -363,7 +364,7 @@ function safeSvgFontFace(
 }
 
 /** Flatten ordinary plot CSS; return reconstructed, embedded-only font rules. */
-function inlineSvgStyles(document: Document): string[] {
+export function inlineSvgStyles(document: Document | Element): string[] {
   const styles = [...document.querySelectorAll("style")];
   const fonts: string[] = [];
   const fontBudget = { bytes: 0, count: 0 };
@@ -462,9 +463,11 @@ function inlineSvgStyles(document: Document): string[] {
           (selector.match(/\.[\w-]+/g) ?? []).length,
           tokens.filter((token) => /^[a-zA-Z_]/.test(token)).length,
         ];
-        let matches: NodeListOf<Element>;
+        let matches: Element[];
         try {
-          matches = document.querySelectorAll(selector);
+          matches = [...document.querySelectorAll(selector)];
+          if ("matches" in document && document.matches(selector))
+            matches.unshift(document);
         } catch {
           throw stylesheetError();
         }
@@ -909,7 +912,7 @@ export async function buildDeckArchive(input: Deck): Promise<Blob> {
   const manifest: Manifest = {
     formatVersion: "0.5.0",
     document: "document.json",
-    producer: { name: "SciSlide", version: "0.5.3" },
+    producer: { name: "SciSlide", version: APP_VERSION },
     renderingProfiles: RENDER_PROFILES,
     resources,
   };

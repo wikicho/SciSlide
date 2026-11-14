@@ -72,11 +72,38 @@ async function host(
     focus() {
       this.focused++;
     }
+    close() {
+      const event = {
+        prevented: false,
+        preventDefault() {
+          this.prevented = true;
+        },
+      };
+      this.emit("close", event);
+      if (!event.prevented) {
+        this.destroyed = true;
+        this.emit("closed");
+      }
+    }
     async loadURL() {}
   }
   const handlers = new Map();
+  const saveDialogs = [];
+  const openDialogs = [];
+  const saveResults = [];
+  const openResults = [];
+  const clipboardState = { text: "", html: "", png: null };
   const electron = {
     app,
+    clipboard: {
+      write: (value) => Object.assign(clipboardState, value),
+      readText: () => clipboardState.text,
+      readHTML: () => clipboardState.html,
+      readImage: () => ({
+        isEmpty: () => !clipboardState.png,
+        toPNG: () => clipboardState.png,
+      }),
+    },
     BrowserWindow,
     ipcMain: { handle: (channel, handler) => handlers.set(channel, handler) },
     protocol: { registerSchemesAsPrivileged() {}, handle() {} },
@@ -91,7 +118,17 @@ async function host(
       setApplicationMenu() {},
       buildFromTemplate: (template) => template,
     },
-    dialog: { showErrorBox: (...args) => assert.fail(args.join(": ")) },
+    dialog: {
+      showErrorBox: (...args) => assert.fail(args.join(": ")),
+      showSaveDialog: async (_window, options) => {
+        saveDialogs.push(options);
+        return saveResults.shift() ?? { canceled: true };
+      },
+      showOpenDialog: async (_window, options) => {
+        openDialogs.push(options);
+        return openResults.shift() ?? { canceled: true };
+      },
+    },
   };
   vm.runInNewContext(
     mainSource,
@@ -116,6 +153,11 @@ async function host(
     app,
     windows,
     directory,
+    saveDialogs,
+    openDialogs,
+    saveResults,
+    openResults,
+    clipboardState,
     start: async () => {
       ready();
       await flush();
@@ -147,12 +189,103 @@ test("a cold Linux launch opens a relative document after the renderer is ready 
   assert.equal(result.path, filename);
   assert.equal(result.name, "한글 deck.scislide");
   assert.deepEqual([...result.bytes], [0x50, 0x4b, 3, 4]);
+  await desktop.invoke("scislide:accept-open-document", [result.path]);
   const bytes = new Uint8Array([0x50, 0x4b, 5, 6]);
   await desktop.invoke("scislide:save-document", [
     { bytes, suggestedName: "Renamed.scislide" },
   ]);
   assert.deepEqual(await readFile(filename), Buffer.from(bytes));
   assert.equal(await desktop.invoke("scislide:take-open-document"), null);
+});
+
+test("reading an unaccepted document preserves the current Save destination", async (t) => {
+  const desktop = await host(t, { launch: ["A.scislide", "B.scislide"] });
+  const originalA = Buffer.from([0x50, 0x4b, 3, 4]);
+  const originalB = Buffer.from([0x50, 0x4b, 5, 6]);
+  const fileA = await desktop.file("A.scislide", originalA);
+  const fileB = await desktop.file("B.scislide", originalB);
+  await desktop.start();
+  const first = await desktop.invoke("scislide:take-open-document");
+  await desktop.invoke("scislide:accept-open-document", [first.path]);
+  await desktop.invoke("scislide:take-open-document");
+  const bytes = new Uint8Array([0x50, 0x4b, 7, 8]);
+  await desktop.invoke("scislide:save-document", [
+    { bytes, suggestedName: "A.scislide" },
+  ]);
+  assert.deepEqual(await readFile(fileA), Buffer.from(bytes));
+  assert.deepEqual(await readFile(fileB), originalB);
+  await desktop.invoke("scislide:accept-open-document", [fileB]);
+  await desktop.invoke("scislide:save-document", [
+    { bytes, suggestedName: "B.scislide" },
+  ]);
+  assert.deepEqual(await readFile(fileB), Buffer.from(bytes));
+});
+
+test("only read candidates can become the Save destination and clearing a document invalidates them", async (t) => {
+  const desktop = await host(t, { launch: ["candidate.scislide"] });
+  const candidate = await desktop.file("candidate.scislide");
+  const unrelated = await desktop.file("unrelated.scislide");
+  await desktop.start();
+  await assert.rejects(
+    desktop.invoke("scislide:accept-open-document", [unrelated]),
+    /Only a document read/,
+  );
+  await desktop.invoke("scislide:take-open-document");
+  await desktop.invoke("scislide:clear-document");
+  await assert.rejects(
+    desktop.invoke("scislide:accept-open-document", [candidate]),
+    /Only a document read/,
+  );
+  const result = await desktop.invoke("scislide:save-document", [
+    {
+      bytes: new Uint8Array([0x50, 0x4b, 3, 4]),
+      suggestedName: "New.scislide",
+    },
+  ]);
+  assert.equal(result, null);
+  assert.equal(desktop.saveDialogs.length, 1);
+});
+
+test("the file picker reads a candidate without changing the Save destination", async (t) => {
+  const desktop = await host(t);
+  const candidate = await desktop.file("candidate.scislide");
+  await desktop.start();
+  desktop.openResults.push({ canceled: false, filePaths: [candidate] });
+  const opened = await desktop.invoke("scislide:open-document");
+  assert.equal(opened.path, candidate);
+  const request = {
+    bytes: new Uint8Array([0x50, 0x4b, 5, 6]),
+    suggestedName: "New.scislide",
+  };
+  assert.equal(await desktop.invoke("scislide:save-document", [request]), null);
+  assert.equal(desktop.saveDialogs.length, 1);
+  await desktop.invoke("scislide:accept-open-document", [candidate]);
+  assert.equal(
+    (await desktop.invoke("scislide:save-document", [request])).path,
+    candidate,
+  );
+});
+
+test("closing the editor waits for renderer confirmation and allows a later request after cancellation", async (t) => {
+  const desktop = await host(t);
+  await desktop.start();
+  const window = desktop.windows[0];
+  await desktop.invoke("scislide:watch-close-document", [true]);
+  await desktop.invoke("scislide:confirm-close-document");
+  assert.equal(window.destroyed, false);
+  window.close();
+  assert.equal(window.destroyed, false);
+  assert.equal(window.messages.at(-1)[0], "scislide:close-document-requested");
+  window.close();
+  assert.equal(window.destroyed, false);
+  assert.equal(
+    window.messages.filter(
+      ([channel]) => channel === "scislide:close-document-requested",
+    ).length,
+    2,
+  );
+  await desktop.invoke("scislide:confirm-close-document");
+  assert.equal(window.destroyed, true);
 });
 
 test("a second instance resolves file paths against its own cwd, focuses the editor, and retains multiple documents", async (t) => {
@@ -279,4 +412,82 @@ test("the preload forwards document notifications without exposing the IPC event
   assert.deepEqual(invokes, [["scislide:take-open-document"]]);
   unsubscribe();
   assert.equal(ipcRenderer.listenerCount("scislide:document-requested"), 0);
+});
+
+test("the preload forwards validated document acceptance and close confirmation without IPC events", async () => {
+  const ipcRenderer = new EventEmitter();
+  const invokes = [];
+  ipcRenderer.invoke = (...args) => {
+    invokes.push(args);
+    return Promise.resolve();
+  };
+  let api;
+  vm.runInNewContext(
+    await readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8"),
+    {
+      require: () => ({
+        ipcRenderer,
+        contextBridge: {
+          exposeInMainWorld: (_name, value) => {
+            api = value;
+          },
+        },
+      }),
+      process: { platform: "linux" },
+    },
+  );
+  let received;
+  const unsubscribe = api.onCloseDocument((...args) => {
+    received = args;
+  });
+  ipcRenderer.emit("scislide:close-document-requested", { private: true });
+  assert.deepEqual(received, []);
+  await api.acceptOpenDocument("/known.scislide");
+  await api.confirmCloseDocument();
+  unsubscribe();
+  assert.equal(
+    ipcRenderer.listenerCount("scislide:close-document-requested"),
+    0,
+  );
+  assert.deepEqual(invokes, [
+    ["scislide:watch-close-document", true],
+    ["scislide:accept-open-document", "/known.scislide"],
+    ["scislide:confirm-close-document"],
+    ["scislide:watch-close-document", false],
+  ]);
+});
+
+test("the desktop clipboard bridge restricts formats and returns fixed text, HTML, and PNG values", async (t) => {
+  const desktop = await host(t);
+  await desktop.start();
+  await desktop.invoke("scislide:write-clipboard", [
+    { text: "Equation x", html: "<span>x</span>" },
+  ]);
+  let result = await desktop.invoke("scislide:read-clipboard");
+  assert.equal(result.text, "Equation x");
+  assert.equal(result.html, "<span>x</span>");
+  assert.equal(result.png, undefined);
+  desktop.clipboardState.png = Buffer.from([137, 80, 78, 71]);
+  result = await desktop.invoke("scislide:read-clipboard");
+  assert.deepEqual([...result.png], [137, 80, 78, 71]);
+  assert.throws(
+    () =>
+      desktop.invoke("scislide:write-clipboard", [
+        { text: "x", html: "", format: "arbitrary" },
+      ]),
+    /Clipboard text/,
+  );
+  assert.throws(
+    () => desktop.invoke("scislide:write-clipboard", [{ text: 1, html: "" }]),
+    /Clipboard text/,
+  );
+  assert.throws(
+    () =>
+      desktop.invoke(
+        "scislide:read-clipboard",
+        [],
+        "scislide://app/#presenter",
+      ),
+    /main editor/,
+  );
 });

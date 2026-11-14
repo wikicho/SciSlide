@@ -2,30 +2,34 @@
 
 A scientific presentation editor with editable equations, vector output, and an Electron desktop host.
 
-[Documentation Wiki](https://github.com/wikicho/SciSlide/wiki) · [Downloads](https://github.com/wikicho/SciSlide/releases/tag/v0.6.4) · [Report an issue](https://github.com/wikicho/SciSlide/issues)
+[Documentation Wiki](https://github.com/wikicho/SciSlide/wiki) · [Downloads](https://github.com/wikicho/SciSlide/releases/tag/v0.6.6) · [Report an issue](https://github.com/wikicho/SciSlide/issues)
 
-**v0.6.4 is a working prototype.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews and font-aware inline formulas inside text; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux and macOS systems. Fourteen existing starter layouts combine scientific structure with minimal Keynote-inspired composition; the **Keynote White** theme adds a dedicated set of fifteen coordinated layouts. Drawing, groups, smart guides, equal-spacing commands and an object/layer list help compose slides. Figures support SVG/PNG/JPEG import and PDF page selection, reversible cropping, enlarged insets and replacement without rebuilding the layout. A personal equation library, separate presenter display and recovery of unfinished equation drafts extend the authoring workflow. The included three-slide cosmology deck uses synthetic demonstration data. Compatible installed AI CLIs generate editable slide drafts. Deck-wide page numbers, embedded video, and ordered click-triggered builds remain available.
+The current development source is **0.6.6**. It includes safe document switching, per-session recovery history, early SVG export-compatibility feedback, system clipboard copy/cut/paste, external image/PDF drops, independent body/math font settings and text-font inheritance, desktop file opening and custom TeX discovery. The download links below target the **0.6.6 development prerelease**; release assets appear after the release workflow completes.
 
-v0.6.2 introduced platform-specific keyboard shortcuts: Keynote conventions on macOS, PowerPoint on Windows and LibreOffice Impress on Ubuntu/Linux. Native menus, toolbar hints and shortcut help use the same bindings. Drag-and-drop slide ordering and Linux Debian output in `release/linux-deb/` remain available.
+See the [v0.6.6 release notes](docs/releases/v0.6.6.md) and the [improvement status audit](docs/specifications/improvement-status-2026-11-14.md) for completed work, remaining checks and the distinction between source changes and installed-build validation.
+
+**v0.6.6 is a development prerelease.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews and font-aware inline formulas inside text; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux and macOS systems. Fourteen existing starter layouts combine scientific structure with minimal Keynote-inspired composition; the **Keynote White** theme adds a dedicated set of fifteen coordinated layouts. Drawing, groups, smart guides, equal-spacing commands and an object/layer list help compose slides. Figures support SVG/PNG/JPEG import and PDF page selection, reversible cropping, enlarged insets and replacement without rebuilding the layout. A personal equation library, separate presenter display and recovery of unfinished equation drafts extend the authoring workflow. The included three-slide cosmology deck uses synthetic demonstration data. Compatible installed AI CLIs generate editable slide drafts. Deck-wide page numbers, embedded video, and ordered click-triggered builds remain available.
+
+v0.6.2 introduced platform-specific keyboard shortcuts: Keynote conventions on macOS, PowerPoint on Windows and LibreOffice Impress on Ubuntu/Linux. Native menus, toolbar hints and shortcut help use the same bindings. Drag-and-drop slide ordering remain available; local installer output now uses versioned release directories.
 
 v0.6.4 adds PowerPoint export and three editable starter themes. v0.6.3.1 added isolated Local LaTeX compilation on macOS and a headless agent CLI for native deck editing and SVG/PDF export.
 
 v0.6.3 added canvas Tab/Shift+Tab object selection, independent Inspector/Objects & Layers toggles, macOS thumbnail reorder keys, focused-thumbnail duplication, and consistent presentation key ownership/repeat behavior. It also added inline equation popups, improved text frame controls, a Linux equation compile shortcut and verified installer downloads through the update CLI.
 
-Use `release/macos-pkg/` for macOS installer output and `release/windows-x64/` for Windows x64 distributions. Select these directories with the packaging scripts' `--out` option; their general defaults remain `release/`.
+Local installers default to `release/v<version>/macos/`, `windows/` or `linux/`. Unpacked apps use `release/work/v<version>/`, and historical builds remain under `release/archive/`. An explicit `--out` keeps its exact directory. See the [release directory guide](docs/RELEASE.md) for organization, rollback and packaging guarantees.
 
 ## Download desktop builds
 
-Download the **v0.6.4 development build** from [GitHub Releases](https://github.com/wikicho/SciSlide/releases/tag/v0.6.4):
+The **v0.6.6 development prerelease** downloads are provided through [GitHub Releases](https://github.com/wikicho/SciSlide/releases/tag/v0.6.6):
 
 | System                            | Download                                                                                                                                                                                                                                             |
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| macOS Apple Silicon (M1 or later) | [arm64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.4/SciSlide-0.6.4-macos-arm64-unsigned.pkg)                                                                                                                                 |
-| macOS Intel                       | [x64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.4/SciSlide-0.6.4-macos-x64-unsigned.pkg)                                                                                                                                     |
-| Windows Intel/AMD x64             | [setup `.exe`](https://github.com/wikicho/SciSlide/releases/download/v0.6.4/SciSlide-0.6.4-windows-x64-setup-unsigned.exe) · [portable `.zip`](https://github.com/wikicho/SciSlide/releases/download/v0.6.4/SciSlide-0.6.4-windows-x64-portable.zip) |
-| Linux Intel/AMD x64               | [`.deb` / amd64](https://github.com/wikicho/SciSlide/releases/download/v0.6.4/SciSlide-0.6.4-linux-x64.deb)                                                                                                                                          |
+| macOS Apple Silicon (M1 or later) | [arm64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.6/SciSlide-0.6.6-macos-arm64-unsigned.pkg)                                                                                                                                 |
+| macOS Intel                       | [x64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.6/SciSlide-0.6.6-macos-x64-unsigned.pkg)                                                                                                                                     |
+| Windows Intel/AMD x64             | [setup `.exe`](https://github.com/wikicho/SciSlide/releases/download/v0.6.6/SciSlide-0.6.6-windows-x64-setup-unsigned.exe) · [portable `.zip`](https://github.com/wikicho/SciSlide/releases/download/v0.6.6/SciSlide-0.6.6-windows-x64-portable.zip) |
+| Linux Intel/AMD x64               | [`.deb` / amd64](https://github.com/wikicho/SciSlide/releases/download/v0.6.6/SciSlide-0.6.6-linux-x64.deb)                                                                                                                                          |
 
-Matching SHA-256 checksum files and installation instructions are included in the release. macOS installers are unsigned and unnotarized; Windows distributions are unsigned. System security policies may block installation or launch. See the [macOS](desktop/MACOS.md), [Windows](desktop/WINDOWS.md) or [Linux](desktop/LINUX.md) installation guide and the [v0.6.4 release notes](docs/releases/v0.6.4.md). Node.js and TeX are not required for MathJax editing.
+The release workflow produces matching SHA-256 checksum files and installation instructions alongside the packages. macOS installers are unsigned and unnotarized; Windows distributions are unsigned. System security policies may block installation or launch. See the [macOS](desktop/MACOS.md), [Windows](desktop/WINDOWS.md) or [Linux](desktop/LINUX.md) installation guide and the [v0.6.6 release notes](docs/releases/v0.6.6.md). Node.js and TeX are not required for MathJax editing.
 
 The **SciSlide development release** workflow runs when versioned release notes in `docs/releases/` change on `main`, builds all five distributions from that commit, verifies architecture/checksums and publishes one `v<package-version>` development prerelease with all distributions, checksums and platform guides. Manual dispatch remains available for a requested `main` commit; its publication option defaults off. Packaging and automated checks do not replace complete physical-device validation.
 
@@ -62,7 +66,7 @@ pnpm preview
 pnpm desktop:package
 ```
 
-This creates an app for the current operating system and CPU architecture in the project's `release/` directory. On Linux x64, launch `release/SciSlide-linux-x64/scislide`. Use `--platform`, `--arch`, and `--out` to specify a target, and explicitly pass `--overwrite` to replace existing output. The app includes the editor, Electron runtime, desktop host, and dependency licenses. A TeX distribution is not bundled.
+This creates an app for the current operating system and CPU architecture in `release/work/v<version>/`. For the current development version on Linux x64, launch `release/work/v0.6.6/SciSlide-linux-x64/scislide`. Use `--platform`, `--arch`, and `--out` to specify a target, and explicitly pass `--overwrite` to replace existing output. The app includes the editor, Electron runtime, desktop host, and dependency licenses. A TeX distribution is not bundled.
 
 Build a **Linux x64 `.deb` package** on Debian/Ubuntu with `dpkg-deb` installed:
 
@@ -70,12 +74,12 @@ Build a **Linux x64 `.deb` package** on Debian/Ubuntu with `dpkg-deb` installed:
 pnpm desktop:package:linux --arch=x64
 ```
 
-This creates `release/linux-deb/SciSlide-0.6.4-linux-x64.deb`, its SHA-256 file, `LINUX-INSTALL.md` and a complete `release/linux-deb/SciSlide-linux-x64/` app folder. Linux Debian packaging defaults to `release/linux-deb/`; `--out` selects another output directory. Debian's architecture name is **amd64**. Verify and install the local package:
+This creates `release/v0.6.6/linux/SciSlide-0.6.6-linux-x64.deb`, its SHA-256 file and `LINUX-INSTALL.md`. The complete app folder is kept separately at `release/work/v0.6.6/SciSlide-linux-x64/`. Paths follow the package version; `--out` selects an exact custom output directory for both installers and the app. Debian's architecture name is **amd64**. Verify and install the local package:
 
 ```sh
-cd release/linux-deb
-sha256sum -c SciSlide-0.6.4-linux-x64.deb.sha256
-sudo apt install ./SciSlide-0.6.4-linux-x64.deb
+cd release/v0.6.6/linux
+sha256sum -c SciSlide-0.6.6-linux-x64.deb.sha256
+sudo apt install ./SciSlide-0.6.6-linux-x64.deb
 scislide
 ```
 
@@ -91,7 +95,7 @@ pnpm desktop:package:mac
 pnpm desktop:package:mac --arch=arm64
 ```
 
-The current source defaults to output paths `release/SciSlide-0.6.4-macos-arm64-unsigned.pkg` and `release/SciSlide-0.6.4-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
+The current source defaults to output paths `release/v0.6.6/macos/SciSlide-0.6.6-macos-arm64-unsigned.pkg` and `release/v0.6.6/macos/SciSlide-0.6.6-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
 
 The default `.pkg` implementation uses [Electron's official pure JavaScript packaging](https://packages.electronjs.org/osx-sign/v2.6.0/index.html#pure-javascript-packaging), so it also works on Linux. On macOS with Xcode Command Line Tools, use `pnpm desktop:package:mac --implementation=native` to package with Apple's `pkgbuild` and `productbuild`. **Both methods produce development installers without Developer ID signing or notarization.** macOS security policies may block installation or launch. The packaging process does not change system security settings.
 
@@ -105,7 +109,7 @@ pnpm desktop:package:win
 pnpm desktop:package:win --portable-only
 ```
 
-This command always targets **Intel/AMD x64**, regardless of the build host. The current source creates `release/SciSlide-0.6.4-windows-x64-setup-unsigned.exe` and `release/SciSlide-0.6.4-windows-x64-portable.zip`, with SHA-256 checksum files. The installer uses an x64 bootstrap executable, installs for the current user under `%LOCALAPPDATA%\Programs\SciSlide`, and adds a Start menu shortcut. The portable ZIP contains the complete app folder; extract it and launch `SciSlide-win32-x64/scislide.exe`. No Node.js or TeX installation is needed to run MathJax editing.
+This command always targets **Intel/AMD x64**, regardless of the build host. The current source creates `release/v0.6.6/windows/SciSlide-0.6.6-windows-x64-setup-unsigned.exe` and `release/v0.6.6/windows/SciSlide-0.6.6-windows-x64-portable.zip`, with SHA-256 checksum files. The installer uses an x64 bootstrap executable, installs for the current user under `%LOCALAPPDATA%\Programs\SciSlide`, and adds a Start menu shortcut. The portable ZIP contains the complete app folder; extract it and launch `SciSlide-win32-x64/scislide.exe`. No Node.js or TeX installation is needed to run MathJax editing.
 
 See the [Windows installation and build guide](desktop/WINDOWS.md) for compiler selection, checksums and platform limits. The **Windows x64 development distributions** Actions workflow builds on a Windows x64 runner, verifies the executable architectures and hashes, and checks installation/uninstallation in a temporary directory. Its versioned downloadable artifacts contain both distributions and are retained for 30 days. Windows 10 or later is required; physical Windows 10/11 editing and export validation remains open. Local LaTeX compilation is currently disabled on Windows.
 
@@ -268,7 +272,9 @@ The field $\chi$ has mass $m_\chi$.
 암흑물질 $\chi$의 질량은 $m_\chi$입니다.
 ```
 
-The rendered text uses MathJax for each formula, with the deck's equation font and the text box's size and color. Surrounding words keep their ordinary text font. Inline formulas match the surrounding font's measured lowercase height while preserving their mathematical baseline. Formulas wrap together with the text, tall fractions/scripts expand their own line's spacing, and all formulas remain vectors in SVG/PDF export; ordinary text stays selectable. When editing, the text box shows the original syntax, which is saved as the existing text string in native format 0.5.0.
+The rendered text uses MathJax for each formula, with **Document → Deck typography → Inline math font** and the text box's size and color. Inline math defaults to **Latin Modern**, independently of the **Default math font** for separate equation objects. Surrounding words keep their ordinary text font. Inline formulas match the surrounding font's measured lowercase height while preserving their mathematical baseline. Formulas wrap together with the text, tall fractions/scripts expand their own line's spacing, and all formulas remain vectors in SVG/PDF export; ordinary text stays selectable. When editing, the text box shows the original syntax, which is saved as the existing text string in native format 0.5.0.
+
+**Default text font** selects bundled Inter or Nanum Gothic for new text and text using the deck default. Existing text with an explicit font keeps that choice; select it and choose **Use deck text font for selected text** to restore inheritance. The object's **Text font** control also distinguishes **Use deck default** from an explicit font. Body, standalone equation and inline equation fonts are independent.
 
 Use `\$` for a literal dollar sign. Empty or unmatched delimiters and standalone `$$...$$` display spans remain literal text; use an **Equation** object for a standalone display equation. Inline formulas use the bundled MathJax notation/packages, including AMS notation. Installed LaTeX packages and the Local LaTeX renderer apply to separate equation objects. Invalid inline formulas show a diagnostic and stop SVG/PDF export with the text object's name.
 
@@ -301,6 +307,8 @@ The toolbar and the Inspector's **ARRANGE** section provide equal horizontal/ver
 ## Figure Import, Crops and Insets
 
 Choose **Figure** in the toolbar to add a local PNG, JPEG, SVG or PDF file, up to 20 MiB. SVG files retain their sanitized vector content and supported embedded fonts, including SciSlide-exported SVG files. Ordinary scientific-plot styles are preserved; scripts, active content and external resource references are removed. Font loading accepts bounded, embedded TTF/OTF/WOFF/WOFF2 data only; remote fonts and unsupported CSS are rejected. For a PDF, preview the document, choose one page, then insert it as a high-resolution PNG figure. Cancel leaves the presentation unchanged. PDF parsing and rendering use bundled resources locally and work offline; no upload or installed PDF application is required. The selected page image is embedded in the `.scislide` file, so reopening does not require the original PDF.
+
+SVG import support is broader than PDF output support. SVG and PPTX figure graphics retain validated embedded TTF/OTF/WOFF/WOFF2 fonts; PDF additionally embeds normal TrueType faces at supported weights when their glyphs are available. Imported OTF/WOFF/WOFF2 fonts, italic/oblique text, unsupported weights or SVG effects can still stop PDF export. Outline the figure's text or export SVG/PPTX for those cases. See [Export and presenting](docs/wiki/Export-and-Presenting.md) for the format-specific limits.
 
 Select a figure and use **CROP & INSET** in the Inspector. Enter **Left / Top / Width / Height** as percentages of the original image and review the preview. The region must stay inside the image. Choose **Apply crop** to change the selected figure; **Reset crop** restores its full image. Unlock or ungroup the figure before using these controls.
 
@@ -578,6 +586,8 @@ Electron runtime validation covered sandboxing and context isolation, blocked No
  tests/                        Document, equation, archive and compiler regressions
  docs/specifications/          Project and keyboard shortcut specifications
  docs/references/              Design reference images
+ release/v<version>/           Versioned platform installers and checksums
+ release/work/v<version>/      Unpacked applications for local verification
  release/archive/              Preserved older local packages and development builds
  public/fonts/                 Bundled Inter and Nanum Gothic TrueType fonts
  third-party-licenses/         Dependency and font license notices

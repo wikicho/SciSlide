@@ -7,6 +7,7 @@ import {
   readFile,
   readdir,
   realpath,
+  rename,
   rm,
   symlink,
   writeFile,
@@ -20,6 +21,7 @@ import {
   parseWindowsOptions,
   verifyWindowsX64,
 } from "../scripts/package-windows.mjs";
+import { publishReleaseEntries } from "../scripts/release-layout.mjs";
 
 function pe(machine = 0x8664, magic = 0x020b) {
   const bytes = Buffer.alloc(128);
@@ -39,10 +41,12 @@ async function fixture(t) {
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const directory of [
     "dist",
+    "dist-cli",
     "desktop",
     "third-party-licenses",
     "examples",
     "node_modules",
+    "public",
   ]) {
     await mkdir(path.join(root, directory), { recursive: true });
   }
@@ -79,6 +83,7 @@ async function fakeApp(options, executable = pe()) {
 
 test("Windows arguments always target x64 and reject unsupported or ambiguous options", () => {
   assert.equal(parseWindowsOptions([]).arch, "x64");
+  assert.equal(parseWindowsOptions([]).out, undefined);
   assert.deepEqual(
     parseWindowsOptions([
       "--arch=x64",
@@ -145,6 +150,21 @@ test("portable ZIP contains the complete x64 app and matching SHA-256 without re
   );
   assert.equal(packaged.platform, "win32");
   assert.equal(packaged.arch, "x64");
+  assert.equal(packaged.overwrite, false);
+  assert.equal(path.basename(packaged.out), "apps");
+  assert.match(
+    path.basename(path.dirname(packaged.out)),
+    /^\.scislide-windows-/,
+  );
+  assert.equal(
+    path.dirname(path.dirname(packaged.out)),
+    path.join(root, "release/v0.3.0/windows"),
+  );
+  assert.equal(
+    result.appFolder,
+    path.join(root, "release/work/v0.3.0/SciSlide-win32-x64"),
+  );
+  await assert.rejects(lstat(packaged.out), { code: "ENOENT" });
   assert.equal(result.installer, null);
   const archive = await readFile(result.portable);
   const zip = await JSZip.loadAsync(archive, { checkCRC32: true });
@@ -165,11 +185,14 @@ test("portable ZIP contains the complete x64 app and matching SHA-256 without re
     `${hash}  ${path.basename(result.portable)}\n`,
   );
   assert.equal(
-    await readFile(path.join(root, "release/WINDOWS-INSTALL.md"), "utf8"),
+    await readFile(
+      path.join(root, "release/v0.3.0/windows/WINDOWS-INSTALL.md"),
+      "utf8",
+    ),
     "Windows x64 instructions",
   );
   assert.ok(
-    (await readdir(path.join(root, "release"))).every(
+    (await readdir(path.join(root, "release/v0.3.0/windows"))).every(
       (entry) => !entry.startsWith(".scislide-windows-"),
     ),
   );
@@ -208,6 +231,16 @@ test("existing distributions are preserved on collision and on a failed replacem
     { packageDesktop: fakeApp },
   );
   const original = await readFile(first.portable);
+  const originalApp = await readFile(
+    path.join(first.appFolder, "resources/app.asar"),
+  );
+  const originalExecutable = await readFile(
+    path.join(first.appFolder, "scislide.exe"),
+  );
+  const originalChecksum = await readFile(`${first.portable}.sha256`);
+  const originalGuide = await readFile(
+    path.join(path.dirname(first.portable), "WINDOWS-INSTALL.md"),
+  );
   let called = false;
   await assert.rejects(
     packageWindows(
@@ -224,13 +257,40 @@ test("existing distributions are preserved on collision and on a failed replacem
   await assert.rejects(
     packageWindows(
       { root, portableOnly: true, overwrite: true },
-      { packageDesktop: (options) => fakeApp(options, pe(0x014c)) },
+      {
+        packageDesktop: async (options) => {
+          const apps = await fakeApp(options, pe(0x014c));
+          await writeFile(
+            path.join(apps[0], "resources/app.asar"),
+            "failed replacement app",
+          );
+          return apps;
+        },
+      },
     ),
     /AMD64/,
   );
   assert.deepEqual(await readFile(first.portable), original);
+  assert.deepEqual(
+    await readFile(path.join(first.appFolder, "resources/app.asar")),
+    originalApp,
+  );
+  assert.deepEqual(
+    await readFile(path.join(first.appFolder, "scislide.exe")),
+    originalExecutable,
+  );
+  assert.deepEqual(
+    await readFile(`${first.portable}.sha256`),
+    originalChecksum,
+  );
+  assert.deepEqual(
+    await readFile(
+      path.join(path.dirname(first.portable), "WINDOWS-INSTALL.md"),
+    ),
+    originalGuide,
+  );
   assert.ok(
-    (await readdir(path.join(root, "release"))).every(
+    (await readdir(path.join(root, "release/v0.3.0/windows"))).every(
       (entry) => !entry.startsWith(".scislide-windows-"),
     ),
   );
@@ -238,14 +298,35 @@ test("existing distributions are preserved on collision and on a failed replacem
 
 test("packaging refuses input directories and symlink artifact replacements", async (t) => {
   const root = await fixture(t);
-  await assert.rejects(
-    packageWindows({ root, portableOnly: true, out: "dist/output" }),
-    /outside packaged inputs/,
-  );
-  await mkdir(path.join(root, "release"));
+  let built = false;
+  for (const input of [
+    "dist",
+    "dist-cli",
+    "desktop",
+    "third-party-licenses",
+    "examples",
+    "node_modules",
+    "public",
+  ]) {
+    const destination = path.join(root, input, "output");
+    await assert.rejects(
+      packageWindows(
+        { root, portableOnly: true, out: destination },
+        {
+          packageDesktop: async () => {
+            built = true;
+          },
+        },
+      ),
+      /outside packaged inputs/,
+    );
+    await assert.rejects(lstat(destination), { code: "ENOENT" });
+  }
+  assert.equal(built, false);
+  await mkdir(path.join(root, "release/v0.3.0/windows"), { recursive: true });
   const filename = path.join(
     root,
-    "release/SciSlide-0.3.0-windows-x64-portable.zip",
+    "release/v0.3.0/windows/SciSlide-0.3.0-windows-x64-portable.zip",
   );
   if (process.platform === "win32") {
     // Junctions are available to an unelevated Windows developer and exercise the same lstat guard.
@@ -272,3 +353,157 @@ test(
     await assert.rejects(packageWindows({ root }), /requires native Windows/);
   },
 );
+
+test("an explicit Windows output keeps the app and completed artifacts at the requested location", async (t) => {
+  const root = await fixture(t);
+  const destination = path.join(root, "custom output");
+  const result = await packageWindows(
+    { root, portableOnly: true, out: "custom output" },
+    { packageDesktop: fakeApp },
+  );
+  assert.equal(result.appFolder, path.join(destination, "SciSlide-win32-x64"));
+  assert.equal(
+    result.portable,
+    path.join(destination, "SciSlide-0.3.0-windows-x64-portable.zip"),
+  );
+  assert.deepEqual(
+    (await readdir(destination)).sort(),
+    [
+      "SciSlide-win32-x64",
+      "SciSlide-0.3.0-windows-x64-portable.zip",
+      "SciSlide-0.3.0-windows-x64-portable.zip.sha256",
+      "WINDOWS-INSTALL.md",
+    ].toSorted(),
+  );
+  await assert.rejects(lstat(path.join(root, "release")), { code: "ENOENT" });
+});
+
+test("a Windows checksum publication failure restores the complete app, ZIP, checksum, and guide", async (t) => {
+  const root = await fixture(t);
+  const first = await packageWindows(
+    { root, portableOnly: true },
+    { packageDesktop: fakeApp },
+  );
+  const guide = path.join(path.dirname(first.portable), "WINDOWS-INSTALL.md");
+  const files = [
+    first.portable,
+    `${first.portable}.sha256`,
+    guide,
+    path.join(first.appFolder, "resources/app.asar"),
+    path.join(first.appFolder, "scislide.exe"),
+    path.join(first.appFolder, "README.md"),
+  ];
+  const original = await Promise.all(files.map((file) => readFile(file)));
+  await writeFile(
+    path.join(root, "desktop/WINDOWS.md"),
+    "Changed Windows instructions",
+  );
+  let failed = false;
+  await assert.rejects(
+    packageWindows(
+      { root, portableOnly: true, overwrite: true },
+      {
+        packageDesktop: async (options) => {
+          const apps = await fakeApp(options);
+          await writeFile(
+            path.join(apps[0], "resources/app.asar"),
+            "new app payload",
+          );
+          return apps;
+        },
+        publishReleaseEntries: (entries, options) =>
+          publishReleaseEntries(entries, options, {
+            rename: async (source, destination) => {
+              if (
+                !failed &&
+                source.includes(".scislide-windows-") &&
+                source.endsWith(".zip.sha256")
+              ) {
+                failed = true;
+                throw new Error("Windows checksum publication interrupted");
+              }
+              return rename(source, destination);
+            },
+          }),
+      },
+    ),
+    /Windows checksum publication interrupted/,
+  );
+  assert.equal(failed, true);
+  assert.deepEqual(
+    await Promise.all(files.map((file) => readFile(file))),
+    original,
+  );
+  assert.deepEqual(
+    (await readdir(path.dirname(first.portable))).sort(),
+    [
+      path.basename(first.portable),
+      `${path.basename(first.portable)}.sha256`,
+      "WINDOWS-INSTALL.md",
+    ].toSorted(),
+  );
+  assert.deepEqual(await readdir(path.dirname(first.appFolder)), [
+    "SciSlide-win32-x64",
+  ]);
+});
+
+test("a late Windows sidecar collision publishes neither the app nor the portable ZIP", async (t) => {
+  const root = await fixture(t);
+  const destination = path.join(root, "release/v0.3.0/windows");
+  const checksum = path.join(
+    destination,
+    "SciSlide-0.3.0-windows-x64-portable.zip.sha256",
+  );
+  await assert.rejects(
+    packageWindows(
+      { root, portableOnly: true },
+      {
+        packageDesktop: async (options) => {
+          const apps = await fakeApp(options);
+          await writeFile(checksum, "another build owns this checksum");
+          return apps;
+        },
+      },
+    ),
+    /Output already exists/,
+  );
+  assert.deepEqual(await readdir(destination), [path.basename(checksum)]);
+  assert.equal(
+    await readFile(checksum, "utf8"),
+    "another build owns this checksum",
+  );
+  await assert.rejects(
+    lstat(path.join(root, "release/work/v0.3.0/SciSlide-win32-x64")),
+    { code: "ENOENT" },
+  );
+});
+
+test("Windows validates programmatic output paths before building and tolerates absent optional inputs", async (t) => {
+  const root = await fixture(t);
+  await rm(path.join(root, "dist-cli"), { recursive: true });
+  await rm(path.join(root, "public"), { recursive: true });
+  for (const out of [null, 12, {}, "", "bad\npath", "bad\0path"]) {
+    let built = false;
+    await assert.rejects(
+      packageWindows(
+        { root, portableOnly: true, out },
+        {
+          packageDesktop: async () => {
+            built = true;
+          },
+        },
+      ),
+      /out must be a non-empty path/,
+    );
+    assert.equal(built, false);
+    await assert.rejects(lstat(path.join(root, "release")), { code: "ENOENT" });
+  }
+  const result = await packageWindows(
+    { root, portableOnly: true },
+    { packageDesktop: fakeApp },
+  );
+  assert.equal(
+    result.appFolder,
+    path.join(root, "release/work/v0.3.0/SciSlide-win32-x64"),
+  );
+});

@@ -3,6 +3,7 @@ import { webcrypto } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { URL as NodeURL } from "node:url";
 import JSZip from "jszip";
+import { version as APP_VERSION } from "../package.json";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createDemoDeck } from "../src/lib/model";
 import {
@@ -50,6 +51,11 @@ describe("portable native files", () => {
       "<svg",
     );
     expect(manifest.resources).toHaveLength(2);
+    expect(manifest.producer).toEqual({
+      name: "SciSlide",
+      version: APP_VERSION,
+    });
+    expect(manifest.formatVersion).toBe("0.5.0");
     expect(
       manifest.resources.every((resource: { sha256: string }) =>
         /^[a-f0-9]{64}$/.test(resource.sha256),

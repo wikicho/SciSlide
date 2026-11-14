@@ -12,10 +12,18 @@ on:
         required: true
         type: string
       publish_prerelease:
-        description: Publish all verified installers as one development prerelease
+        description: Publish all verified installers in the selected release channel
         required: true
         default: false
         type: boolean
+      release_channel:
+        description: Development prerelease or stable release (manual publication only)
+        required: true
+        default: prerelease
+        type: choice
+        options:
+          - prerelease
+          - stable
 
 permissions:
   contents: read
@@ -42,6 +50,7 @@ jobs:
       - name: Verify main source and release publication boundaries
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.source_sha || '' }}
+          SCISLIDE_RELEASE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.release_channel || 'prerelease' }}
         run: |
           node --input-type=module <<'NODE'
           import { access, readFile } from 'node:fs/promises';
@@ -53,6 +62,10 @@ jobs:
             throw new Error('Dispatch main with its exact current source SHA.');
           }
           const { version } = JSON.parse(await readFile('package.json', 'utf8'));
+          const channel = process.env.SCISLIDE_RELEASE_CHANNEL || 'prerelease';
+          if (!['prerelease', 'stable'].includes(channel) || (channel === 'stable' && version.includes('-'))) {
+            throw new Error('Invalid release channel or stable version.');
+          }
           await access(`docs/releases/v${version}.md`);
           console.log(`Preparing SciSlide ${version} from ${sha}`);
           NODE
@@ -102,7 +115,8 @@ jobs:
           path: publish
           merge-multiple: true
           digest-mismatch: error
-      - name: Verify and publish the complete development prerelease
+      - name: Verify and publish the complete release
         env:
           GH_TOKEN: ${{ github.token }}
+          SCISLIDE_RELEASE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.release_channel || 'prerelease' }}
         run: node scripts/publish-release.mjs publish
