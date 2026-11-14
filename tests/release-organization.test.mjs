@@ -71,10 +71,8 @@ async function contents(root) {
       const filename = path.join(directory, entry.name);
       if (entry.isDirectory()) await walk(filename);
       else if (entry.isFile())
-        result[path.relative(root, filename)] = await readFile(
-          filename,
-          "utf8",
-        );
+        result[path.relative(root, filename).split(path.sep).join("/")] =
+          await readFile(filename, "utf8");
     }
   }
   await walk(root);
