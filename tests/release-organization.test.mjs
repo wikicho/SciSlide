@@ -13,6 +13,7 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import test from "node:test";
 import {
@@ -486,8 +487,9 @@ test("new versioned outputs refresh inventory while unchanged reruns remain idem
 
 test("CLI is dry-run by default and rejects unsupported flags and invalid dates", async (t) => {
   const options = await fixture(t);
-  const script = new URL("../scripts/organize-release.mjs", import.meta.url)
-    .pathname;
+  const script = fileURLToPath(
+    new URL("../scripts/organize-release.mjs", import.meta.url),
+  );
   const before = await contents(options.root);
   const run = (...args) =>
     execute(process.execPath, [script, `--root=${options.root}`, ...args], {
