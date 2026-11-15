@@ -43,8 +43,8 @@ export function SelectionSummary({
       <p className="selection-summary-status">{status.join(" · ")}</p>
       <p className="selection-summary-hint">
         {arranging
-          ? "Arrange tools below apply to all unlocked selected objects. Edit one object to change its style or size."
-          : "Choose one object to edit its style and size, or arrange the selection together."}
+          ? "Arrange tools below apply to all unlocked selected objects. Edit one object to change its style."
+          : "Choose one object to edit its style, or arrange the selection together."}
       </p>
       {!arranging && (
         <button

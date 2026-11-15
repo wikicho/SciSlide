@@ -64,6 +64,46 @@
 .app-shell .header-actions .button {
   font-size: 12px;
 }
+.app-shell .header-actions .dropdown {
+  z-index: 80;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 100px);
+  overflow: auto;
+}
+.app-shell .recovery-save-warning {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  flex-shrink: 0;
+  max-height: 104px;
+  overflow: auto;
+  padding: 9px 20px;
+  border-bottom: 1px solid #e6d5a5;
+  background: #fff8e8;
+  color: #765319;
+  font-size: 12px;
+}
+.recovery-save-warning > svg {
+  flex-shrink: 0;
+}
+.recovery-save-warning > div {
+  flex: 1;
+  min-width: 180px;
+  overflow-wrap: anywhere;
+}
+.recovery-save-warning p {
+  margin: 3px 0 0;
+  line-height: 1.5;
+}
+.recovery-save-warning button {
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid #d5be86;
+  border-radius: var(--ui-radius);
+  background: #fffdf6;
+  color: inherit;
+}
 .app-shell .editor-toolbar {
   min-height: 56px;
   height: auto;
@@ -208,6 +248,13 @@
 .app-shell .object-heading > div > span {
   font-size: 11px;
 }
+.app-shell .object-lock-hint {
+  margin: 0 16px 14px;
+  padding: 10px;
+  border-radius: var(--ui-radius);
+  background: var(--ui-selected);
+  color: #52667b;
+}
 .app-shell .inspector-section {
   padding: 18px 16px;
 }
@@ -327,6 +374,11 @@
   flex-wrap: wrap;
   row-gap: 8px;
 }
+.app-shell .canvas-heading > div {
+  flex: 1 1 200px;
+  min-width: 0;
+  max-width: 100%;
+}
 .app-shell .canvas-hint {
   display: flex;
   max-width: 440px;
@@ -338,7 +390,22 @@
   flex-shrink: 0;
 }
 .app-shell .canvas-heading h1 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
   font-size: 16px;
+}
+@media (max-height: 650px) {
+  .app-shell .canvas-viewport {
+    min-height: 80px;
+  }
+  .app-shell .canvas-heading {
+    min-height: 56px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
 }
 .app-shell .canvas-footer {
   font-size: 12px;

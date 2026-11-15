@@ -22,7 +22,6 @@ import {
   ClipboardPaste,
   Scissors,
   BookOpen,
-  Download,
   FilePlus2,
   FolderOpen,
   ImagePlus,
@@ -111,6 +110,7 @@ import {
   type SlideClipboard,
 } from "./lib/slide-clipboard";
 import { ObjectLayers } from "./components/ObjectLayers";
+import { ExportMenu } from "./components/ExportMenu";
 import { SelectionSummary } from "./components/SelectionSummary";
 import { traverseObjects } from "./lib/object-traversal";
 import { matchPlaybackShortcut } from "./lib/playback-shortcuts";
@@ -350,6 +350,7 @@ export default function App() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [historyError, setHistoryError] = useState("");
+  const [historySaveError, setHistorySaveError] = useState("");
   const historyRequest = useRef(0);
   const transitioning = useRef(false);
   const savingDocument = useRef(false);
@@ -664,14 +665,19 @@ export default function App() {
     setRecoveryStatus("Saving locally…");
     const timer = setTimeout(() => {
       if (session !== documentSession.current) return;
-      void saveDocumentRecovery(historyId, deck, drafts).catch(
-        (error: Error) => {
-          if (!live || lastHistoryError.current === error.message) return;
+      void saveDocumentRecovery(historyId, deck, drafts)
+        .then(() => {
+          if (!live || session !== documentSession.current) return;
+          lastHistoryError.current = "";
+          setHistorySaveError("");
+        })
+        .catch((error: Error) => {
+          if (!live || session !== documentSession.current) return;
+          setHistorySaveError(error.message);
+          if (lastHistoryError.current === error.message) return;
           lastHistoryError.current = error.message;
-          setHistoryError(error.message);
           notify(`Document history: ${error.message}`);
-        },
-      );
+        });
       saveWorkspaceRecovery(deck, drafts)
         .then((storage) => {
           if (live)
@@ -1981,14 +1987,21 @@ export default function App() {
     if (choice === "cancel") return false;
     if (choice === "discard") return true;
     if (choice === "recover") {
+      const session = documentSession.current;
       try {
         await saveDocumentRecovery(
           recoverySessionId.current,
           deckRef.current,
           activeEquationDrafts(deckRef.current, recoveredDrafts.current),
         );
+        if (session === documentSession.current) {
+          lastHistoryError.current = "";
+          setHistorySaveError("");
+        }
         return true;
       } catch (error) {
+        if (session === documentSession.current)
+          setHistorySaveError((error as Error).message);
         notify((error as Error).message);
         return false;
       }
@@ -2010,6 +2023,7 @@ export default function App() {
     documentSession.current += 1;
     recoverySessionId.current = newId();
     lastHistoryError.current = "";
+    setHistorySaveError("");
     const compileId = compileJob.current;
     compileJob.current = null;
     if (compileId)
@@ -2045,6 +2059,7 @@ export default function App() {
     if (busy || transitioning.current) return;
     finishTextEditing();
     const request = ++historyRequest.current;
+    const session = documentSession.current;
     setShowRecoveryHistory(true);
     setHistoryLoading(true);
     setHistoryError("");
@@ -2057,8 +2072,20 @@ export default function App() {
             deckRef.current,
             activeEquationDrafts(deckRef.current, recoveredDrafts.current),
           );
+          if (
+            session === documentSession.current &&
+            request === historyRequest.current
+          ) {
+            lastHistoryError.current = "";
+            setHistorySaveError("");
+          }
         } catch (error) {
           preservationError = (error as Error).message;
+          if (
+            session === documentSession.current &&
+            request === historyRequest.current
+          )
+            setHistorySaveError(preservationError);
         }
       }
       const result = await listDocumentRecoveries();
@@ -4037,9 +4064,11 @@ export default function App() {
               className="recovery-state"
               title="Local recovery is separate from saving a portable .scislide file"
             >
-              {recoveryStatus === "Local workspace"
-                ? "Local recovery"
-                : recoveryStatus}
+              {historySaveError
+                ? `${recoveryStatus.replace("Saved locally", "Current workspace saved")} · history needs attention`
+                : recoveryStatus === "Local workspace"
+                  ? "Local recovery"
+                  : recoveryStatus}
             </span>
             {documentFilename && (
               <span className="document-filename">{documentFilename}</span>
@@ -4055,49 +4084,31 @@ export default function App() {
           >
             <Presentation size={16} /> Present
           </button>
-          <div className="dropdown-wrap">
-            <button
-              className="button primary"
-              disabled={!!busy}
-              onClick={() => setExportMenu(!exportMenu)}
-            >
-              <Download size={16} /> Export <ChevronDown size={14} />
-            </button>
-            {exportMenu && (
-              <div className="dropdown">
-                <button
-                  title="Export PowerPoint (.pptx)"
-                  onClick={() => void runExport("pptx")}
-                >
-                  <Presentation size={15} />
-                  <span>
-                    PowerPoint (.pptx)
-                    <small>All slides · editable text and shapes</small>
-                  </span>
-                </button>
-                <button
-                  title={shortcutTitle("Export PDF", "exportPdf")}
-                  onClick={() => void runExport("pdf")}
-                >
-                  <Download size={15} />
-                  <span>
-                    PDF presentation<small>All slides · vector equations</small>
-                  </span>
-                </button>
-                <button
-                  title={shortcutTitle("Export SVG", "exportSvg")}
-                  onClick={() => void runExport("svg")}
-                >
-                  <ImagePlus size={15} />
-                  <span>
-                    Current slide as SVG<small>Editable vector format</small>
-                  </span>
-                </button>
-              </div>
-            )}
-          </div>
+          <ExportMenu
+            open={exportMenu}
+            onOpenChange={setExportMenu}
+            disabled={!!busy || hasEditorDialog}
+            platform={keyboardPlatform}
+            onExport={(kind) => void runExport(kind)}
+          />
         </div>
       </header>
+      {historySaveError && (
+        <div className="recovery-save-warning" role="status">
+          <History size={17} aria-hidden="true" />
+          <div>
+            <strong>Document history needs attention</strong>
+            <p>{historySaveError}</p>
+          </div>
+          <button
+            type="button"
+            disabled={!!busy || hasEditorDialog}
+            onClick={() => void openRecoveryHistory()}
+          >
+            Review recovered documents
+          </button>
+        </div>
+      )}
       <fieldset
         className="toolbar editor-toolbar"
         disabled={!!busy || hasEditorDialog}
@@ -4492,7 +4503,9 @@ export default function App() {
           <div className="canvas-heading">
             <div>
               <span>WORKSPACE</span>
-              <h1>{slide.title || "Untitled slide"}</h1>
+              <h1 title={slide.title || "Untitled slide"}>
+                {slide.title || "Untitled slide"}
+              </h1>
               <div className="mobile-slide-nav">
                 <select
                   aria-label="Slide navigator"
@@ -4519,7 +4532,7 @@ export default function App() {
                   : multipleObjectsSelected
                     ? `${selectedObjects.length} objects selected · Shift-click to change selection · Esc to clear`
                     : object && isObjectLocked(object, slide.objects)
-                      ? "Locked object · Unlock in Layers to edit"
+                      ? "Locked object · Unlock in Format or Layers to move"
                       : object?.type === "text"
                         ? "Enter or double-click to edit · Arrow keys to move"
                         : object?.type === "equation"
@@ -4849,17 +4862,34 @@ export default function App() {
                     </span>
                   </div>
                   <IconButton
-                    title="Lock or unlock object"
-                    active={object.locked}
+                    title={
+                      object.groupId
+                        ? isObjectLocked(object, slide.objects)
+                          ? "Unlock group"
+                          : "Lock group"
+                        : isObjectLocked(object, slide.objects)
+                          ? "Unlock object"
+                          : "Lock object"
+                    }
+                    active={isObjectLocked(object, slide.objects)}
                     onClick={() =>
-                      updateObject(object.id, (o) => {
-                        o.locked = !o.locked;
-                      })
+                      lockSelection(!isObjectLocked(object, slide.objects))
                     }
                   >
                     <LockKeyhole size={15} />
                   </IconButton>
                 </div>
+
+                {!multipleObjectsSelected &&
+                  isObjectLocked(object, slide.objects) && (
+                    <p className="field-hint object-lock-hint" role="note">
+                      {object.groupId
+                        ? !object.locked
+                          ? "This group is locked by another member. Unlock the group to move it."
+                          : "This group is locked. Unlock the group to move it."
+                        : "This object is locked. Unlock it to move or resize it."}
+                    </p>
+                  )}
 
                 <div
                   hidden={inspectorTab !== "style" || multipleObjectsSelected}

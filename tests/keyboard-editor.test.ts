@@ -588,7 +588,7 @@ describe("OS-specific keyboard commands in the editor", () => {
       text: "Pending scientific text 한글",
     });
     expect(host.querySelector(".inline-text-editor")).toBeNull();
-    expect(host.querySelector(".dropdown")).toBeNull();
+    expect(host.querySelector(".dropdown:not([hidden])")).toBeNull();
     expect(downloadBlob).toHaveBeenCalledExactlyOnceWith(
       expect.any(Blob),
       "Keyboard integration.pptx",
@@ -2744,5 +2744,109 @@ describe("OS-specific keyboard commands in the editor", () => {
     expect(host.querySelector(".presentation-view")).toBeTruthy();
     expect(trigger.closest("details")?.open).toBe(false);
     expect(await persist()).toEqual(deck);
+  });
+
+  it("closes Export with Escape while preserving the canvas selection and its existing Undo step", async () => {
+    await render("Linux x86_64");
+    await click("Select Research panel");
+    const canvas = host.querySelector<HTMLElement>(
+      '[aria-label="Slide canvas"]',
+    )!;
+    await key("ArrowRight", {}, canvas);
+    const edited = await persist();
+    expect(edited).not.toEqual(deck);
+    expect(button("Undo").disabled).toBe(false);
+    const trigger = button("Export");
+    await act(async () => trigger.focus());
+    expect((await key("ArrowDown", {}, trigger)).defaultPrevented).toBe(true);
+    const action = host.querySelector<HTMLButtonElement>(
+      ".dropdown:not([hidden]) button",
+    )!;
+    expect(document.activeElement).toBe(action);
+    expect((await key("Escape", {}, action)).defaultPrevented).toBe(true);
+    expect(host.querySelector(".dropdown:not([hidden])")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    expect(button("Select Research panel").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(button("Undo").disabled).toBe(false);
+    expect(await persist()).toEqual(edited);
+    await key("z", { ctrlKey: true }, trigger);
+    expect(await persist()).toEqual(deck);
+    expect(button("Undo").disabled).toBe(true);
+    expect(exportDeckPptx).not.toHaveBeenCalled();
+    expect(exportDeckPdf).not.toHaveBeenCalled();
+    expect(exportSlideSvg).not.toHaveBeenCalled();
+  });
+
+  it("keeps edited text when Export yields to File, outside focus and a canvas click without overlapping menus", async () => {
+    await render("Linux x86_64");
+    await click("Text");
+    const editor = host.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Edit text on slide"]',
+    )!;
+    await changeField(editor, "Keep scientific prose 한글 $x^2$");
+    await click("Export");
+    expect(host.querySelector(".inline-text-editor")).toBeNull();
+    const edited = await persist();
+    expect(edited.slides[0].objects).toContainEqual(
+      expect.objectContaining({
+        type: "text",
+        text: "Keep scientific prose 한글 $x^2$",
+      }),
+    );
+    const file = host.querySelector<HTMLElement>('[aria-label="File menu"]')!;
+    await act(async () => file.click());
+    expect(file.closest("details")?.open).toBe(true);
+    expect(host.querySelectorAll("details.toolbar-menu[open]")).toHaveLength(1);
+    expect(host.querySelector(".dropdown:not([hidden])")).toBeNull();
+    await click("Export");
+    expect(file.closest("details")?.open).toBe(false);
+    expect(host.querySelectorAll("details.toolbar-menu[open]")).toHaveLength(0);
+    expect(host.querySelector(".dropdown:not([hidden])")).toBeTruthy();
+    const notes = host.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Speaker notes"]',
+    )!;
+    await act(async () => notes.focus());
+    expect(host.querySelector(".dropdown:not([hidden])")).toBeNull();
+    expect(document.activeElement).toBe(notes);
+    expect(await persist()).toEqual(edited);
+    await click("Export");
+    const background = host.querySelector<Element>(
+      '[aria-label="Slide canvas"] svg.slide-scene > rect',
+    )!;
+    await act(async () =>
+      background.dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true, cancelable: true }),
+      ),
+    );
+    expect(host.querySelector(".dropdown:not([hidden])")).toBeNull();
+    expect(host.querySelectorAll("details.toolbar-menu[open]")).toHaveLength(0);
+    expect(await persist()).toEqual(edited);
+    expect(exportDeckPptx).not.toHaveBeenCalled();
+    expect(exportDeckPdf).not.toHaveBeenCalled();
+    expect(exportSlideSvg).not.toHaveBeenCalled();
+  });
+
+  it("routes F5 from an open Export action to presentation without reload, export or a canvas edit", async () => {
+    await render("Linux x86_64");
+    await click("Select Research panel");
+    await click("Export");
+    const action = host.querySelector<HTMLButtonElement>(
+      ".dropdown:not([hidden]) button",
+    )!;
+    expect(document.activeElement).toBe(action);
+    expect((await key("F5", {}, action)).defaultPrevented).toBe(true);
+    const view = host.querySelector<HTMLElement>(".presentation-view")!;
+    expect(view).toBeTruthy();
+    expect(host.querySelector(".dropdown:not([hidden])")).toBeNull();
+    expect(await persist()).toEqual(deck);
+    await key("Escape", {}, view);
+    expect(host.querySelector(".presentation-view")).toBeNull();
+    expect(button("Undo").disabled).toBe(true);
+    expect(await persist()).toEqual(deck);
+    expect(exportDeckPptx).not.toHaveBeenCalled();
+    expect(exportDeckPdf).not.toHaveBeenCalled();
+    expect(exportSlideSvg).not.toHaveBeenCalled();
   });
 });

@@ -70,7 +70,7 @@ describe("multiple selection summary", () => {
       "1 group · 1 unlocked · 2 locked · 1 hidden",
     );
     expect(host.textContent).toContain(
-      "Choose one object to edit its style and size, or arrange the selection together.",
+      "Choose one object to edit its style, or arrange the selection together.",
     );
     expect(host.querySelector("input,textarea,select")).toBeNull();
     expect(host.querySelector("details")?.open).toBe(false);

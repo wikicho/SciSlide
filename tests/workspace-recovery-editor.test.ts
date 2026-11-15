@@ -14,12 +14,17 @@ import type {
   WorkspaceRecovery,
 } from "../src/lib/workspace-recovery";
 import { renderEquation } from "../src/lib/equations";
+import { saveDocumentRecovery } from "../src/lib/recovery-history";
 
 // Exercise real editor hydration, selection, draft fields, apply, and shutdown
 // handlers. Rendering and storage transactions have separate integration tests.
 vi.mock("../src/lib/workspace-recovery", () => ({
   loadWorkspaceRecovery: vi.fn(),
   saveWorkspaceRecovery: vi.fn(),
+}));
+vi.mock("../src/lib/recovery-history", async (original) => ({
+  ...(await original<typeof import("../src/lib/recovery-history")>()),
+  saveDocumentRecovery: vi.fn(),
 }));
 vi.mock("../src/lib/persistence", async (original) => ({
   ...(await original<typeof import("../src/lib/persistence")>()),
@@ -155,6 +160,7 @@ describe("editor workspace recovery and unapplied equation drafts", () => {
     vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
     pending = deferred();
     snapshots = [];
+    vi.mocked(saveDocumentRecovery).mockReset().mockResolvedValue("indexeddb");
     vi.mocked(loadWorkspaceRecovery).mockReset();
     vi.mocked(loadWorkspaceRecovery).mockReturnValue(pending.promise);
     vi.mocked(saveWorkspaceRecovery).mockReset();

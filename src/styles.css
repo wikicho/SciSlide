@@ -108,7 +108,7 @@ button .lucide {
 }
 .app-shell {
   height: 100dvh;
-  min-height: 650px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1448,7 +1448,7 @@ button .lucide {
     display: none;
   }
   .app-shell {
-    min-height: 600px;
+    min-height: 0;
   }
   .canvas-heading {
     min-height: 66px;
