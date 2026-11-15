@@ -573,6 +573,12 @@ export default function App() {
     deck,
     recoveredDrafts.current,
   ).length;
+  const fileMatchesEditor =
+    fileMatchesSaved &&
+    !(
+      textEditing?.deckId === deck.id &&
+      textEditing.value !== textEditing.original
+    );
   const inlineEquationObject =
     inlineEquationEdit?.deckId === deck.id
       ? deck.slides
@@ -635,13 +641,28 @@ export default function App() {
           host.clientHeight -
           parseFloat(c.paddingTop) -
           parseFloat(c.paddingBottom);
-      setFitWidth(Math.max(160, Math.min(w, (h * 1600) / 900)));
+      // The paper's content box matches the SVG; reserve its two 1px borders.
+      setFitWidth(
+        Math.max(
+          1,
+          Math.min(
+            w - 2,
+            ((h - 2) * deck.slideSize.width) / deck.slideSize.height,
+          ),
+        ),
+      );
     };
     const observer = new ResizeObserver(resize);
     observer.observe(host);
     resize();
     return () => observer.disconnect();
-  }, [presenting, recoveryLoaded, showThemeChooser]);
+  }, [
+    presenting,
+    recoveryLoaded,
+    showThemeChooser,
+    deck.slideSize.width,
+    deck.slideSize.height,
+  ]);
   const notify = useCallback((message: string) => setToast(message), []);
   useEffect(() => {
     if (!toast) return;
@@ -1361,6 +1382,60 @@ export default function App() {
     setSelected([]);
     setPreview({});
   };
+  const reviewEquationDrafts = () => {
+    if (busy || hasEditorDialog || presenting || showThemeChooser) return;
+    finishTextEditing();
+    const current = deckRef.current;
+    const targets = activeEquationDrafts(current, recoveredDrafts.current).map(
+      (entry) => {
+        const targetSlide = current.slides.find(
+          (candidate) => candidate.id === entry.slideId,
+        )!;
+        const equation = targetSlide.objects.find(
+          (candidate) => candidate.id === entry.equationId,
+        ) as EquationObject;
+        return {
+          slide: targetSlide,
+          equation,
+          editable:
+            equation.visible && !isObjectLocked(equation, targetSlide.objects),
+        };
+      },
+    );
+    const preferred = (values: typeof targets) =>
+      values.find(
+        (target) =>
+          target.slide.id === slide.id && target.equation.id === selected[0],
+      ) ??
+      values.find((target) => target.slide.id === slide.id) ??
+      values[0];
+    const target =
+      preferred(targets.filter((candidate) => candidate.editable)) ??
+      preferred(targets);
+    if (!target) return;
+    switchSlide(target.slide.id);
+    setSelected([target.equation.id]);
+    if (target.editable) {
+      setInspectorTab("style");
+      setInspectorVisible(true);
+      setObjectListVisible(false);
+      setEquationEditorId(target.equation.id);
+    } else {
+      setEquationEditorId(null);
+      setInspectorVisible(false);
+      setObjectListVisible(true);
+      paneFocus.current = "objects";
+      const actions = [
+        !target.equation.visible ? "show it" : "",
+        isObjectLocked(target.equation, target.slide.objects)
+          ? "unlock it or its group"
+          : "",
+      ].filter(Boolean);
+      notify(
+        `To review this draft, ${actions.join(" and ")} in Layers. The draft is still kept locally.`,
+      );
+    }
+  };
   const focusSlideCard = (id: string) =>
     Array.from(
       document.querySelectorAll<HTMLButtonElement>(
@@ -1936,6 +2011,14 @@ export default function App() {
     savingDocument.current = true;
     const session = documentSession.current;
     const snapshot = deckRef.current;
+    const localDraftCount = activeEquationDrafts(
+      snapshot,
+      recoveredDrafts.current,
+    ).length;
+    const draftSaveNotice =
+      localDraftCount === 1
+        ? "1 equation draft remains local and is not in this file. Review and apply it to include it."
+        : `${localDraftCount} equation drafts remain local and are not in this file. Review and apply them to include them.`;
     setBusy("Packaging deck");
     try {
       const archive = await buildDeckArchive(snapshot),
@@ -1950,12 +2033,18 @@ export default function App() {
         if (!result || session !== documentSession.current) return false;
         setDocumentFilename(result.name);
         setLastFileSave({ deck: snapshot, kind: "saved" });
-        notify("프레젠테이션을 저장했습니다.");
+        notify(
+          localDraftCount
+            ? `Presentation saved. ${draftSaveNotice}`
+            : "프레젠테이션을 저장했습니다.",
+        );
       } else {
         downloadBlob(archive, suggestedName);
         setLastFileSave({ deck: snapshot, kind: "downloaded" });
         notify(
-          "다운로드를 시작했습니다. 브라우저 다운로드 폴더를 확인해주세요.",
+          localDraftCount
+            ? `Download started. ${draftSaveNotice}`
+            : "다운로드를 시작했습니다. 브라우저 다운로드 폴더를 확인해주세요.",
         );
       }
       return sameDocument(deckRef.current, snapshot);
@@ -4032,7 +4121,7 @@ export default function App() {
           />
           <span>
             <span
-              className={`status-dot ${fileMatchesSaved && equationDraftCount === 0 ? "is-saved" : "is-unsaved"}`}
+              className={`status-dot ${fileMatchesEditor && equationDraftCount === 0 ? "is-saved" : "is-unsaved"}`}
             />
             <span
               className="file-save-state"
@@ -4043,7 +4132,7 @@ export default function App() {
             >
               {busy === "Packaging deck"
                 ? "Saving…"
-                : fileMatchesSaved && lastFileSave
+                : fileMatchesEditor && lastFileSave
                   ? lastFileSave.kind === "saved"
                     ? "Saved to file"
                     : lastFileSave.kind === "opened"
@@ -4052,13 +4141,19 @@ export default function App() {
                   : "Unsaved changes"}
             </span>
             {equationDraftCount > 0 && (
-              <span
+              <button
+                type="button"
                 className="equation-draft-state"
-                title="Apply equation drafts to include them in the .scislide file. Unapplied drafts are kept in local recovery."
+                aria-label="Review equation drafts"
+                aria-description={`${equationDraftCount} unapplied equation ${equationDraftCount === 1 ? "draft" : "drafts"} kept locally`}
+                disabled={!!busy || hasEditorDialog}
+                title="Review and apply equation drafts to include them in the .scislide file."
+                onClick={reviewEquationDrafts}
               >
                 {equationDraftCount} equation{" "}
                 {equationDraftCount === 1 ? "draft" : "drafts"} · local only
-              </span>
+                <ChevronRight size={12} aria-hidden="true" />
+              </button>
             )}
             <span
               className="recovery-state"
@@ -4618,7 +4713,14 @@ export default function App() {
             )}
             <div
               className="slide-paper"
-              style={{ width: `${(fitWidth * zoom) / 100}px` }}
+              style={
+                {
+                  width: `${(fitWidth * zoom) / 100}px`,
+                  aspectRatio: `${deck.slideSize.width} / ${deck.slideSize.height}`,
+                  boxSizing: "content-box",
+                  "--slide-grid-step": `${(20 * fitWidth * zoom) / (100 * deck.slideSize.width)}px`,
+                } as CSSProperties
+              }
             >
               <SlideScene
                 deck={deck}
@@ -4712,7 +4814,15 @@ export default function App() {
                 value={zoom}
                 onChange={(e) => setZoom(Number(e.target.value))}
               />
-              <span>{zoom}%</span>
+              <span
+                title={
+                  zoom === 100
+                    ? "Slide fitted to the available canvas"
+                    : `${zoom}% of the fitted slide size`
+                }
+              >
+                {zoom === 100 ? "Fit" : `${zoom}%`}
+              </span>
             </div>
           </div>
           <SpeakerNotes

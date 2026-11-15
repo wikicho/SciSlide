@@ -600,7 +600,7 @@ button .lucide {
   background-image:
     linear-gradient(to right, #5268c815 1px, transparent 1px),
     linear-gradient(to bottom, #5268c815 1px, transparent 1px);
-  background-size: 1.25% 2.22%;
+  background-size: var(--slide-grid-step, 20px) var(--slide-grid-step, 20px);
 }
 .canvas-footer {
   height: 43px;

@@ -40,6 +40,14 @@
 .app-shell .equation-draft-state {
   color: #8a5a13;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 5px;
+  border: 1px solid #e4d2a5;
+  border-radius: 4px;
+  background: #fff8e8;
+  text-align: left;
 }
 .app-shell .status-dot.is-unsaved {
   background: #d49a36;
@@ -373,6 +381,7 @@
 .app-shell .canvas-heading {
   flex-wrap: wrap;
   row-gap: 8px;
+  flex-shrink: 0;
 }
 .app-shell .canvas-heading > div {
   flex: 1 1 200px;
