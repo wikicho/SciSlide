@@ -2,7 +2,7 @@
 
 SciSlide is a scientific presentation editor that combines visual slide composition with editable LaTeX equations. It runs in a browser or as an Electron desktop app.
 
-This wiki documents **v0.6.4**, a development prototype. This release adds PowerPoint export and three editable starter themes. It also includes isolated Local LaTeX compilation on macOS and a headless agent CLI for native deck editing and SVG/PDF export. It retains canvas traversal, pane toggles, focused-slide shortcuts, inline equation editing, improved text frame controls and the Linux equation compile shortcut. See [Keyboard shortcuts](Keyboard-Shortcuts) for the Keynote, PowerPoint and Impress platform profiles.
+This wiki describes the **v0.6.7 development prerelease**. It adds clearer save and equation-draft feedback, predictable Export menu focus, group-lock guidance, responsive speaker notes and Fit/grid support for custom slide dimensions. PowerPoint export, editable starter themes, isolated Local LaTeX compilation on supported Linux/macOS systems and the headless agent CLI remain available. See [Keyboard shortcuts](Keyboard-Shortcuts) for the Keynote, PowerPoint and Impress platform profiles.
 
 ## Start here
 
@@ -31,8 +31,8 @@ For the formal Keynote mapping, routing contract, compatibility exceptions, and 
 
 ## Downloads and project
 
-- [Download v0.6.4](https://github.com/wikicho/SciSlide/releases/tag/v0.6.4) — macOS Apple Silicon/Intel, Windows x64, and Linux x64.
-- [Release notes](https://github.com/wikicho/SciSlide/blob/v0.6.4/docs/releases/v0.6.4.md).
+- [Download v0.6.7](https://github.com/wikicho/SciSlide/releases/tag/v0.6.7) — macOS Apple Silicon/Intel, Windows x64, and Linux x64.
+- [Release notes](https://github.com/wikicho/SciSlide/blob/v0.6.7/docs/releases/v0.6.7.md).
 - [Source repository](https://github.com/wikicho/SciSlide).
 - [Report a problem](https://github.com/wikicho/SciSlide/issues).
 

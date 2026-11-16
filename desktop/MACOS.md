@@ -1,4 +1,4 @@
-# SciSlide 0.6.6 — macOS development installer
+# SciSlide 0.6.7 — macOS development installer
 
 Choose the installer that matches your Mac: **arm64** for Apple Silicon (M1 or later), or **x64** for Intel. The installer copies SciSlide to `/Applications/SciSlide.app`. Node.js, a development server and TeX are not required for MathJax editing.
 
@@ -8,7 +8,7 @@ Quit an existing SciSlide window before installing an update. Both architectures
 
 ## Command-line update downloads
 
-v0.6.6 includes a launcher inside the installed app:
+v0.6.7 includes a launcher inside the installed app:
 
 ```sh
 /Applications/SciSlide.app/Contents/Resources/scislide-cli/bin/scislide --check-update
@@ -28,7 +28,7 @@ The CLI chooses the `.pkg` matching the running app's arm64/x64 architecture, ve
 
 ## Headless agent commands
 
-v0.6.3.1 includes `schema`, `create`, `inspect`, `validate`, `apply`, `unpack`, `pack` and `export`. Run `scislide --cli schema` to discover native objects and edit operations. These commands return JSON and create/edit `.scislide` documents or export SVG/PDF without an editor window or a separate Node installation. Use the launcher path above when `scislide` is not on PATH. See the [agent CLI guide](https://github.com/wikicho/SciSlide/blob/v0.6.6/docs/AGENT_CLI.md) for examples and export limits.
+v0.6.3.1 includes `schema`, `create`, `inspect`, `validate`, `apply`, `unpack`, `pack` and `export`. Run `scislide --cli schema` to discover native objects and edit operations. These commands return JSON and create/edit `.scislide` documents or export SVG/PDF without an editor window or a separate Node installation. Use the launcher path above when `scislide` is not on PATH. See the [agent CLI guide](https://github.com/wikicho/SciSlide/blob/v0.6.7/docs/AGENT_CLI.md) for examples and export limits.
 
 ## Use the editor
 
@@ -67,7 +67,7 @@ Keyboard shortcuts use **Command** and **Option**, following [Apple's Keynote sh
 | Increase / Decrease selected text size    | ⌘ and + / ⌘ and -                   |
 | Align selected text left / center / right | ⌘+{ / ⌘+\| / ⌘+}                    |
 
-**Page Down / Page Up** selects the next/previous slide while editing; **Home / End** selects the first/last. On compact Mac keyboards use **Fn+↓ / Fn+↑** and **Fn+← / Fn+→**, respectively. **Up / Down** selects slides and **Delete / Backspace** removes the focused slide when a thumbnail has focus in the slide navigator; on the canvas, arrows move selected objects. Zoom changes in 10% steps between 50% and 150%, and Fit restores the existing 100% view fitted to the available canvas.
+**Page Down / Page Up** selects the next/previous slide while editing; **Home / End** selects the first/last. On compact Mac keyboards use **Fn+↓ / Fn+↑** and **Fn+← / Fn+→**, respectively. **Up / Down** selects slides and **Delete / Backspace** removes the focused slide when a thumbnail has focus in the slide navigator; on the canvas, arrows move selected objects. Zoom changes in 10% steps between 50% and 150% of the fitted slide size. **Fit** follows the document's aspect ratio and available canvas, including 4:3 and portrait documents.
 
 Bold, size and text-alignment commands apply to whole selected text objects on the canvas. During inline text editing, **⌘+Enter** applies the edit; text-field clipboard, navigation and IME behavior remain native. Existing **⌘+Shift+S**, **⌘+G / ⌘+Shift+G** and canvas **⌘+Enter** remain accepted for Save As, Group/Ungroup and Present. During a slideshow, **Esc** exits. **Q** also exits when focus is outside text fields and media controls. In the browser, use a toolbar control when the browser reserves a combination.
 
@@ -86,7 +86,7 @@ The editor is a prototype. Modern Korean body text is supported through bundled 
 Each installer has a matching `.sha256` file. To verify a download, put the installer and checksum file in the same folder and run:
 
 ```sh
-shasum -a 256 -c SciSlide-0.6.6-macos-arm64-unsigned.pkg.sha256
+shasum -a 256 -c SciSlide-0.6.7-macos-arm64-unsigned.pkg.sha256
 ```
 
 Use the x64 filename for an Intel installer. This checks that the file matches its accompanying checksum; it does not certify the publisher or replace Apple's code signing and notarization.

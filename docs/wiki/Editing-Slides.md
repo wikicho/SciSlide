@@ -1,6 +1,6 @@
 # Editing slides
 
-These instructions describe the **0.6.6 development source**; use a newly built package for the changes below. Start with [[Getting-Started]] or see [[Keyboard-Shortcuts]] for platform-specific commands.
+These instructions describe the **0.6.7 development source**; use a newly built package for the changes below. Start with [[Getting-Started]] or see [[Keyboard-Shortcuts]] for platform-specific commands.
 
 ## Slides and layouts
 
@@ -30,11 +30,19 @@ With the canvas focused, Tab/Shift+Tab selects eligible objects in back-to-front
 
 Toolbar menus support Enter/Space or Up/Down to open, Up/Down and Home/End to navigate, and Escape to return to the menu trigger. Left/Right moves between menus. Choosing an action or moving focus outside closes the menu; an action that opens an editor or dialog keeps focus there.
 
-The title area distinguishes the saved `.scislide` file, pending/completed local recovery and the number of unapplied equation drafts. Drafts remain local until **Apply equation** puts them on the slide. During a document transition, **Save changes** is unavailable while drafts remain; cancel to apply them or choose **Keep recovery and continue** to preserve them locally.
+**Export** also supports Up/Down and Home/End navigation. Moving focus outside, clicking outside or opening another menu closes it. Escape closes it and returns to Export without clearing the canvas selection.
+
+The title area distinguishes the saved `.scislide` file, pending/completed local recovery and the number of unapplied equation drafts. Pending inline text edits immediately mark the file as unsaved; Save applies the edit before writing the file. Select **Review equation drafts** to open a retained draft; hidden or locked targets lead to Layers with guidance. Drafts remain local until **Apply equation** puts them on the slide. Saving applied content reports any drafts that remain local and absent from the portable file. During a document transition, **Save changes** is unavailable while drafts remain; cancel to apply them or choose **Keep recovery and continue** to preserve them locally.
 
 **Copy / Cut / Paste** uses the system clipboard for editable objects, groups and slides, including embedded media and source formatting. Focus a slide thumbnail to copy that slide or paste after it. Text fields, including dialogs, keep ordinary text editing. On the canvas, pasting external text creates a text object; a screenshot or supported image creates a figure. Copying new content in another app replaces the previous SciSlide copy. Locked objects can be copied but are protected from cutting, and a failed clipboard write keeps cut originals.
 
 Browser clipboard permissions and supported formats vary. If a toolbar action reports unavailable access, focus the canvas and use the keyboard Copy/Cut/Paste commands. A failed system clipboard read never pastes an older internal copy.
+
+## Canvas and speaker notes
+
+**Fit** sizes the canvas to the document's actual aspect ratio, including 4:3 and portrait documents. Other zoom percentages are relative to that fitted size. The visible grid follows the same 20-unit document spacing as snapping at every zoom.
+
+Open **Speaker notes** below the canvas. Drag its divider, or focus the divider and use Up/Down and Home/End to resize it. Notes shrink to keep canvas controls reachable in a small window, while the preferred height returns when the window grows. Collapsing or resizing notes preserves their text and does not add an Undo step.
 
 ## Arrange, layers and groups
 
@@ -43,6 +51,8 @@ Use **OBJECTS & LAYERS** to select covered or hidden objects, rename them, chang
 Inspector and Objects & Layers have independent visibility. Their toolbar buttons and [shortcuts](Keyboard-Shortcuts) focus the pane when shown and return to the canvas when hidden. Text fields, dialogs and playback retain input ownership. Double-clicking an equation reveals Inspector before focusing its source.
 
 **Distribute horizontally / vertically** in the toolbar and **Equal horizontal / vertical gaps** in **ARRANGE** equalize edge gaps between at least three unlocked objects/groups, keeping the first and last in place. The Inspector's **Alignment** icons align text within its box.
+
+Format shows a member's effective group lock and explains when another member caused it. **Lock group / Unlock group** changes the whole group; independent objects keep their own **Lock object / Unlock object** action. Layers still provides individual member locks.
 
 **Group objects** keeps a selection together for moving and duplication. **Ungroup objects** preserves member positions. Groups are flat and saved with the deck. Ungroup before resizing, rotating or editing an individual member's endpoints; nested groups and whole-group scaling/rotation are not supported.
 
@@ -82,7 +92,7 @@ Automatic recovery chooses the newest valid timestamp across IndexedDB and local
 
 Open copy restores text, fonts, media, relationships and unfinished equation drafts into a fresh editing session with independent Undo/Redo. It starts without a file destination, so saving the copy cannot silently overwrite its original. A failed restore leaves the current presentation intact.
 
-History retains up to **10 copies and 100 MiB combined**. Older copies are not automatically evicted; remove a copy explicitly to free space, or save a portable file. Remove asks for confirmation and leaves the open presentation and saved files available. A later edit may create a new recovery copy of an open presentation. A damaged copy is reported separately and does not block other valid copies. Browser quota can be smaller than the configured limit; the current-workspace backup and document-history storage are separate.
+History retains up to **10 copies and 100 MiB combined**. If a history save fails, a persistent warning and **Review recovered documents** action remain visible until a later save succeeds. A successful current-workspace backup does not imply that a document-history copy was saved. Older copies are not automatically evicted; remove a copy explicitly to free space, or save a portable file. Remove asks for confirmation and leaves the open presentation and saved files available. A later edit may create a new recovery copy of an open presentation. A damaged copy is reported separately and does not block other valid copies. Browser quota can be smaller than the configured limit; the current-workspace backup and document-history storage are separate.
 
 Automatic recovery uses local IndexedDB, with a **100 MiB** record limit and a smaller localStorage fallback. It can retain up to **200** unfinished equation drafts. Web and desktop recovery stores are separate. Unapplied drafts and the personal equation library are not included in saved `.scislide` files. Save explicitly, especially for media-heavy decks, and check failure feedback. See [[Troubleshooting]].
 
