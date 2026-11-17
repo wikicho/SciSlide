@@ -131,6 +131,7 @@ import {
 import type {
   EquationDraft,
   RecoveredEquationDraft,
+  RecoveryContext,
 } from "./lib/workspace-recovery";
 import { presenterChannelName, isPresenterAction } from "./lib/presenter";
 import type { PresenterMessage } from "./lib/presenter";
@@ -416,10 +417,29 @@ export default function App() {
     deckId: string;
     id: DeckSlideLayoutId;
   } | null>(null);
-  const [lastFileSave, setLastFileSave] = useState<{
+  type FileCheckpoint = {
     deck: Deck;
     kind: "saved" | "downloaded" | "opened";
-  } | null>(null);
+    name: string;
+    recovered?: true;
+  };
+  const [lastFileSave, setLastFileSave] = useState<FileCheckpoint | null>(null);
+  // Save acknowledgements must also be visible to a close event before React
+  // has rendered the new badge or an older autosave callback has finished.
+  const lastFileSaveRef = useRef<FileCheckpoint | null>(null);
+  const recoveredWorkspace = useRef<Deck | null>(null);
+  const recoveryContextFor = useCallback((snapshot: Deck): RecoveryContext => {
+    const saved = lastFileSaveRef.current;
+    return {
+      sessionId: recoverySessionId.current,
+      ...(saved && sameDocument(snapshot, saved.deck)
+        ? { file: { kind: saved.kind, name: saved.name } }
+        : recoveredWorkspace.current &&
+            sameDocument(snapshot, recoveredWorkspace.current)
+          ? {}
+          : { unsaved: true as const }),
+    };
+  }, []);
   const fileMatchesSaved = useMemo(
     () => !!lastFileSave && sameDocument(deck, lastFileSave.deck),
     [deck, lastFileSave],
@@ -442,6 +462,16 @@ export default function App() {
   const pasteSequence = useRef({ deckId: "", slideId: "", count: 0 });
   const recoveryWritable = useRef(false);
   const recoveredDrafts = useRef<RecoveredEquationDraft[]>([]);
+  const saveWorkspaceSnapshot = useCallback(
+    (snapshot: Deck, drafts: RecoveredEquationDraft[]) =>
+      saveWorkspaceRecovery(snapshot, drafts, recoveryContextFor(snapshot)),
+    [recoveryContextFor],
+  );
+  const saveHistorySnapshot = useCallback(
+    (id: string, snapshot: Deck, drafts: RecoveredEquationDraft[]) =>
+      saveDocumentRecovery(id, snapshot, drafts, recoveryContextFor(snapshot)),
+    [recoveryContextFor],
+  );
   const [draftRevision, setDraftRevision] = useState(0);
   const presenter = useRef<{
     channel: BroadcastChannel;
@@ -594,6 +624,16 @@ export default function App() {
           setDeck(recovery.deck);
           setSlideId(recovery.deck.slides[0].id);
           recoveredDrafts.current = recovery.equationDrafts;
+          if (recovery.sessionId)
+            recoverySessionId.current = recovery.sessionId;
+          const checkpoint: FileCheckpoint | null = recovery.file
+            ? { deck: recovery.deck, ...recovery.file, recovered: true }
+            : null;
+          lastFileSaveRef.current = checkpoint;
+          recoveredWorkspace.current =
+            checkpoint || recovery.unsaved === true ? null : recovery.deck;
+          setLastFileSave(checkpoint);
+          setDocumentFilename(recovery.file?.name ?? "");
           setDraftRevision((revision) => revision + 1);
         }
       })
@@ -636,14 +676,12 @@ export default function App() {
     deck,
     recoveredDrafts.current,
   ).length;
-  const fileMatchesEditor =
-    fileMatchesSaved &&
-    !(
-      textEditing?.deckId === deck.id &&
-      (textEditing.value !== textEditing.original ||
-        JSON.stringify(textEditing.styles) !==
-          JSON.stringify(textEditing.originalStyles))
-    );
+  const hasPendingTextChanges =
+    textEditing?.deckId === deck.id &&
+    (textEditing.value !== textEditing.original ||
+      JSON.stringify(textEditing.styles) !==
+        JSON.stringify(textEditing.originalStyles));
+  const fileMatchesEditor = fileMatchesSaved && !hasPendingTextChanges;
   const inlineEquationObject =
     inlineEquationEdit?.deckId === deck.id
       ? deck.slides
@@ -751,7 +789,7 @@ export default function App() {
     setRecoveryStatus("Saving locally…");
     const timer = setTimeout(() => {
       if (session !== documentSession.current) return;
-      void saveDocumentRecovery(historyId, deck, drafts)
+      void saveHistorySnapshot(historyId, deck, drafts)
         .then(() => {
           if (!live || session !== documentSession.current) return;
           lastHistoryError.current = "";
@@ -764,7 +802,7 @@ export default function App() {
           lastHistoryError.current = error.message;
           notify(`Document history: ${error.message}`);
         });
-      saveWorkspaceRecovery(deck, drafts)
+      saveWorkspaceSnapshot(deck, drafts)
         .then((storage) => {
           if (live)
             setRecoveryStatus(
@@ -786,6 +824,7 @@ export default function App() {
   }, [
     deck,
     draftRevision,
+    lastFileSave,
     recoveryLoaded,
     showThemeChooser,
     showRecoveryHistory,
@@ -2243,7 +2282,14 @@ export default function App() {
         });
         if (!result || session !== documentSession.current) return false;
         setDocumentFilename(result.name);
-        setLastFileSave({ deck: snapshot, kind: "saved" });
+        const checkpoint: FileCheckpoint = {
+          deck: snapshot,
+          kind: "saved",
+          name: result.name,
+        };
+        lastFileSaveRef.current = checkpoint;
+        recoveredWorkspace.current = null;
+        setLastFileSave(checkpoint);
         notify(
           localDraftCount
             ? `Presentation saved. ${draftSaveNotice}`
@@ -2251,14 +2297,45 @@ export default function App() {
         );
       } else {
         downloadBlob(archive, suggestedName);
-        setLastFileSave({ deck: snapshot, kind: "downloaded" });
+        const checkpoint: FileCheckpoint = {
+          deck: snapshot,
+          kind: "downloaded",
+          name: suggestedName,
+        };
+        lastFileSaveRef.current = checkpoint;
+        recoveredWorkspace.current = null;
+        setLastFileSave(checkpoint);
         notify(
           localDraftCount
             ? `Download started. ${draftSaveNotice}`
             : "다운로드를 시작했습니다. 브라우저 다운로드 폴더를 확인해주세요.",
         );
       }
-      return sameDocument(deckRef.current, snapshot);
+      // A new inline edit may have started while packaging or the native write
+      // was pending. Commit it to recovery, but never call it part of the file.
+      finishTextEditing();
+      // Commit file provenance before a successful Save can lead straight to
+      // closing. Persist the *current* deck if editing continued during Save.
+      if (recoveryWritable.current) {
+        const current = deckRef.current;
+        try {
+          await saveWorkspaceSnapshot(
+            current,
+            activeEquationDrafts(current, recoveredDrafts.current),
+          );
+        } catch {
+          if (session === documentSession.current) {
+            setRecoveryStatus("Recovery unavailable");
+            notify(
+              "File saved, but local recovery could not be updated. Open the saved .scislide file next time.",
+            );
+          }
+        }
+      }
+      return (
+        session === documentSession.current &&
+        sameDocument(deckRef.current, snapshot)
+      );
     } catch (e) {
       notify((e as Error).message);
       return false;
@@ -2274,8 +2351,8 @@ export default function App() {
     if (
       (!workspaceActive.current && !canResumeWorkspace) ||
       (!hasDrafts &&
-        lastFileSave &&
-        sameDocument(deckRef.current, lastFileSave.deck))
+        lastFileSaveRef.current &&
+        sameDocument(deckRef.current, lastFileSaveRef.current.deck))
     )
       return true;
     const choice = await new Promise<"save" | "discard" | "cancel" | "recover">(
@@ -2289,7 +2366,7 @@ export default function App() {
     if (choice === "recover") {
       const session = documentSession.current;
       try {
-        await saveDocumentRecovery(
+        await saveHistorySnapshot(
           recoverySessionId.current,
           deckRef.current,
           activeEquationDrafts(deckRef.current, recoveredDrafts.current),
@@ -2356,7 +2433,12 @@ export default function App() {
     setThemeChooserFromEditor(false);
     setCanResumeWorkspace(true);
     setDocumentFilename(filename);
-    setLastFileSave(kind ? { deck: next, kind } : null);
+    const checkpoint: FileCheckpoint | null = kind
+      ? { deck: next, kind, name: filename }
+      : null;
+    lastFileSaveRef.current = checkpoint;
+    recoveredWorkspace.current = null;
+    setLastFileSave(checkpoint);
   };
   const refreshHistoryEntries = async () => {
     const result = await listDocumentRecoveries();
@@ -2375,7 +2457,7 @@ export default function App() {
     try {
       if (workspaceActive.current || canResumeWorkspace) {
         try {
-          await saveDocumentRecovery(
+          await saveHistorySnapshot(
             recoverySessionId.current,
             deckRef.current,
             activeEquationDrafts(deckRef.current, recoveredDrafts.current),
@@ -3458,12 +3540,12 @@ export default function App() {
     const flush = () => {
       if (recoveryWritable.current && workspaceActive.current) {
         finishTextEditing();
-        void saveWorkspaceRecovery(
+        void saveWorkspaceSnapshot(
           deckRef.current,
           activeEquationDrafts(deckRef.current, recoveredDrafts.current),
         ).catch(() => undefined);
         if (!showRecoveryHistory)
-          void saveDocumentRecovery(
+          void saveHistorySnapshot(
             recoverySessionId.current,
             deckRef.current,
             activeEquationDrafts(deckRef.current, recoveredDrafts.current),
@@ -3478,8 +3560,8 @@ export default function App() {
       if (
         !desktop &&
         workspaceActive.current &&
-        (!lastFileSave ||
-          !sameDocument(deckRef.current, lastFileSave.deck) ||
+        (!lastFileSaveRef.current ||
+          !sameDocument(deckRef.current, lastFileSaveRef.current.deck) ||
           activeEquationDrafts(deckRef.current, recoveredDrafts.current)
             .length > 0)
       ) {
@@ -3501,7 +3583,38 @@ export default function App() {
       transitioning.current = true;
       void confirmDocumentChange()
         .then(async (confirmed) => {
-          if (confirmed) await desktop?.confirmCloseDocument?.();
+          if (!confirmed) return;
+          finishTextEditing();
+          const session = documentSession.current;
+          const snapshot = deckRef.current;
+          const drafts = structuredClone(
+            activeEquationDrafts(snapshot, recoveredDrafts.current),
+          );
+          if (recoveryWritable.current && workspaceActive.current) {
+            try {
+              await saveWorkspaceSnapshot(snapshot, drafts);
+            } catch {
+              // A successfully saved file or the explicitly kept history copy
+              // remains available even if this secondary checkpoint fails.
+              notify(
+                "Local recovery could not be updated. Keep your saved .scislide file.",
+              );
+            }
+          }
+          if (
+            session !== documentSession.current ||
+            !sameDocument(snapshot, deckRef.current) ||
+            JSON.stringify(drafts) !==
+              JSON.stringify(
+                activeEquationDrafts(deckRef.current, recoveredDrafts.current),
+              )
+          ) {
+            notify(
+              "The presentation changed while closing. Review the latest changes before closing.",
+            );
+            return;
+          }
+          await desktop?.confirmCloseDocument?.();
         })
         .catch((error: Error) => notify(error.message))
         .finally(() => {
@@ -4373,12 +4486,18 @@ export default function App() {
               {busy === "Packaging deck"
                 ? "Saving…"
                 : fileMatchesEditor && lastFileSave
-                  ? lastFileSave.kind === "saved"
-                    ? "Saved to file"
-                    : lastFileSave.kind === "opened"
-                      ? "Opened from file"
-                      : "Downloaded .scislide"
-                  : "Unsaved changes"}
+                  ? lastFileSave.recovered && lastFileSave.kind !== "downloaded"
+                    ? "Recovered saved copy"
+                    : lastFileSave.kind === "saved"
+                      ? "Saved to file"
+                      : lastFileSave.kind === "opened"
+                        ? "Opened from file"
+                        : "Downloaded .scislide"
+                  : !hasPendingTextChanges &&
+                      recoveredWorkspace.current &&
+                      sameDocument(deck, recoveredWorkspace.current)
+                    ? "Recovered local copy"
+                    : "Unsaved changes"}
             </span>
             {equationDraftCount > 0 && (
               <button

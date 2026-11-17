@@ -32,10 +32,46 @@ export interface RecoveredEquationDraft {
   updatedAt: string;
 }
 
-export interface WorkspaceRecovery {
+export interface RecoveryContext {
+  /** A label for an acknowledged snapshot, never a native overwrite path. */
+  file?: { name: string; kind: "saved" | "opened" | "downloaded" };
+  /** Reuse only when resuming this workspace, not when opening another copy. */
+  sessionId?: string;
+  /** Explicitly known dirty; missing remains unknown for legacy recovery. */
+  unsaved?: true;
+}
+
+export interface WorkspaceRecovery extends RecoveryContext {
   deck: Deck;
   equationDrafts: RecoveredEquationDraft[];
   savedAt: string;
+}
+
+/** Broken optional provenance must never make otherwise valid work unreadable. */
+function recoveryContext(value: RecoveryContext): RecoveryContext {
+  const context: RecoveryContext = {};
+  const file = value.file;
+  if (
+    file &&
+    typeof file === "object" &&
+    !Array.isArray(file) &&
+    typeof file.name === "string" &&
+    file.name.length <= 1000 &&
+    file.name.trim().length > 0 &&
+    !file.name.includes("\0") &&
+    ["saved", "opened", "downloaded"].includes(file.kind)
+  )
+    context.file = { name: file.name, kind: file.kind };
+  if (
+    typeof value.sessionId === "string" &&
+    /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(value.sessionId)
+  )
+    context.sessionId = value.sessionId;
+  if (value.unsaved === true) {
+    context.unsaved = true;
+    delete context.file;
+  }
+  return context;
 }
 
 function timestamp(value: unknown): string {
@@ -169,7 +205,14 @@ export function validateWorkspaceRecovery(value: unknown): WorkspaceRecovery {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("Workspace recovery is invalid.");
   const raw = value as WorkspaceRecovery;
-  if (jsonMediaByteLength(raw) > MAX_WORKSPACE_RECOVERY_BYTES)
+  const context = recoveryContext(raw);
+  const bounded = {
+    ...raw,
+    file: context.file,
+    sessionId: context.sessionId,
+    unsaved: context.unsaved,
+  };
+  if (jsonMediaByteLength(bounded) > MAX_WORKSPACE_RECOVERY_BYTES)
     throw new Error(
       "자동 복구 데이터가 100 MB 한도를 초과했습니다. 파일로 저장해주세요.",
     );
@@ -208,6 +251,7 @@ export function validateWorkspaceRecovery(value: unknown): WorkspaceRecovery {
     deck,
     equationDrafts: [...unique.values()],
     savedAt: timestamp(raw.savedAt),
+    ...context,
   };
   if (jsonMediaByteLength(recovery) > MAX_WORKSPACE_RECOVERY_BYTES)
     throw new Error(
@@ -388,6 +432,7 @@ let saveQueue: Promise<unknown> = Promise.resolve();
 export function saveWorkspaceRecovery(
   deck: Deck,
   equationDrafts: RecoveredEquationDraft[] = [],
+  context?: RecoveryContext,
 ): Promise<"indexeddb" | "localStorage"> {
   // Clone before awaiting so caller edits cannot change the pending snapshot.
   let recovery: WorkspaceRecovery;
@@ -398,6 +443,9 @@ export function saveWorkspaceRecovery(
       deck,
       equationDrafts,
       savedAt: new Date(lastSavedAt).toISOString(),
+      file: context?.file,
+      sessionId: context?.sessionId,
+      unsaved: context?.unsaved,
     });
   } catch (error) {
     return Promise.reject(error);
