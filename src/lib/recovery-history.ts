@@ -2,6 +2,7 @@ import { jsonMediaByteLength } from "./json-media-size";
 import type { Deck } from "./model";
 import { validateWorkspaceRecovery } from "./workspace-recovery";
 import type {
+  RecoveryContext,
   RecoveredEquationDraft,
   WorkspaceRecovery,
 } from "./workspace-recovery";
@@ -444,6 +445,7 @@ export function saveDocumentRecovery(
   id: string,
   deck: Deck,
   drafts: RecoveredEquationDraft[] = [],
+  recoveryContext?: RecoveryContext,
 ): Promise<"indexeddb" | "localStorage"> {
   let recovery: WorkspaceRecovery;
   try {
@@ -452,6 +454,9 @@ export function saveDocumentRecovery(
       deck,
       equationDrafts: drafts,
       savedAt: new Date().toISOString(),
+      file: recoveryContext?.file,
+      sessionId: recoveryContext?.sessionId,
+      unsaved: recoveryContext?.unsaved,
     });
   } catch (error) {
     return Promise.reject(error);

@@ -265,6 +265,46 @@ describe("editing text directly on the slide", () => {
     };
   }
 
+  it.each(["typing", "partial color"] as const)(
+    "marks uncommitted %s in a recovered local copy as unsaved and restores its label on Escape",
+    async (change) => {
+      const deck = deckWith([textObject()]);
+      vi.mocked(loadRecovery).mockReturnValue(null);
+      vi.mocked(loadWorkspaceRecovery).mockResolvedValue({
+        deck,
+        equationDrafts: [],
+        savedAt: "2026-11-18T00:00:00.000Z",
+      });
+      await act(async () => root.render(createElement(App)));
+      await click("Resume previous work");
+      await persist();
+      const status = () =>
+        host.querySelector('[aria-label="Document save status"]')?.textContent;
+      expect(status()).toBe("Recovered local copy");
+      const textarea = await edit();
+      expect(status()).toBe("Recovered local copy");
+      if (change === "typing") await input(textarea, "Pending local edit 한글");
+      else {
+        await act(async () => {
+          textarea.setSelectionRange(0, 8);
+          textarea.dispatchEvent(new Event("select", { bubbles: true }));
+        });
+        await click("Color selection");
+      }
+      expect(editor()).toBe(textarea);
+      expect(status()).toBe("Unsaved changes");
+      expect(button("Undo · Ctrl+Z").disabled).toBe(true);
+      expect(saved.slides[0].objects[0]).toEqual(deck.slides[0].objects[0]);
+      await key("Escape", {}, textarea);
+      expect(
+        host.querySelector('textarea[aria-label="Edit text on slide"]'),
+      ).toBeNull();
+      expect(status()).toBe("Recovered local copy");
+      expect(await persist()).toEqual(deck);
+      expect(button("Undo · Ctrl+Z").disabled).toBe(true);
+    },
+  );
+
   it("includes a pending inspector text size when saving and creates one undo step", async () => {
     const original = textObject({ fontSize: 8 });
     const deck = deckWith([original]);
@@ -956,5 +996,49 @@ describe("editing text directly on the slide", () => {
     expect(downloadBlob).toHaveBeenCalledTimes(1);
     await key("z", { ctrlKey: true });
     expect(await persist()).toEqual(deck);
+  });
+
+  it("keeps a new inline edit made during packaging out of the acknowledged file and checkpoints it as unsaved recovery", async () => {
+    const deck = deckWith([textObject()]);
+    await render(deck);
+    let finishPackaging!: (archive: Blob) => void;
+    vi.mocked(buildDeckArchive).mockImplementationOnce((snapshot) => {
+      packaged = structuredClone(snapshot);
+      return new Promise((resolve) => {
+        finishPackaging = resolve;
+      });
+    });
+    await key("s", { ctrlKey: true });
+    expect(
+      host.querySelector('[aria-label="Document save status"]')?.textContent,
+    ).toBe("Saving…");
+    const textarea = await edit();
+    await input(textarea, "New inline edit while packaging 한글");
+    expect(editor()).toBe(textarea);
+    expect(packaged?.slides[0].objects[0]).toMatchObject({
+      text: "Original title",
+    });
+    await act(async () => finishPackaging(new Blob(["earlier file snapshot"])));
+    expect(downloadBlob).toHaveBeenCalledOnce();
+    expect(
+      host.querySelector('textarea[aria-label="Edit text on slide"]'),
+    ).toBeNull();
+    expect(packaged?.slides[0].objects[0]).toMatchObject({
+      text: "Original title",
+    });
+    expect(saved.slides[0].objects[0]).toMatchObject({
+      text: "New inline edit while packaging 한글",
+    });
+    const context = vi.mocked(saveWorkspaceRecovery).mock.calls.at(-1)?.[2];
+    expect(context).toMatchObject({ unsaved: true });
+    expect(context).not.toHaveProperty("file");
+    expect(
+      host.querySelector('[aria-label="Document save status"]')?.textContent,
+    ).toBe("Unsaved changes");
+    await key("z", { ctrlKey: true });
+    expect(await persist()).toEqual(deck);
+    expect(
+      host.querySelector('[aria-label="Document save status"]')?.textContent,
+    ).toBe("Downloaded .scislide");
   });
 });

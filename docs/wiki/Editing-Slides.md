@@ -1,6 +1,6 @@
 # Editing slides
 
-These instructions describe the **0.6.9 development source**; use a newly built package for the changes below. Start with [[Getting-Started]] or see [[Keyboard-Shortcuts]] for platform-specific commands.
+These instructions describe the **0.6.10 development source**; use a newly built package for the changes below. Start with [[Getting-Started]] or see [[Keyboard-Shortcuts]] for platform-specific commands.
 
 ## Slides and layouts
 
@@ -86,9 +86,9 @@ Select an object and use **APPEARANCE STEPS** for step **0** (visible immediatel
 
 ## Recovery and saving
 
-Opening a file (including an OS file-open request or document drop), creating a new deck and closing the desktop editor offer **Save changes / Keep recovery and continue / Discard changes / Cancel** when needed. Each accepted document starts a separate Undo/Redo history and saving destination. A cancelled or failed read/save keeps the current document. Apply unfinished equation drafts before choosing Save changes to leave a document; drafts are not part of a portable deck save. Keep recovery and continue explicitly stores the latest local copy, including drafts, before switching. If that write fails, the current presentation stays open. Discard does not force a new recovery write; previously autosaved copies remain available until explicitly removed. The browser uses its own leave-page warning.
+Opening a file (including an OS file-open request or document drop), creating a new deck and closing the desktop editor offer **Save changes / Keep recovery and continue / Discard changes / Cancel** when needed. Each accepted document starts a separate Undo/Redo history and saving destination. A cancelled or failed read/save keeps the current document. Apply unfinished equation drafts before choosing Save changes to leave a document; drafts are not part of a portable deck save. Keep recovery and continue explicitly stores the latest local copy, including drafts, before switching. If that write fails, the current presentation stays open. Discard does not save the portable file; local recovery copies can remain available until explicitly removed. The browser uses its own leave-page warning.
 
-Automatic recovery chooses the newest valid timestamp across IndexedDB and localStorage, rather than preferring one storage backend. **Resume previous work** restores the current workspace. **File → Recovered documents**, also available on the startup screen, lists separate local copies of previously opened or created presentations. Autosaves update the copy for that work session; reopening the same file keeps the preceding session separately.
+Automatic recovery chooses the newest valid timestamp across IndexedDB and localStorage, rather than preferring one storage backend. **Resume previous work** restores the current workspace and reuses its recovery-history session. A saved or opened file reference appears as **Recovered saved copy**; known later edits appear as **Unsaved changes**. Older backups without a known save reference appear as **Recovered local copy**. The displayed filename does not restore permission to overwrite its original path; saving a resumed copy can require a native file dialog. **File → Recovered documents**, also available on the startup screen, lists separate local copies of previously opened or created presentations. Autosaves update the copy for that work session; opening the same file from disk starts a separate session.
 
 Open copy restores text, fonts, media, relationships and unfinished equation drafts into a fresh editing session with independent Undo/Redo. It starts without a file destination, so saving the copy cannot silently overwrite its original. A failed restore leaves the current presentation intact.
 

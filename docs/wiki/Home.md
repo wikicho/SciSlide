@@ -2,7 +2,7 @@
 
 SciSlide is a scientific presentation editor that combines visual slide composition with editable LaTeX equations. It runs in a browser or as an Electron desktop app.
 
-This wiki describes the **v0.6.9 development prerelease**. It adds content-fitting text boxes, partial colors, bullets, first-slide numbering, PDF build pages, saved user layouts and command favorites, with less repeated rendering and media-recovery work. PowerPoint export, editable starter themes, isolated Local LaTeX compilation on supported Linux/macOS systems and the headless agent CLI remain available. See [Keyboard shortcuts](Keyboard-Shortcuts) for the Keynote, PowerPoint and Impress platform profiles.
+This wiki describes the **v0.6.10 development prerelease**. Resuming a workspace retains its acknowledged save reference, while later unsaved edits and unapplied equation drafts still require attention before closing. The authoring controls and large-image improvements from 0.6.9 remain available, along with PowerPoint export, editable starter themes, isolated Local LaTeX compilation on supported Linux/macOS systems and the headless agent CLI. See [Keyboard shortcuts](Keyboard-Shortcuts) for the Keynote, PowerPoint and Impress platform profiles.
 
 ## Start here
 
@@ -31,8 +31,8 @@ For the formal Keynote mapping, routing contract, compatibility exceptions, and 
 
 ## Downloads and project
 
-- [Download v0.6.9](https://github.com/wikicho/SciSlide/releases/tag/v0.6.9) — macOS Apple Silicon/Intel, Windows x64, and Linux x64.
-- [Release notes](https://github.com/wikicho/SciSlide/blob/v0.6.9/docs/releases/v0.6.9.md).
+- [Download v0.6.10](https://github.com/wikicho/SciSlide/releases/tag/v0.6.10) — macOS Apple Silicon/Intel, Windows x64, and Linux x64.
+- [Release notes](https://github.com/wikicho/SciSlide/blob/v0.6.10/docs/releases/v0.6.10.md).
 - [Source repository](https://github.com/wikicho/SciSlide).
 - [Report a problem](https://github.com/wikicho/SciSlide/issues).
 

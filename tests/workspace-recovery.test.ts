@@ -9,7 +9,10 @@ import {
   validateWorkspaceRecovery,
   WORKSPACE_RECOVERY_KEY,
 } from "../src/lib/workspace-recovery";
-import type { RecoveredEquationDraft } from "../src/lib/workspace-recovery";
+import type {
+  RecoveryContext,
+  RecoveredEquationDraft,
+} from "../src/lib/workspace-recovery";
 
 /** Minimal transactional test database: writes become visible only on commit. */
 function testIndexedDB() {
@@ -117,6 +120,219 @@ describe("complete workspace recovery", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it.each(["indexeddb", "localStorage"] as const)(
+    "round-trips file provenance, stable session, media and local drafts through %s without sharing caller context",
+    async (backend) => {
+      const mock = testIndexedDB();
+      vi.stubGlobal(
+        "indexedDB",
+        backend === "indexeddb" ? mock.factory : undefined,
+      );
+      const deck = createDemoDeck(),
+        draft = unappliedDraft(deck);
+      const context: RecoveryContext = {
+        file: { name: "연구 results.scislide", kind: "saved" },
+        sessionId: "resumed-session_1",
+      };
+      const saving = saveWorkspaceRecovery(deck, [draft], context);
+      context.file!.name = "Mutated after calling save.scislide";
+      context.file!.kind = "opened";
+      context.sessionId = "different-session";
+      draft.draft.latex = "mutated after save";
+      expect(await saving).toBe(backend);
+      const loaded = (await loadWorkspaceRecovery())!;
+      expect(loaded.file).toEqual({
+        name: "연구 results.scislide",
+        kind: "saved",
+      });
+      expect(loaded.sessionId).toBe("resumed-session_1");
+      expect(loaded.deck.slides).toEqual(deck.slides);
+      expect(loaded.deck.assets).toHaveLength(deck.assets.length);
+      expect(loaded.equationDrafts[0].draft.latex).toBe(
+        String.raw`\alpha + \beta`,
+      );
+      expect(loaded.file).not.toBe(context.file);
+      const stored =
+        backend === "indexeddb"
+          ? mock.state.value
+          : JSON.parse(localStorage.getItem(WORKSPACE_RECOVERY_KEY)!);
+      expect(stored).toMatchObject({
+        file: loaded.file,
+        sessionId: loaded.sessionId,
+      });
+      expect(Object.keys(stored as object).sort()).toEqual([
+        "deck",
+        "equationDrafts",
+        "file",
+        "savedAt",
+        "sessionId",
+      ]);
+    },
+  );
+
+  it.each(["saved", "opened", "downloaded"] as const)(
+    "preserves the %s acknowledgement and strips unrelated file metadata",
+    (kind) => {
+      const deck = createDemoDeck();
+      const loaded = validateWorkspaceRecovery({
+        deck,
+        equationDrafts: [],
+        savedAt: "2026-11-18T00:00:00.000Z",
+        file: {
+          name: "A".repeat(1000),
+          kind,
+          path: "/untrusted/file",
+          mime: "application/x-test",
+        },
+        sessionId: "a".repeat(128),
+      });
+      expect(loaded.file).toEqual({ name: "A".repeat(1000), kind });
+      expect(loaded.sessionId).toBe("a".repeat(128));
+    },
+  );
+
+  it.each([
+    null,
+    [],
+    { name: "", kind: "saved" },
+    { name: "   ", kind: "saved" },
+    { name: "A".repeat(1001), kind: "saved" },
+    { name: "nul\0name.scislide", kind: "saved" },
+    { name: "Saved.scislide", kind: "not-saved" },
+  ])(
+    "omits malformed file provenance %j without losing the deck or its local draft",
+    (file) => {
+      const deck = createDemoDeck(),
+        draft = unappliedDraft(deck);
+      const recovered = validateWorkspaceRecovery({
+        deck,
+        equationDrafts: [draft],
+        savedAt: draft.updatedAt,
+        file,
+        sessionId: "valid-session",
+      });
+      expect(recovered).not.toHaveProperty("file");
+      expect(recovered.sessionId).toBe("valid-session");
+      expect(recovered.deck.slides).toEqual(deck.slides);
+      expect(recovered.equationDrafts).toEqual([draft]);
+    },
+  );
+
+  it.each([null, 123, "", "_wrong-start", "path/to/file", "a".repeat(129)])(
+    "omits malformed session identity %j while retaining valid file provenance",
+    (sessionId) => {
+      const deck = createDemoDeck();
+      const file = { name: "Saved.scislide", kind: "saved" };
+      const recovered = validateWorkspaceRecovery({
+        deck,
+        equationDrafts: [],
+        savedAt: "2026-11-18T00:00:00.000Z",
+        file,
+        sessionId,
+      });
+      expect(recovered).not.toHaveProperty("sessionId");
+      expect(recovered.file).toEqual(file);
+      expect(recovered.deck.slides).toEqual(deck.slides);
+    },
+  );
+
+  it("discards cyclic unknown optional metadata before byte counting so valid work remains recoverable", () => {
+    const deck = createDemoDeck(),
+      draft = unappliedDraft(deck);
+    const file: Record<string, unknown> = {
+      name: "Known.scislide",
+      kind: "opened",
+    };
+    file.extra = file;
+    const sessionId: Record<string, unknown> = {};
+    sessionId.self = sessionId;
+    const recovered = validateWorkspaceRecovery({
+      deck,
+      equationDrafts: [draft],
+      savedAt: draft.updatedAt,
+      file,
+      sessionId,
+    });
+    expect(recovered.file).toEqual({ name: "Known.scislide", kind: "opened" });
+    expect(recovered).not.toHaveProperty("sessionId");
+    expect(recovered.equationDrafts).toEqual([draft]);
+  });
+
+  it.each(["indexeddb", "localStorage"] as const)(
+    "keeps old calls unchanged and replaces acknowledged provenance with dirty state on %s",
+    async (backend) => {
+      const mock = testIndexedDB();
+      vi.stubGlobal(
+        "indexedDB",
+        backend === "indexeddb" ? mock.factory : undefined,
+      );
+      const deck = createDemoDeck();
+      await saveWorkspaceRecovery(deck, [], {
+        file: { name: "Saved.scislide", kind: "saved" },
+        sessionId: "session-a",
+      });
+      await saveWorkspaceRecovery({ ...deck, title: "Unsaved after save" });
+      const loaded = (await loadWorkspaceRecovery())!;
+      expect(Object.keys(loaded).sort()).toEqual([
+        "deck",
+        "equationDrafts",
+        "savedAt",
+      ]);
+      expect(loaded.deck.title).toBe("Unsaved after save");
+      expect(loaded).not.toHaveProperty("file");
+      expect(loaded).not.toHaveProperty("sessionId");
+    },
+  );
+
+  it.each(["indexeddb", "localStorage"] as const)(
+    "preserves an explicit unsaved snapshot and drops conflicting saved provenance in %s",
+    async (backend) => {
+      const mock = testIndexedDB();
+      vi.stubGlobal(
+        "indexedDB",
+        backend === "indexeddb" ? mock.factory : undefined,
+      );
+      const deck = createDemoDeck(),
+        draft = unappliedDraft(deck);
+      const context: RecoveryContext = {
+        file: { name: "Older saved.scislide", kind: "saved" },
+        sessionId: "known-dirty-session",
+        unsaved: true,
+      };
+      const saving = saveWorkspaceRecovery(deck, [draft], context);
+      delete context.unsaved;
+      await saving;
+      const loaded = (await loadWorkspaceRecovery())!;
+      expect(loaded.unsaved).toBe(true);
+      expect(loaded).not.toHaveProperty("file");
+      expect(loaded.sessionId).toBe("known-dirty-session");
+      expect(loaded.deck.slides).toEqual(deck.slides);
+      expect(loaded.equationDrafts).toEqual([draft]);
+    },
+  );
+
+  it("does not infer dirty provenance from false or malformed flags, including cyclic metadata", () => {
+    const deck = createDemoDeck();
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    for (const unsaved of [false, "true", 1, cyclic]) {
+      const loaded = validateWorkspaceRecovery({
+        deck,
+        equationDrafts: [],
+        savedAt: "2026-11-18T00:00:00.000Z",
+        file: { name: "Acknowledged.scislide", kind: "opened" },
+        sessionId: "stable-session",
+        unsaved,
+      });
+      expect(loaded).not.toHaveProperty("unsaved");
+      expect(loaded.file).toEqual({
+        name: "Acknowledged.scislide",
+        kind: "opened",
+      });
+      expect(loaded.deck.slides).toEqual(deck.slides);
+    }
   });
 
   it("preserves complete media and unapplied equation source in IndexedDB", async () => {

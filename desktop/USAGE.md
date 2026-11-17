@@ -1,4 +1,4 @@
-# SciSlide 0.6.9 — Linux x64 standalone app
+# SciSlide 0.6.10 — Linux x64 standalone app
 
 Run the `scislide` executable in this folder. Keep the Electron runtime files together. Node.js, TeX and a development server are not required for MathJax editing.
 
@@ -6,9 +6,9 @@ Run the `scislide` executable in this folder. Keep the Electron runtime files to
 ./scislide
 ```
 
-For system installation, the separate `SciSlide-0.6.9-linux-x64.deb` adds a desktop launcher and icon. Install it with `sudo apt install ./SciSlide-0.6.9-linux-x64.deb`, then launch `scislide`. Ubuntu 24.04 x64 is the packaging target; Debian calls the architecture `amd64`. No SciSlide APT repository or Snap package is currently provided.
+For system installation, the separate `SciSlide-0.6.10-linux-x64.deb` adds a desktop launcher and icon. Install it with `sudo apt install ./SciSlide-0.6.10-linux-x64.deb`, then launch `scislide`. Ubuntu 24.04 x64 is the packaging target; Debian calls the architecture `amd64`. No SciSlide APT repository or Snap package is currently provided.
 
-Version **0.6.9** adds content-fitting text boxes, partial colors, editable bullets, first-slide numbering, PDF animation-step pages, reusable user layouts and local command favorites. Rendering and recovery reuse unchanged content to reduce work in image-heavy documents. See the [release notes](https://github.com/wikicho/SciSlide/blob/v0.6.9/docs/releases/v0.6.9.md) for the changes and validation limits.
+Version **0.6.10** preserves acknowledged file-save state when resuming a workspace and checkpoints current work before closing. Later edits remain unsaved, and unapplied equation drafts stay separate from portable files. The authoring controls and image-heavy document improvements introduced in 0.6.9 remain available. See the [release notes](https://github.com/wikicho/SciSlide/blob/v0.6.10/docs/releases/v0.6.10.md) for the changes and validation limits.
 
 ## Update CLI
 
@@ -18,7 +18,7 @@ Portable builds include `bin/scislide`; Debian packages expose it as `scislide`.
 
 ## Headless agent commands
 
-v0.6.3.1 includes `schema`, `create`, `inspect`, `validate`, `apply`, `unpack`, `pack` and `export`. Run `scislide --cli schema` to discover native objects and edit operations. These commands return JSON and create/edit `.scislide` documents or export SVG/PDF without an editor window or a separate Node installation. Use the launcher path above when `scislide` is not on PATH. See the [agent CLI guide](https://github.com/wikicho/SciSlide/blob/v0.6.9/docs/AGENT_CLI.md) for examples and export limits.
+v0.6.3.1 includes `schema`, `create`, `inspect`, `validate`, `apply`, `unpack`, `pack` and `export`. Run `scislide --cli schema` to discover native objects and edit operations. These commands return JSON and create/edit `.scislide` documents or export SVG/PDF without an editor window or a separate Node installation. Use the launcher path above when `scislide` is not on PATH. See the [agent CLI guide](https://github.com/wikicho/SciSlide/blob/v0.6.10/docs/AGENT_CLI.md) for examples and export limits.
 
 ## Start and edit a presentation
 

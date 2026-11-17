@@ -7,7 +7,10 @@ import {
   validateWorkspaceRecovery,
   WORKSPACE_RECOVERY_KEY,
 } from "../src/lib/workspace-recovery";
-import type { RecoveredEquationDraft } from "../src/lib/workspace-recovery";
+import type {
+  RecoveryContext,
+  RecoveredEquationDraft,
+} from "../src/lib/workspace-recovery";
 import {
   deleteDocumentRecovery,
   listDocumentRecoveries,
@@ -169,6 +172,26 @@ function entry(id: string, title: string, savedAt: string) {
     }),
   };
 }
+function localDraft(source: Deck): RecoveredEquationDraft {
+  const slide = source.slides.find((item) =>
+    item.objects.some((object) => object.type === "equation"),
+  )!;
+  return {
+    deckId: source.id,
+    slideId: slide.id,
+    equationId: slide.objects.find((object) => object.type === "equation")!.id,
+    updatedAt: "2026-11-18T00:00:00.000Z",
+    draft: {
+      latex: "x=unapplied",
+      font: "mathjax-fira",
+      size: 52,
+      color: "#123456",
+      renderer: "mathjax",
+      engine: "latex",
+      preamble: "",
+    },
+  };
+}
 const snapshot = (records: unknown[]) => ({ version: 1, records });
 async function microtasks() {
   for (let i = 0; i < 30; i++) await Promise.resolve();
@@ -181,6 +204,158 @@ afterEach(() => {
 });
 
 describe("document recovery history", () => {
+  it.each(["indexeddb", "localStorage"] as const)(
+    "round-trips immutable acknowledged-file context and local drafts through history %s",
+    async (backend) => {
+      const mock = testIndexedDB();
+      vi.stubGlobal(
+        "indexedDB",
+        backend === "indexeddb" ? mock.factory : undefined,
+      );
+      const source = createDemoDeck(),
+        draft = localDraft(source);
+      const context: RecoveryContext = {
+        file: { name: "저장된 talk.scislide", kind: "saved" },
+        sessionId: "stable-session",
+      };
+      const saving = saveDocumentRecovery(
+        "stable-session",
+        source,
+        [draft],
+        context,
+      );
+      context.file!.name = "Wrong later name.scislide";
+      context.file!.kind = "downloaded";
+      context.sessionId = "later-session";
+      draft.draft.latex = "later unsaved source";
+      expect(await saving).toBe(backend);
+      const recovered = (await loadDocumentRecovery("stable-session"))!;
+      expect(recovered.file).toEqual({
+        name: "저장된 talk.scislide",
+        kind: "saved",
+      });
+      expect(recovered.sessionId).toBe("stable-session");
+      expect(recovered.deck.slides).toEqual(source.slides);
+      expect(recovered.deck.assets).toHaveLength(source.assets.length);
+      expect(recovered.equationDrafts[0].draft.latex).toBe("x=unapplied");
+      expect(recovered.file).not.toBe(context.file);
+      const listing = await listDocumentRecoveries();
+      expect(listing.unavailableCount).toBe(0);
+      expect(listing.entries).toHaveLength(1);
+      expect(listing.entries[0].bytes).toBe(
+        new TextEncoder().encode(JSON.stringify(recovered)).length,
+      );
+      const stored =
+        backend === "indexeddb"
+          ? (mock.state.value as { records: unknown[] }).records[0]
+          : JSON.parse(
+              localStorage.getItem(
+                RECOVERY_HISTORY_ENTRY_PREFIX + "stable-session",
+              )!,
+            );
+      expect(stored).toMatchObject({
+        recovery: { file: recovered.file, sessionId: "stable-session" },
+      });
+    },
+  );
+
+  it.each(["indexeddb", "localStorage"] as const)(
+    "loads actual deck and drafts with dirty provenance when optional metadata is damaged in %s",
+    async (backend) => {
+      const mock = testIndexedDB();
+      vi.stubGlobal(
+        "indexedDB",
+        backend === "indexeddb" ? mock.factory : undefined,
+      );
+      const source = createDemoDeck(),
+        draft = localDraft(source);
+      const record = {
+        id: "damaged-context",
+        savedAt: draft.updatedAt,
+        recovery: {
+          deck: source,
+          equationDrafts: [draft],
+          savedAt: draft.updatedAt,
+          file: { name: "Saved.scislide", kind: "unknown" },
+          sessionId: "not/a/session",
+        },
+      };
+      if (backend === "indexeddb")
+        mock.state.value = snapshot([structuredClone(record)]);
+      else
+        localStorage.setItem(
+          RECOVERY_HISTORY_ENTRY_PREFIX + record.id,
+          JSON.stringify(record),
+        );
+      const recovered = (await loadDocumentRecovery(record.id))!;
+      expect(recovered.deck.slides).toEqual(source.slides);
+      expect(recovered.equationDrafts).toEqual([draft]);
+      expect(recovered).not.toHaveProperty("file");
+      expect(recovered).not.toHaveProperty("sessionId");
+      expect((await listDocumentRecoveries()).unavailableCount).toBe(0);
+      const original =
+        backend === "indexeddb"
+          ? (mock.state.value as { records: unknown[] }).records[0]
+          : JSON.parse(
+              localStorage.getItem(RECOVERY_HISTORY_ENTRY_PREFIX + record.id)!,
+            );
+      expect(original).toEqual(record);
+    },
+  );
+
+  it.each(["indexeddb", "localStorage"] as const)(
+    "keeps legacy history calls metadata-free and removes stale acknowledgements on update in %s",
+    async (backend) => {
+      const mock = testIndexedDB();
+      vi.stubGlobal(
+        "indexedDB",
+        backend === "indexeddb" ? mock.factory : undefined,
+      );
+      await saveDocumentRecovery("updating-session", deck(), [], {
+        file: { name: "Saved.scislide", kind: "opened" },
+        sessionId: "updating-session",
+      });
+      await saveDocumentRecovery(
+        "updating-session",
+        deck("New unsaved edit"),
+        [],
+      );
+      const recovered = (await loadDocumentRecovery("updating-session"))!;
+      expect(recovered.deck.title).toBe("New unsaved edit");
+      expect(Object.keys(recovered).sort()).toEqual([
+        "deck",
+        "equationDrafts",
+        "savedAt",
+      ]);
+      expect(recovered).not.toHaveProperty("file");
+      expect(recovered).not.toHaveProperty("sessionId");
+    },
+  );
+
+  it.each(["indexeddb", "localStorage"] as const)(
+    "retains explicit unsaved context instead of a conflicting file acknowledgement in history %s",
+    async (backend) => {
+      const mock = testIndexedDB();
+      vi.stubGlobal(
+        "indexedDB",
+        backend === "indexeddb" ? mock.factory : undefined,
+      );
+      const source = createDemoDeck(),
+        draft = localDraft(source);
+      await saveDocumentRecovery("dirty-session", source, [draft], {
+        file: { name: "Older.scislide", kind: "saved" },
+        sessionId: "dirty-session",
+        unsaved: true,
+      });
+      const loaded = (await loadDocumentRecovery("dirty-session"))!;
+      expect(loaded.unsaved).toBe(true);
+      expect(loaded).not.toHaveProperty("file");
+      expect(loaded.sessionId).toBe("dirty-session");
+      expect(loaded.deck.slides).toEqual(source.slides);
+      expect(loaded.equationDrafts).toEqual([draft]);
+    },
+  );
+
   it("keeps separate sessions for the same deck ID, updates only one session, and returns useful newest-first summaries", async () => {
     const mock = testIndexedDB();
     vi.stubGlobal("indexedDB", mock.factory);

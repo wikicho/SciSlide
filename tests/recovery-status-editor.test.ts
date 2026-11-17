@@ -183,11 +183,16 @@ describe("workspace and document-history status in the editor", () => {
     await start();
     await tick();
 
-    expect(saveWorkspaceRecovery).toHaveBeenCalledWith(initial, []);
+    const context = expect.objectContaining({
+      sessionId: expect.any(String),
+      unsaved: true,
+    });
+    expect(saveWorkspaceRecovery).toHaveBeenCalledWith(initial, [], context);
     expect(saveDocumentRecovery).toHaveBeenCalledWith(
       expect.any(String),
       initial,
       [],
+      context,
     );
     expect(status()).toMatch(/saved.*history needs attention/i);
     expect(findButton("Review recovered documents")).toBeTruthy();
