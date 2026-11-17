@@ -1,3 +1,4 @@
+import { jsonMediaByteLength } from "./json-media-size";
 import { FONT_SET_IDS, MAX_VIDEO_BYTES, validateDeck } from "./model";
 import type { Deck, FontSetId, LocalTexEngine } from "./model";
 import { MAX_FIGURE_BYTES, sanitizeSvg } from "./persistence";
@@ -84,8 +85,39 @@ export function validateEquationDraft(value: unknown): EquationDraft {
   };
 }
 
+// Immutable media content can be shared by many edits and both recovery stores.
+// Bound retained strings; changes to bytes or declared MIME always revalidate.
+const mediaCache = new Map<
+  string,
+  { mime: string; dataUrl: string; characters: number }
+>();
+const MEDIA_CACHE_CHARACTERS = 128 * 1024 * 1024;
+let mediaCacheCharacters = 0;
+function rememberMedia(source: string, mime: string, dataUrl: string) {
+  const characters = source.length + (source === dataUrl ? 0 : dataUrl.length);
+  if (characters > MEDIA_CACHE_CHARACTERS) return;
+  while (
+    mediaCache.size &&
+    (mediaCache.size >= 128 ||
+      mediaCacheCharacters + characters > MEDIA_CACHE_CHARACTERS)
+  ) {
+    const oldest = mediaCache.keys().next().value!;
+    mediaCacheCharacters -= mediaCache.get(oldest)!.characters;
+    mediaCache.delete(oldest);
+  }
+  mediaCache.set(source, { mime, dataUrl, characters });
+  mediaCacheCharacters += characters;
+}
 function sanitizeMedia(deck: Deck): Deck {
   deck.assets = deck.assets.map((asset) => {
+    const cached = mediaCache.get(asset.dataUrl);
+    if (cached && cached.mime === asset.mime) {
+      mediaCache.delete(asset.dataUrl);
+      mediaCache.set(asset.dataUrl, cached);
+      return cached.dataUrl === asset.dataUrl
+        ? asset
+        : { ...asset, dataUrl: cached.dataUrl };
+    }
     const match = /^data:([^;,]+)([^,]*),([\s\S]*)$/.exec(asset.dataUrl);
     if (!match || match[1] !== asset.mime)
       throw new Error("Recovery media is invalid.");
@@ -93,6 +125,20 @@ function sanitizeMedia(deck: Deck): Deck {
     if (match[2].split(";").includes("base64")) {
       if (!/^[a-zA-Z0-9+/]*={0,2}$/.test(match[3]) || match[3].length % 4)
         throw new Error("Recovery media contains invalid base64.");
+      // Raster/video recovery only needs the decoded size, not a second copy
+      // of every byte. SVG still decodes and sanitizes its complete contents.
+      if (asset.mime !== "image/svg+xml") {
+        const decodedLength =
+          (match[3].length * 3) / 4 -
+          (match[3].endsWith("==") ? 2 : match[3].endsWith("=") ? 1 : 0);
+        if (
+          decodedLength >
+          (asset.mime.startsWith("video/") ? MAX_VIDEO_BYTES : MAX_FIGURE_BYTES)
+        )
+          throw new Error("Recovery media exceeds the supported size limit.");
+        rememberMedia(asset.dataUrl, asset.mime, asset.dataUrl);
+        return asset;
+      }
       const binary = atob(match[3]);
       bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
     } else bytes = new TextEncoder().encode(decodeURIComponent(match[3]));
@@ -101,14 +147,19 @@ function sanitizeMedia(deck: Deck): Deck {
       (asset.mime.startsWith("video/") ? MAX_VIDEO_BYTES : MAX_FIGURE_BYTES)
     )
       throw new Error("Recovery media exceeds the supported size limit.");
-    if (asset.mime !== "image/svg+xml") return asset;
+    if (asset.mime !== "image/svg+xml") {
+      rememberMedia(asset.dataUrl, asset.mime, asset.dataUrl);
+      return asset;
+    }
     const clean = new TextEncoder().encode(
       sanitizeSvg(new TextDecoder("utf-8", { fatal: true }).decode(bytes)),
     );
     let binary = "";
     for (let i = 0; i < clean.length; i += 0x8000)
       binary += String.fromCharCode(...clean.subarray(i, i + 0x8000));
-    return { ...asset, dataUrl: `data:image/svg+xml;base64,${btoa(binary)}` };
+    const dataUrl = `data:image/svg+xml;base64,${btoa(binary)}`;
+    rememberMedia(asset.dataUrl, asset.mime, dataUrl);
+    return { ...asset, dataUrl };
   });
   return deck;
 }
@@ -118,8 +169,7 @@ export function validateWorkspaceRecovery(value: unknown): WorkspaceRecovery {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("Workspace recovery is invalid.");
   const raw = value as WorkspaceRecovery;
-  const source = JSON.stringify(raw);
-  if (new TextEncoder().encode(source).length > MAX_WORKSPACE_RECOVERY_BYTES)
+  if (jsonMediaByteLength(raw) > MAX_WORKSPACE_RECOVERY_BYTES)
     throw new Error(
       "자동 복구 데이터가 100 MB 한도를 초과했습니다. 파일로 저장해주세요.",
     );
@@ -159,10 +209,7 @@ export function validateWorkspaceRecovery(value: unknown): WorkspaceRecovery {
     equationDrafts: [...unique.values()],
     savedAt: timestamp(raw.savedAt),
   };
-  if (
-    new TextEncoder().encode(JSON.stringify(recovery)).length >
-    MAX_WORKSPACE_RECOVERY_BYTES
-  )
+  if (jsonMediaByteLength(recovery) > MAX_WORKSPACE_RECOVERY_BYTES)
     throw new Error(
       "자동 복구 데이터가 100 MB 한도를 초과했습니다. 파일로 저장해주세요.",
     );

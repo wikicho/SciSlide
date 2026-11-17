@@ -7,6 +7,7 @@ import {
   shortcutLabel,
 } from "../lib/shortcuts";
 import type { KeyboardPlatform } from "../lib/shortcuts";
+import { EquationSourceTools } from "./EquationSourceTools";
 import "./EquationEditorDialog.css";
 
 export function EquationEditorDialog({
@@ -16,6 +17,10 @@ export function EquationEditorDialog({
   canApply,
   applying,
   suspended = false,
+  source,
+  renderer,
+  preamble,
+  onSourceChange,
   onApply,
   onCompile,
   onClose,
@@ -26,6 +31,10 @@ export function EquationEditorDialog({
   canApply: boolean;
   applying: boolean;
   suspended?: boolean;
+  source?: string;
+  renderer?: "mathjax" | "local-latex";
+  preamble?: string;
+  onSourceChange?: (source: string, preamble?: string) => void;
   onApply: () => void;
   onCompile: () => void;
   onClose: () => void;
@@ -88,9 +97,14 @@ export function EquationEditorDialog({
         } else if (event.key === "Tab") {
           const controls = Array.from(
             dialog.current?.querySelectorAll<HTMLElement>(
-              "button:enabled, textarea:enabled, input:enabled, select:enabled, [tabindex='0']",
+              "button:enabled, textarea:enabled, input:enabled, select:enabled, summary, [tabindex='0']",
             ) ?? [],
-          ).filter((control) => !control.closest("[hidden]"));
+          ).filter(
+            (control) =>
+              !control.closest("[hidden]") &&
+              (control.matches("summary") ||
+                !control.closest("details:not([open])")),
+          );
           const first = controls[0],
             last = controls.at(-1);
           if (event.shiftKey && document.activeElement === first) {
@@ -156,6 +170,16 @@ export function EquationEditorDialog({
             <X size={19} aria-hidden="true" />
           </button>
         </header>
+        {source !== undefined && onSourceChange && (
+          <EquationSourceTools
+            sourceRef={sourceRef}
+            source={source}
+            renderer={renderer}
+            preamble={preamble}
+            onSourceChange={onSourceChange}
+            disabled={applying || suspended}
+          />
+        )}
         <fieldset className="equation-editor-content" disabled={applying}>
           {children}
         </fieldset>

@@ -278,16 +278,15 @@ export function objectBounds(
     return boundsOfPoints([endpoints.start, endpoints.end]);
   }
   const t = object.transform;
-  const width =
-    object.type === "text" ? t.width : (dimensions?.width ?? t.width);
-  const height =
-    object.type === "text"
-      ? Math.max(t.height, dimensions?.height ?? t.height)
-      : (dimensions?.height ?? t.height);
-  // Growing the text's hit/selection frame must not move its rendered content.
+  const legacyText = object.type === "text" && object.autoFit !== "content";
+  const width = legacyText ? t.width : (dimensions?.width ?? t.width);
+  const height = legacyText
+    ? Math.max(t.height, dimensions?.height ?? t.height)
+    : (dimensions?.height ?? t.height);
+  // Legacy overflow keeps its stored center; content-fit text derives its box.
   const center = {
     x: t.x + width / 2,
-    y: t.y + (object.type === "text" ? t.height : height) / 2,
+    y: t.y + (legacyText ? t.height : height) / 2,
   };
   return boundsOfPoints(
     [

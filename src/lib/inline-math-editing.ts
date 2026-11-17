@@ -123,7 +123,8 @@ export function applyInlineEquationEdit(
     (range.opening === "\\(" && range.closing === "\\)")
   ))
     throw new Error("The inline equation has incompatible delimiters.");
-  const replacement = range.opening + latex + range.closing;
+  const multiline = /[\r\n]/.test(latex) && range.opening === "$";
+  const replacement = (multiline ? "\\(" : range.opening) + latex + (multiline ? "\\)" : range.closing);
   const value =
     source.slice(0, range.start) + replacement + source.slice(range.end);
   const spans = checkedSpans(value);

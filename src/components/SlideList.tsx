@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Deck } from "../lib/model";
-import { SlideScene } from "./SlideScene";
+import { DeferredSlideScene } from "./DeferredSlideScene";
 
 type DropPosition = { slideId: string; edge: "before" | "after" };
 type SlideDrag = {
@@ -241,9 +241,13 @@ export function SlideList({
           <span className="slide-number">
             {String(index + 1).padStart(2, "0")}
           </span>
-          <span className="thumbnail">
-            <SlideScene deck={deck} slide={slide} slideIndex={index} />
-          </span>
+          <DeferredSlideScene
+            deck={deck}
+            slide={slide}
+            slideIndex={index}
+            rootRef={list}
+            className="thumbnail"
+          />
           <span className="thumbnail-title">
             {slide.title || "Untitled slide"}
           </span>

@@ -20,6 +20,7 @@ import {
   sanitizeSvg,
 } from "../lib/persistence";
 import { validateDeck, type Deck } from "../lib/model";
+import { getPdfExportPages } from "../lib/export";
 import {
   agentSchema,
   applyAgentOperations,
@@ -85,6 +86,7 @@ const commandOptions: Record<string, Record<string, "value" | "boolean">> = {
     format: "value",
     slide: "value",
     overwrite: "boolean",
+    "build-steps": "boolean",
   },
 };
 
@@ -102,6 +104,7 @@ Usage:
   scislide pack deck.json --output talk.scislide
   scislide export talk.scislide --format svg --slide 1 --output slide.svg
   scislide export talk.scislide --format pdf --output talk.pdf
+  scislide export talk.scislide --format pdf --build-steps --output talk-builds.pdf
 
 Prefix a command with --cli to keep even unknown commands headless.
 Commands return one JSON result on stdout; failures return JSON on stderr.
@@ -709,6 +712,10 @@ export async function runAgentCli(
             throw new CliError(
               "PDF exports the entire deck; use --slide with SVG.",
             );
+          if (format !== "pdf" && options["build-steps"])
+            throw new CliError(
+              "--build-steps is supported only for PDF export.",
+            );
           const index = slideIndex(deck, value(options, "slide") ?? "1");
           const bytes =
             format === "svg"
@@ -717,10 +724,25 @@ export async function runAgentCli(
                     fontsDir: dependencies.fontsDir,
                   }),
                 )
-              : await renderAgentPdf(deck, { fontsDir: dependencies.fontsDir });
+              : await renderAgentPdf(deck, {
+                  fontsDir: dependencies.fontsDir,
+                  includeBuildSteps: !!options["build-steps"],
+                });
           result = {
             ...(await writeFileAtomic(output, bytes, !!options.overwrite)),
             format,
+            ...(format === "pdf"
+              ? {
+                  pages: getPdfExportPages(deck, !!options["build-steps"]).map(
+                    ({ slideIndex, presentationStep }) => ({
+                      slide: slideIndex + 1,
+                      ...(presentationStep === undefined
+                        ? {}
+                        : { buildStep: presentationStep }),
+                    }),
+                  ),
+                }
+              : {}),
             slides:
               format === "svg"
                 ? [index + 1]

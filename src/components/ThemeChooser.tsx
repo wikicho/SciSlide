@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { createThemeDeck, DECK_THEMES } from "../lib/deck-themes";
 import type { DeckThemeId } from "../lib/deck-themes";
-import { SlideScene } from "./SlideScene";
+import { DeferredSlideScene } from "./DeferredSlideScene";
 import "./ThemeChooser.css";
 
 export function ThemeChooser({
@@ -223,7 +223,7 @@ export function ThemeChooser({
                 onKeyDown={(event) => selectWithKeyboard(event, index)}
               >
                 <span className="theme-chooser-preview" aria-hidden="true">
-                  <SlideScene
+                  <DeferredSlideScene
                     deck={preview.deck}
                     slide={preview.deck.slides[0]}
                   />

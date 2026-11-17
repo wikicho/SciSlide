@@ -7,6 +7,7 @@ import {
   hasInlineMath,
   inlinePlainText,
   layoutInlineText,
+  needsInlineTextLayout,
 } from "./inline-math";
 import { wrapText } from "./layout";
 import { shapeGeometry } from "./shape-geometry";
@@ -182,7 +183,7 @@ async function addText(
   object: TextObject,
   deck: Deck,
 ) {
-  if (!hasInlineMath(object.text)) {
+  if (!needsInlineTextLayout(object)) {
     const text = normalizeRenderedText(inlinePlainText(object.text));
     const requestedFamily = effectiveTextFontFamily(deck, object);
     const family = exportTextFontFamily(text, requestedFamily);
@@ -205,7 +206,53 @@ async function addText(
   }
 
   const layout = await layoutInlineText(object, deck);
-  const options = textOptions(object, layout.fontFamily, layout.fontWeight);
+  const laidOutObject: TextObject =
+    object.autoFit === "content"
+      ? {
+          ...object,
+          transform: {
+            ...object.transform,
+            width: layout.width,
+            height: layout.height,
+          },
+        }
+      : object;
+  const options = textOptions(
+    laidOutObject,
+    layout.fontFamily,
+    layout.fontWeight,
+  );
+  if (!hasInlineMath(object.text)) {
+    // Preserve one editable native paragraph shape, including measured line
+    // breaks and per-range colors, when no equation needs a separate SVG.
+    const runs: PptxGenJS.TextProps[] = [];
+    for (const [lineIndex, line] of layout.lines.entries()) {
+      const textRuns = line.runs.filter((run) => run.type === "text");
+      if (!textRuns.length) {
+        runs.push({
+          text: "",
+          options: {
+            ...paint(object.color, object.opacity),
+            breakLine: lineIndex < layout.lines.length - 1,
+          },
+        });
+        continue;
+      }
+      for (const [runIndex, run] of textRuns.entries()) {
+        runs.push({
+          text: normalizeRenderedText(run.text),
+          options: {
+            ...paint(run.color ?? object.color, object.opacity),
+            breakLine:
+              runIndex === textRuns.length - 1 &&
+              lineIndex < layout.lines.length - 1,
+          },
+        });
+      }
+    }
+    target.addText(runs, options);
+    return;
+  }
   for (const [lineIndex, line] of layout.lines.entries()) {
     for (const [runIndex, run] of line.runs.entries()) {
       const objectName = `${object.name} (${lineIndex + 1}.${runIndex + 1})`;
@@ -214,7 +261,7 @@ async function addText(
           ...options,
           ...position(
             fragmentTransform(
-              object.transform,
+              laidOutObject.transform,
               run.x,
               line.baseline - object.fontSize,
               Math.max(0.01, run.width),
@@ -222,6 +269,7 @@ async function addText(
             ),
           ),
           align: "left",
+          ...paint(run.color ?? object.color, object.opacity),
           // Each fragment has one line. Exact paragraph leading would push
           // its baseline down relative to the neighboring SVG equation.
           lineSpacing: undefined,
@@ -238,7 +286,7 @@ async function addText(
           data: svgData(svg),
           ...position(
             fragmentTransform(
-              object.transform,
+              laidOutObject.transform,
               run.x,
               run.y,
               run.width,

@@ -1,0 +1,66 @@
+.equation-source-tools {
+  flex: 0 1 auto;
+  min-height: 0;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 24px;
+  border: 0;
+  border-bottom: 1px solid var(--line, #d8e3e9);
+  overflow: auto;
+  max-height: 250px;
+  font-size: 12px;
+}
+.equation-source-tools legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.equation-source-color,
+.equation-macro-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.equation-source-color label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.equation-source-color input[type="color"] {
+  width: 30px;
+  height: 28px;
+  padding: 2px;
+}
+.equation-source-tools summary {
+  cursor: pointer;
+  padding: 8px 0 2px;
+  font-weight: 600;
+}
+.equation-macro-fields {
+  display: grid;
+  gap: 8px;
+  padding: 10px 0;
+}
+.equation-macro-fields label {
+  display: grid;
+  gap: 4px;
+}
+.equation-macro-fields input,
+.equation-macro-fields select,
+.equation-macro-fields textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.equation-macro-fields textarea {
+  min-height: 70px;
+  font-family: var(--font-mono, monospace);
+  resize: vertical;
+}
+.equation-source-tools p {
+  margin: 5px 0;
+  line-height: 1.5;
+}

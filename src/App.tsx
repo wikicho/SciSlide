@@ -92,7 +92,7 @@ import {
   nextBuildStep,
   previousBuildStep,
 } from "./lib/presentation";
-import { cloneDeck, pruneUnusedAssets } from "./lib/deck-editing";
+import { cloneDeck, pruneUnusedAssets, sameDocument } from "./lib/deck-editing";
 import {
   distributeSelection,
   selectionLayoutUnits,
@@ -169,6 +169,18 @@ import {
 import { SlideList } from "./components/SlideList";
 import { MathSupportDialog } from "./components/MathSupportDialog";
 import { SlideTemplateDialog } from "./components/SlideTemplateDialog";
+import { TextFormattingTools } from "./components/TextFormattingTools";
+import { continueBulletLine, rebaseTextStyles } from "./lib/text-formatting";
+import type { TextStyleRange } from "./lib/model";
+import { UserLayoutDialog } from "./components/UserLayoutDialog";
+import {
+  captureUserSlideLayout,
+  instantiateUserSlideLayout,
+  listUserSlideLayouts,
+  saveUserSlideLayout,
+  deleteUserSlideLayout,
+} from "./lib/user-layouts";
+import type { UserSlideLayout } from "./lib/user-layouts";
 import { ThemeChooser } from "./components/ThemeChooser";
 import { SaveChangesDialog } from "./components/SaveChangesDialog";
 import { RecoveryHistoryDialog } from "./components/RecoveryHistoryDialog";
@@ -242,9 +254,6 @@ type LocalRender = NonNullable<
 
 const clone = <T,>(v: T): T => structuredClone(v);
 const numeric = (n: number) => Math.round(n * 10) / 10;
-function sameDocument(current: Deck, saved: Deck): boolean {
-  return current === saved || JSON.stringify(current) === JSON.stringify(saved);
-}
 function isTextInput(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
@@ -374,6 +383,8 @@ export default function App() {
     objectId: string;
     original: string;
     value: string;
+    originalStyles: TextStyleRange[];
+    styles: TextStyleRange[];
   };
   const [textEditing, setTextEditing] = useState<TextEdit | null>(null);
   type InlineEquationEdit = {
@@ -416,6 +427,8 @@ export default function App() {
   const paneFocus = useRef<"inspector" | "objects" | null>(null);
   const textEditingRef = useRef<TextEdit | null>(null);
   const textContentComposing = useRef(false);
+  const textContentRef = useRef<HTMLTextAreaElement>(null);
+  const canvasTextRef = useRef<HTMLTextAreaElement>(null);
   const [recoveryLoaded, setRecoveryLoaded] = useState(false);
   const [showEquationLibrary, setShowEquationLibrary] = useState(false);
   const [equationEditorId, setEquationEditorId] = useState<string | null>(null);
@@ -476,6 +489,44 @@ export default function App() {
     [zoom, setZoom] = useState(100),
     [grid, setGrid] = useState(false),
     [fitWidth, setFitWidth] = useState(650);
+  const [pdfBuildSteps, setPdfBuildSteps] = useState(false);
+  const [userLayouts, setUserLayouts] = useState<UserSlideLayout[]>([]);
+  const [showUserLayouts, setShowUserLayouts] = useState(false);
+  const [editingLayoutId, setEditingLayoutId] = useState<string | null>(null);
+  const [editingLayoutSlideId, setEditingLayoutSlideId] = useState<
+    string | null
+  >(null);
+  const [layoutBusy, setLayoutBusy] = useState(false);
+  const [layoutError, setLayoutError] = useState("");
+  const layoutRequest = useRef(0);
+  const layoutLoadRequest = useRef(0);
+  const lastLayoutLoadError = useRef("");
+  const refreshUserLayouts = async () => {
+    const load = ++layoutLoadRequest.current;
+    try {
+      const result = await listUserSlideLayouts();
+      if (load !== layoutLoadRequest.current) return false;
+      setUserLayouts(result.entries);
+      const previousError = lastLayoutLoadError.current;
+      const message = result.unavailableCount
+        ? `${result.unavailableCount} saved layouts could not be read. Their original data is kept.`
+        : "";
+      lastLayoutLoadError.current = message;
+      setLayoutError((current) =>
+        !current || current === previousError ? message : current,
+      );
+      return true;
+    } catch (error) {
+      if (load !== layoutLoadRequest.current) return false;
+      const message = error instanceof Error ? error.message : String(error);
+      lastLayoutLoadError.current = message;
+      setLayoutError(message);
+      return false;
+    }
+  };
+  useEffect(() => {
+    if (showSlideTemplates) void refreshUserLayouts();
+  }, [showSlideTemplates]);
   const [draft, setEquationDraft] = useState<EquationDraft>({
       latex: "",
       font: "mathjax-stix2",
@@ -589,7 +640,9 @@ export default function App() {
     fileMatchesSaved &&
     !(
       textEditing?.deckId === deck.id &&
-      textEditing.value !== textEditing.original
+      (textEditing.value !== textEditing.original ||
+        JSON.stringify(textEditing.styles) !==
+          JSON.stringify(textEditing.originalStyles))
     );
   const inlineEquationObject =
     inlineEquationEdit?.deckId === deck.id
@@ -778,7 +831,14 @@ export default function App() {
       setTextEditing(null);
       if (document.activeElement?.matches(".inline-text-editor"))
         canvasRef.current?.focus({ preventScroll: true });
-      if (!apply || !session || session.value === session.original) return;
+      if (
+        !apply ||
+        !session ||
+        (session.value === session.original &&
+          JSON.stringify(session.styles) ===
+            JSON.stringify(session.originalStyles))
+      )
+        return;
       const current = deckRef.current;
       const targetSlide = current.slides.find((s) => s.id === session.slideId);
       const target = targetSlide?.objects.find(
@@ -797,6 +857,8 @@ export default function App() {
           .find((s) => s.id === session.slideId)!
           .objects.find((o) => o.id === session.objectId)! as TextObject;
         object.text = session.value;
+        if (session.styles.length) object.textStyles = session.styles;
+        else delete object.textStyles;
       });
     },
     [change],
@@ -813,6 +875,8 @@ export default function App() {
       objectId: target.id,
       original: target.text,
       value: target.text,
+      originalStyles: structuredClone(target.textStyles ?? []),
+      styles: structuredClone(target.textStyles ?? []),
     };
     textEditingRef.current = session;
     setTextEditing(session);
@@ -820,7 +884,18 @@ export default function App() {
   const changeInlineText = (value: string) => {
     const session = textEditingRef.current;
     if (!session) return;
-    const next = { ...session, value };
+    const next = {
+      ...session,
+      value,
+      styles: rebaseTextStyles(session.value, value, session.styles),
+    };
+    textEditingRef.current = next;
+    setTextEditing(next);
+  };
+  const formatInlineText = (value: string, styles: TextStyleRange[]) => {
+    const session = textEditingRef.current;
+    if (!session) return;
+    const next = { ...session, value, styles };
     textEditingRef.current = next;
     setTextEditing(next);
   };
@@ -905,6 +980,13 @@ export default function App() {
             const object = next.slides
               .find((s) => s.id === request.slideId)!
               .objects.find((o) => o.id === request.objectId)! as TextObject;
+            const styles = rebaseTextStyles(
+              object.text,
+              inserted.value,
+              object.textStyles,
+            );
+            if (styles.length) object.textStyles = styles;
+            else delete object.textStyles;
             object.text = inserted.value;
           });
         start = inserted.selectionStart;
@@ -972,7 +1054,27 @@ export default function App() {
         const o = d.slides
           .find((s) => s.id === slide.id)
           ?.objects.find((o) => o.id === id);
-        if (o) fn(o);
+        if (o) {
+          const previous =
+            o.type === "text"
+              ? { text: o.text, styles: o.textStyles }
+              : undefined;
+          fn(o);
+          if (
+            o.type === "text" &&
+            previous &&
+            previous.text !== o.text &&
+            previous.styles === o.textStyles
+          ) {
+            const styles = rebaseTextStyles(
+              previous.text,
+              o.text,
+              previous.styles,
+            );
+            if (styles.length) o.textStyles = styles;
+            else delete o.textStyles;
+          }
+        }
       },
       key ? `${slide.id}:${id}:${key}` : "",
     );
@@ -1393,6 +1495,103 @@ export default function App() {
     setPresentationStep(0);
     setSelected([]);
     setPreview({});
+  };
+  const openUserLayouts = () => {
+    finishTextEditing();
+    layoutRequest.current++;
+    setShowSlideTemplates(false);
+    setLayoutError("");
+    setLayoutBusy(false);
+    setShowUserLayouts(true);
+    void refreshUserLayouts();
+  };
+  const closeUserLayouts = () => {
+    layoutRequest.current++;
+    setShowUserLayouts(false);
+    setLayoutBusy(false);
+  };
+  const insertUserLayout = (id: string, editCopy = false) => {
+    const entry = userLayouts.find((candidate) => candidate.id === id);
+    if (!entry || busy || transitioning.current) return;
+    finishTextEditing();
+    try {
+      const next = cloneDeck(deckRef.current);
+      const added = instantiateUserSlideLayout(next, slide.id, entry);
+      commit(next);
+      switchSlide(added.id);
+      setShowSlideTemplates(false);
+      closeUserLayouts();
+      setEditingLayoutId(editCopy ? entry.id : null);
+      setEditingLayoutSlideId(editCopy ? added.id : null);
+      if (editCopy)
+        notify(
+          "Edit this copy on the canvas, then use User layouts → Update to save the layout.",
+        );
+    } catch (e) {
+      notify((e as Error).message);
+    }
+  };
+  const saveUserLayout = async (name: string, replaceId?: string) => {
+    const request = layoutRequest.current,
+      session = documentSession.current;
+    setLayoutBusy(true);
+    setLayoutError("");
+    try {
+      const current = deckRef.current;
+      const active = current.slides.find(
+        (candidate) => candidate.id === slide.id,
+      )!;
+      const previous = replaceId
+        ? userLayouts.find((entry) => entry.id === replaceId)
+        : undefined;
+      if (replaceId && !previous)
+        throw new Error(
+          "The layout is no longer available. Save a new layout instead.",
+        );
+      const entry = captureUserSlideLayout(current, active, name, previous);
+      await saveUserSlideLayout(entry);
+      if (
+        request !== layoutRequest.current ||
+        session !== documentSession.current
+      )
+        return;
+      if (!(await refreshUserLayouts())) return;
+      if (
+        request !== layoutRequest.current ||
+        session !== documentSession.current
+      )
+        return;
+      setEditingLayoutId(entry.id);
+      setEditingLayoutSlideId(active.id);
+      notify(
+        "User layout saved. Slides already using it are kept as independent copies.",
+      );
+    } catch (e) {
+      if (request === layoutRequest.current)
+        setLayoutError((e as Error).message);
+    } finally {
+      if (request === layoutRequest.current) setLayoutBusy(false);
+    }
+  };
+  const removeUserLayout = async (id: string) => {
+    const request = layoutRequest.current;
+    setLayoutBusy(true);
+    setLayoutError("");
+    try {
+      await deleteUserSlideLayout(id);
+      if (request !== layoutRequest.current) return;
+      if (!(await refreshUserLayouts())) return;
+      if (request !== layoutRequest.current) return;
+      if (editingLayoutId === id) {
+        setEditingLayoutId(null);
+        setEditingLayoutSlideId(null);
+      }
+    } catch (e) {
+      if (request === layoutRequest.current)
+        setLayoutError((e as Error).message);
+    } finally {
+      if (request === layoutRequest.current) setLayoutBusy(false);
+    }
   };
   const reviewEquationDrafts = () => {
     if (busy || hasEditorDialog || presenting || showThemeChooser) return;
@@ -2122,6 +2321,12 @@ export default function App() {
     equationDrafts: RecoveredEquationDraft[] = [],
   ) => {
     documentSession.current += 1;
+    layoutRequest.current++;
+    layoutLoadRequest.current++;
+    setShowUserLayouts(false);
+    setShowSlideTemplates(false);
+    setLayoutBusy(false);
+    setLayoutError("");
     recoverySessionId.current = newId();
     lastHistoryError.current = "";
     setHistorySaveError("");
@@ -2140,6 +2345,8 @@ export default function App() {
     setEquationEditorId(null);
     setPdfFigure(null);
     setMetrics({});
+    setEditingLayoutId(null);
+    setEditingLayoutSlideId(null);
     deckRef.current = next;
     setDeck(next);
     setHistoryTick((tick) => tick + 1);
@@ -2626,7 +2833,9 @@ export default function App() {
           kind === "pptx"
             ? await exportDeckPptx(snapshot)
             : kind === "pdf"
-              ? await exportDeckPdf(snapshot)
+              ? await (pdfBuildSteps
+                  ? exportDeckPdf(snapshot, { includeBuildSteps: true })
+                  : exportDeckPdf(snapshot))
               : await exportSlideSvg(
                   snapshot,
                   snapshot.slides.find((s) => s.id === slide.id)!,
@@ -3084,6 +3293,7 @@ export default function App() {
     showSlideTemplates ||
     showMathLibrary ||
     showEquationLibrary ||
+    showUserLayouts ||
     !!inlineEquationEdit;
   const hasEditorDialog = hasOtherEditorDialog || equationEditorOpen;
   const acceptCanvasFileDrag = (event: ReactDragEvent<HTMLDivElement>) => {
@@ -3413,7 +3623,11 @@ export default function App() {
       .map((v) => {
         const c = clone(v),
           m = metrics[v.id];
-        if (m && v.type === "equation") {
+        if (
+          m &&
+          (v.type === "equation" ||
+            (v.type === "text" && v.autoFit === "content"))
+        ) {
           c.transform.width = m.width;
           c.transform.height = m.height;
         }
@@ -3569,6 +3783,7 @@ export default function App() {
           n.transform.x = o.transform.x + dx;
           n.transform.y = o.transform.y + dy;
         } else {
+          if (n.type === "text" && n.autoFit === "content") delete n.autoFit;
           const w = o.transform.width,
             h =
               o.type === "text"
@@ -4209,6 +4424,8 @@ export default function App() {
             onOpenChange={setExportMenu}
             disabled={!!busy || hasEditorDialog}
             platform={keyboardPlatform}
+            includeBuildSteps={pdfBuildSteps}
+            onBuildStepsChange={setPdfBuildSteps}
             onExport={(kind) => void runExport(kind)}
           />
         </div>
@@ -4268,6 +4485,9 @@ export default function App() {
             onClick={() => void openRecoveryHistory()}
           >
             <History size={16} /> Recovered documents
+          </button>
+          <button type="button" className="tool" onClick={openUserLayouts}>
+            <Layers size={16} /> User layouts
           </button>
           <button type="button" className="tool" onClick={startWithPresenter}>
             <Presentation size={16} /> Presenter display
@@ -4792,6 +5012,8 @@ export default function App() {
                     ? {
                         objectId: textEditing.objectId,
                         value: textEditing.value,
+                        styles: textEditing.styles,
+                        fieldRef: canvasTextRef,
                         platform: keyboardPlatform,
                         suspended: !!inlineEquationEdit,
                         onEditEquation: editInlineEquationAtField,
@@ -5053,12 +5275,47 @@ export default function App() {
                   {object.type === "text" && (
                     <div className="inspector-section">
                       <div className="section-label">CONTENT & TYPE</div>
+                      <TextFormattingTools
+                        fieldRef={
+                          textEditing?.objectId === object.id
+                            ? canvasTextRef
+                            : textContentRef
+                        }
+                        value={
+                          textEditing?.objectId === object.id
+                            ? textEditing.value
+                            : object.text
+                        }
+                        styles={
+                          textEditing?.objectId === object.id
+                            ? textEditing.styles
+                            : object.textStyles
+                        }
+                        disabled={isObjectLocked(object, slide.objects)}
+                        onChange={(value, styles) => {
+                          if (textEditingRef.current?.objectId === object.id)
+                            formatInlineText(value, styles);
+                          else
+                            updateObject(object.id, (o) => {
+                              if (o.type === "text") {
+                                o.text = value;
+                                if (styles.length) o.textStyles = styles;
+                                else delete o.textStyles;
+                              }
+                            });
+                        }}
+                      />
                       <textarea
+                        ref={textContentRef}
                         id="text-content"
                         aria-label="Text content"
                         aria-describedby="inline-math-hint"
                         className="text-input"
-                        value={object.text}
+                        value={
+                          textEditing?.objectId === object.id
+                            ? textEditing.value
+                            : object.text
+                        }
                         onCompositionStart={() => {
                           textContentComposing.current = true;
                         }}
@@ -5087,17 +5344,70 @@ export default function App() {
                             if (!event.repeat)
                               editInlineEquationAtField(event.currentTarget);
                           }
+                          if (
+                            event.key === "Enter" &&
+                            !event.ctrlKey &&
+                            !event.metaKey &&
+                            !event.shiftKey &&
+                            !event.altKey
+                          ) {
+                            const next = continueBulletLine(
+                              event.currentTarget.value,
+                              event.currentTarget.selectionStart,
+                              event.currentTarget.selectionEnd,
+                            );
+                            if (next) {
+                              event.preventDefault();
+                              if (
+                                textEditingRef.current?.objectId === object.id
+                              )
+                                changeInlineText(next.value);
+                              else
+                                updateObject(object.id, (o) => {
+                                  if (o.type === "text") o.text = next.value;
+                                });
+                              const field = event.currentTarget;
+                              queueMicrotask(() =>
+                                field.setSelectionRange(next.start, next.end),
+                              );
+                            }
+                          }
                         }}
                         onChange={(e) =>
-                          updateObject(
-                            object.id,
-                            (o) => {
-                              if (o.type === "text") o.text = e.target.value;
-                            },
-                            "text-" + object.id,
-                          )
+                          textEditingRef.current?.objectId === object.id
+                            ? changeInlineText(e.target.value)
+                            : updateObject(
+                                object.id,
+                                (o) => {
+                                  if (o.type === "text")
+                                    o.text = e.target.value;
+                                },
+                                "text-" + object.id,
+                              )
                         }
                       />
+                      <label className="check-field">
+                        <input
+                          type="checkbox"
+                          aria-label="Fit text box to content"
+                          checked={object.autoFit === "content"}
+                          disabled={isObjectLocked(object, slide.objects)}
+                          onChange={(event) =>
+                            updateObject(object.id, (o) => {
+                              if (o.type !== "text") return;
+                              if (event.target.checked) o.autoFit = "content";
+                              else {
+                                if (metrics[o.id]) {
+                                  o.transform.width = metrics[o.id].width;
+                                  o.transform.height = metrics[o.id].height;
+                                }
+                                delete o.autoFit;
+                              }
+                            })
+                          }
+                        />
+                        <span>Fit box to content · keep font size</span>
+                      </label>
                       <p id="inline-math-hint" className="field-hint">
                         Use <code>$...$</code> for inline math, e.g.{" "}
                         <code>{String.raw`$U(1)_{L_\mu - L_\tau}$`}</code> or{" "}
@@ -5656,8 +5966,10 @@ export default function App() {
                     </div>
                     <p className="field-hint">
                       Present reveals each step with Next or an arrow key.
-                      Objects with the same step appear together. Editor and
-                      PDF/SVG exports show all steps.
+                      Objects with the same step appear together. Editor and SVG
+                      exports show all steps. Enable animation steps in the PDF
+                      export menu to export each step with the same slide
+                      number.
                     </p>
                   </div>
                 </div>
@@ -5702,6 +6014,7 @@ export default function App() {
                               min={1}
                               max={1_000_000}
                               disabled={
+                                object.autoFit === "content" ||
                                 !!object.groupId ||
                                 isObjectLocked(object, slide.objects)
                               }
@@ -6145,11 +6458,46 @@ export default function App() {
                     }
                   />
                 </Field>
+                <Field label="First numbered slide">
+                  <select
+                    aria-label="First numbered slide"
+                    disabled={!pageNumbers.enabled}
+                    value={pageNumbers.firstSlide ?? "legacy"}
+                    onChange={(event) =>
+                      change((d) => {
+                        const settings = { ...pageNumbers };
+                        if (event.target.value === "legacy")
+                          delete settings.firstSlide;
+                        else settings.firstSlide = Number(event.target.value);
+                        d.pageNumbers = settings;
+                      })
+                    }
+                  >
+                    <option value="legacy">Existing numbering behavior</option>
+                    {deck.slides.map((s, index) => (
+                      <option key={s.id} value={index + 1}>
+                        {index + 1} · {s.title}
+                      </option>
+                    ))}
+                    {!!pageNumbers.firstSlide &&
+                      pageNumbers.firstSlide > deck.slides.length && (
+                        <option value={pageNumbers.firstSlide}>
+                          Slide {pageNumbers.firstSlide} · beyond current deck
+                        </option>
+                      )}
+                  </select>
+                </Field>
                 <label className="check-field">
                   <input
                     type="checkbox"
-                    disabled={!pageNumbers.enabled}
-                    checked={pageNumbers.hideFirst}
+                    disabled={
+                      !pageNumbers.enabled ||
+                      pageNumbers.firstSlide !== undefined
+                    }
+                    checked={
+                      pageNumbers.firstSlide === undefined &&
+                      pageNumbers.hideFirst
+                    }
                     onChange={(e) =>
                       change((d) => {
                         d.pageNumbers = {
@@ -6268,6 +6616,16 @@ export default function App() {
         <EquationEditorDialog
           key={activeEquation.id}
           sourceRef={sourceRef}
+          source={draft.latex}
+          renderer={draft.renderer}
+          preamble={draft.preamble}
+          onSourceChange={(latex, preamble) =>
+            setDraft({
+              ...draftRef.current,
+              latex,
+              ...(preamble === undefined ? {} : { preamble }),
+            })
+          }
           platform={keyboardPlatform}
           canApply={
             !draftBusy &&
@@ -6635,8 +6993,27 @@ export default function App() {
       {showSlideTemplates && (
         <SlideTemplateDialog
           deck={deck}
+          userLayouts={userLayouts}
+          onChooseUserLayout={(id) => insertUserLayout(id)}
+          onManageUserLayouts={openUserLayouts}
           onChoose={addTemplateSlide}
           onClose={closeSlideTemplates}
+        />
+      )}
+      {showUserLayouts && (
+        <UserLayoutDialog
+          deck={deck}
+          slide={slide}
+          entries={userLayouts}
+          editingLayoutId={
+            editingLayoutSlideId === slide.id ? editingLayoutId : null
+          }
+          busy={layoutBusy}
+          error={layoutError}
+          onSave={(name, id) => void saveUserLayout(name, id)}
+          onDelete={(id) => void removeUserLayout(id)}
+          onEdit={(id) => insertUserLayout(id, true)}
+          onClose={closeUserLayouts}
         />
       )}
       {pdfFigure && (

@@ -1,3 +1,4 @@
+import { jsonMediaByteLength } from "./json-media-size";
 import type { Deck } from "./model";
 import { validateWorkspaceRecovery } from "./workspace-recovery";
 import type {
@@ -65,8 +66,7 @@ interface Context {
 let mutations: Promise<unknown> = Promise.resolve();
 let lastTimestamp = 0;
 let unreadableRecord = 0;
-const byteLength = (value: unknown) =>
-  new TextEncoder().encode(JSON.stringify(value)).length;
+const byteLength = jsonMediaByteLength;
 
 function validateId(value: unknown): string {
   if (
