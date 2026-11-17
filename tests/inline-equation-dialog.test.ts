@@ -14,6 +14,15 @@ import { InlineEquationDialog } from "../src/components/InlineEquationDialog";
 import type { InlineEquationDialogProps } from "../src/components/InlineEquationDialog";
 import * as equations from "../src/lib/equations";
 import type { RenderedEquation } from "../src/lib/equations";
+import {
+  EQUATION_MACROS_KEY,
+  saveMacroFavorites,
+} from "../src/lib/equation-macros";
+import {
+  applyInlineEquationEdit,
+  getInlineEquationEdit,
+} from "../src/lib/inline-math-editing";
+import { getInlineMathSpans } from "../src/lib/inline-math";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -45,6 +54,7 @@ describe("inline equation dialog", () => {
 
   beforeEach(() => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    localStorage.removeItem(EQUATION_MACROS_KEY);
     renderer = vi.spyOn(equations, "renderEquation");
     parentPointer.mockClear();
     parentKey.mockClear();
@@ -289,11 +299,14 @@ describe("inline equation dialog", () => {
     await key("Tab", { shiftKey: true }, button("Close inline equation"));
     expect(document.activeElement).toBe(button("Insert equation"));
     source().focus();
-    for (const value of ["a", "c", "v", "z"]) {
+    for (const value of ["a", "c", "v"]) {
       expect((await key(value, { ctrlKey: true })).defaultPrevented).toBe(
         false,
       );
     }
+    await input("x^2");
+    expect((await key("z", { ctrlKey: true })).defaultPrevented).toBe(true);
+    expect(source().value).toBe("U(1)");
     for (const value of ["ArrowLeft", "Home", "PageDown", "Backspace"]) {
       expect((await key(value)).defaultPrevented).toBe(false);
     }
@@ -343,5 +356,71 @@ describe("inline equation dialog", () => {
     );
     expect(props.onCancel).toHaveBeenCalledTimes(1);
     expect(props.onApply).not.toHaveBeenCalled();
+  });
+  it("colors selected inline LaTeX, renders real scoped color and restores source/selection with Undo", async () => {
+    await mount({ initialLatex: "x+y" });
+    await act(async () => renderer.mock.results.at(-1)!.value);
+    await act(async () => {
+      source().setSelectionRange(2, 3);
+      source().dispatchEvent(new Event("select", { bubbles: true }));
+    });
+    await act(async () => button("Color selected LaTeX").click());
+    await act(async () => renderer.mock.results.at(-1)!.value);
+    const colored = String.raw`x+\textcolor[RGB]{198,40,40}{y}`;
+    expect(source().value).toBe(colored);
+    expect(document.activeElement).toBe(source());
+    expect(
+      source().value.slice(source().selectionStart, source().selectionEnd),
+    ).toBe("y");
+    expect(
+      host.querySelector('[aria-label="Inline equation preview"]')!.innerHTML,
+    ).toContain('fill="#c62828"');
+    await key("z", { ctrlKey: true });
+    expect(source().value).toBe("x+y");
+    expect(source().selectionStart).toBe(2);
+    expect(source().selectionEnd).toBe(3);
+    await key("z", { ctrlKey: true, shiftKey: true });
+    await act(async () => renderer.mock.results.at(-1)!.value);
+    expect(source().value).toBe(colored);
+    await act(async () => button("Insert equation").click());
+    expect(props.onApply).toHaveBeenCalledExactlyOnceWith(colored);
+  });
+  it("uses a saved command as portable multiline inline source with valid parenthesized delimiters", async () => {
+    const favorite = {
+      id: "inline-command",
+      name: "Inline real",
+      definitions: String.raw`\newcommand{\favoriteInlineReal}{\mathbb{R}}`,
+      invocation: String.raw`\favoriteInlineReal`,
+    };
+    saveMacroFavorites([favorite]);
+    await mount();
+    await act(async () => {
+      const select = host.querySelector<HTMLSelectElement>(
+        '[aria-label="Command favorite"]',
+      )!;
+      select.value = favorite.id;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => button("Insert command").click());
+    await act(async () => renderer.mock.results.at(-1)!.value);
+    const portable = favorite.definitions + "\n" + favorite.invocation;
+    expect(source().value).toBe(portable);
+    expect(document.activeElement).toBe(source());
+    expect(
+      host.querySelector('[aria-label="Inline equation preview"] svg path'),
+    ).not.toBeNull();
+    await act(async () => button("Insert equation").click());
+    expect(props.onApply).toHaveBeenCalledExactlyOnceWith(portable);
+    expect(button("Insert command").matches(":disabled")).toBe(true);
+    const prose = "Before $x$ after";
+    const range = getInlineEquationEdit(
+      prose,
+      prose.indexOf("x"),
+      prose.indexOf("x") + 1,
+    );
+    const result = applyInlineEquationEdit(prose, range, portable);
+    expect(getInlineMathSpans(result.value)).toHaveLength(1);
+    expect(getInlineMathSpans(result.value)[0].latex).toBe(portable);
+    expect(result.value).toBe("Before \\(" + portable + "\\) after");
   });
 });

@@ -24,6 +24,7 @@ export interface InlineTextRun {
   text: string;
   x: number;
   width: number;
+  color?: string;
   /** A failed formula stays editable without hiding neighboring formulas. */
   equation?: InlineMathSpan & { error: string };
 }
@@ -54,6 +55,7 @@ export interface InlineTextLayout {
   fontFamily: string;
   fontWeight: number;
   height: number;
+  width: number;
   errors?: string[];
 }
 
@@ -80,6 +82,9 @@ export function inlineTextLayoutKey(object: TextObject, deck: Deck): string {
     object.color,
     object.align,
     inlineMathFont(deck, object),
+    object.textStyles,
+    object.autoFit,
+    object.autoFit ? deck.slideSize.width : undefined,
   ]);
 }
 
@@ -197,6 +202,58 @@ export function hasInlineMath(source: string): boolean {
   return scan(source, true).some((token) => token.type === "math");
 }
 
+export function needsInlineTextLayout(object: TextObject): boolean {
+  return (
+    hasInlineMath(object.text) ||
+    !!object.textStyles?.length ||
+    object.autoFit === "content"
+  );
+}
+
+type ColoredToken = InlineMathToken & { color?: string };
+function styledTokens(object: TextObject): ColoredToken[] {
+  if (!object.textStyles?.length) return parseInlineMath(object.text);
+  const result: ColoredToken[] = [];
+  let styleIndex = 0;
+  const paint = (at: number) => {
+    const ranges = object.textStyles!;
+    while (styleIndex < ranges.length && ranges[styleIndex].end <= at)
+      styleIndex++;
+    return ranges[styleIndex]?.start <= at
+      ? ranges[styleIndex].color
+      : undefined;
+  };
+  const prose = (start: number, end: number) => {
+    const raw = object.text.slice(start, end);
+    const decoded = parseInlineMath(raw)
+      .map((token) => (token.type === "text" ? token.text : token.source))
+      .join("");
+    let cursor = 0;
+    for (const character of decoded) {
+      if (raw[cursor] === "\\" && raw[cursor + 1] === "$" && character === "$")
+        cursor++;
+      const color = paint(start + cursor);
+      const last = result.at(-1);
+      if (last?.type === "text" && last.color === color) last.text += character;
+      else result.push({ type: "text", text: character, color });
+      cursor += character.length;
+    }
+  };
+  let cursor = 0;
+  for (const span of getInlineMathSpans(object.text)) {
+    prose(cursor, span.start);
+    result.push({
+      type: "math",
+      latex: span.latex,
+      source: span.source,
+      color: paint(span.start),
+    });
+    cursor = span.end;
+  }
+  prose(cursor, object.text.length);
+  return result;
+}
+
 /** Decoded prose for ordinary text rendering and mixed-language font choice. */
 export function inlinePlainText(source: string): string {
   return parseInlineMath(source)
@@ -271,7 +328,7 @@ export async function layoutInlineText(
 ): Promise<InlineTextLayout> {
   if (object.text.length > MAX_INLINE_TEXT_LENGTH)
     throw new Error("Inline text is too long (maximum 100,000 characters).");
-  const tokens = parseInlineMath(object.text);
+  const tokens = styledTokens(object);
   const math = tokens.filter((token) => token.type === "math");
   const spans = getInlineMathSpans(object.text);
   if (math.length > MAX_INLINE_MATH_SPANS)
@@ -291,7 +348,12 @@ export async function layoutInlineText(
     object.fontWeight,
   );
   const size = object.fontSize;
-  const width = Math.max(1, object.transform.width);
+  const width = Math.max(
+    1,
+    object.autoFit === "content"
+      ? deck.slideSize.width
+      : object.transform.width,
+  );
   if (!Number.isFinite(size) || size <= 0 || !Number.isFinite(width))
     throw new Error("Inline text needs a finite positive font size and width.");
   const css = `${fontWeight} ${size}px ${fontCss(fontFamily)}`;
@@ -306,7 +368,7 @@ export async function layoutInlineText(
             token.latex,
             inlineMathFont(deck, object),
             size,
-            object.color,
+            token.color ?? object.color,
             false,
           );
         } catch (error) {
@@ -364,6 +426,7 @@ export async function layoutInlineText(
           type: "text",
           text: value,
           width: measure(value),
+          ...(token.color ? { color: token.color } : {}),
           ...(equationError ? { equation: equationError } : {}),
         });
     }
@@ -469,11 +532,28 @@ export async function layoutInlineText(
     pendingSpace = false;
   }
   finishLine();
+  const contentWidth =
+    object.autoFit === "content"
+      ? Math.max(
+          1,
+          Math.ceil(
+            lines.reduce((maximum, line) => Math.max(maximum, line.width), 0),
+          ),
+        )
+      : width;
+  if (contentWidth !== width && object.align !== "left") {
+    const shift =
+      object.align === "center"
+        ? (contentWidth - width) / 2
+        : contentWidth - width;
+    for (const line of lines) for (const run of line.runs) run.x += shift;
+  }
   return {
     lines,
     fontFamily,
     fontWeight,
     height: totalHeight,
+    width: contentWidth,
     ...(errors.length ? { errors } : {}),
   };
 }

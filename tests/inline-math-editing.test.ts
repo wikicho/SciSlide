@@ -9,6 +9,7 @@ import {
   MAX_INLINE_MATH_SPANS,
   parseInlineMath,
 } from "../src/lib/inline-math";
+import { renderEquation } from "../src/lib/equations";
 
 describe("inline equation source spans", () => {
   it("reports UTF-16 offsets and distinct locations for repeated equations", () => {
@@ -199,15 +200,66 @@ describe("preparing and applying an inline equation edit", () => {
     expect(applyInlineEquationEdit(source, edit, String.raw`a\$b`).value).toBe(
       String.raw`A $a\$b$ B`,
     );
-    for (const latex of ["a$b", "a\nb", "a\r\nb"])
-      expect(() => applyInlineEquationEdit(source, edit, latex)).toThrow(
-        /one line.*dollar/,
-      );
+    expect(() => applyInlineEquationEdit(source, edit, "a$b")).toThrow(
+      /one line.*dollar/,
+    );
     const parent = "A \\(x\\) B";
     const parentEdit = getInlineEquationEdit(parent, 4, 4);
     expect(() =>
       applyInlineEquationEdit(parent, parentEdit, String.raw`a\)b`),
     ).toThrow(/closing delimiter/);
+  });
+  it.each(["a\nb", "a\r\nb"])(
+    "promotes multiline dollar source to parenthesized math with prose/caret intact: %s",
+    (latex) => {
+      const source = "😀 Before $x$ after\r\nunchanged";
+      const start = source.indexOf("$x$");
+      const result = applyInlineEquationEdit(
+        source,
+        getInlineEquationEdit(source, start + 1, start + 2),
+        latex,
+      );
+      expect(result.value).toBe(
+        "😀 Before \\(" + latex + "\\) after\r\nunchanged",
+      );
+      expect(result.selectionStart).toBe(result.value.indexOf(" after"));
+      expect(result.selectionEnd).toBe(result.selectionStart);
+      expect(getInlineMathSpans(result.value)).toEqual([
+        {
+          start,
+          end: result.selectionStart,
+          source: "\\(" + latex + "\\)",
+          latex,
+        },
+      ]);
+    },
+  );
+  it("keeps portable multiline macro definitions as one inline span and renders them locally", async () => {
+    const latex =
+      String.raw`\newcommand{\inlinePortableReal}{\mathbb{R}}` +
+      "\n" +
+      String.raw`x\in\inlinePortableReal`;
+    const prose = "Before $x$ after";
+    const result = applyInlineEquationEdit(
+      prose,
+      getInlineEquationEdit(prose, 8, 8),
+      latex,
+    );
+    const spans = getInlineMathSpans(result.value);
+    expect(spans).toHaveLength(1);
+    expect(spans[0].latex).toBe(latex);
+    expect(result.value).toBe("Before \\(" + latex + "\\) after");
+    expect(
+      (
+        await renderEquation(
+          spans[0].latex,
+          "mathjax-modern",
+          24,
+          "#17263c",
+          false,
+        )
+      ).svg,
+    ).toContain("<path");
   });
 
   it("rejects invalid or stale source offsets", () => {

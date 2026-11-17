@@ -398,6 +398,119 @@ describe("agent CLI native files", () => {
     ).toBe(2);
   });
 
+  it("supports first numbered slide patches and exports build PDFs with original slide identities", async () => {
+    const directory = await temporary();
+    const original = path.join(directory, "talk.scislide");
+    const edited = path.join(directory, "numbered.scislide");
+    const operations = path.join(directory, "builds.json");
+    const pdf = path.join(directory, "builds.pdf");
+    await command(["create", "--output", original, "--layout", "blank"]);
+    await writeFile(
+      operations,
+      JSON.stringify({
+        version: 1,
+        operations: [
+          {
+            op: "deck.update",
+            patch: {
+              pageNumbers: {
+                enabled: true,
+                firstSlide: 2,
+                startAt: 4,
+                hideFirst: true,
+                format: "number-total",
+              },
+            },
+          },
+          { op: "slide.add", id: "numbered", layout: "blank" },
+          {
+            op: "object.add",
+            slide: "numbered",
+            object: {
+              id: "late-text",
+              type: "text",
+              text: "Later build",
+              build: { step: 9, effect: "appear", durationMs: 250 },
+            },
+          },
+        ],
+      }),
+    );
+    const applied = await command([
+      "apply",
+      original,
+      "--ops",
+      operations,
+      "--output",
+      edited,
+    ]);
+    expect(applied.code, applied.errors).toBe(0);
+    expect(applied.result.deck.pageNumbers).toMatchObject({
+      firstSlide: 2,
+      startAt: 4,
+    });
+    const exported = await command([
+      "export",
+      edited,
+      "--format",
+      "pdf",
+      "--build-steps",
+      "--output",
+      pdf,
+    ]);
+    expect(exported.code, exported.errors).toBe(0);
+    expect(exported.result.slides).toEqual([1, 2]);
+    expect(exported.result.pages).toEqual([
+      { slide: 1, buildStep: 0 },
+      { slide: 2, buildStep: 0 },
+      { slide: 2, buildStep: 9 },
+    ]);
+    const bytes = await readFile(pdf);
+    expect(bytes.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(bytes.toString("latin1").match(/\/Type \/Page\b/g)).toHaveLength(3);
+    const svg = path.join(directory, "numbered.svg");
+    expect(
+      (await command(["export", edited, "--slide", "2", "--output", svg])).code,
+    ).toBe(0);
+    expect(await readFile(svg, "utf8")).toMatch(
+      /data-page-number="true"[^>]*>4 \/ 4<\/text>/,
+    );
+    expect(
+      (
+        await command([
+          "export",
+          edited,
+          "--format",
+          "svg",
+          "--build-steps",
+          "--output",
+          path.join(directory, "invalid.svg"),
+        ])
+      ).code,
+    ).toBe(2);
+    await writeFile(
+      operations,
+      JSON.stringify({
+        version: 1,
+        operations: [
+          { op: "deck.update", patch: { pageNumbers: { firstSlide: null } } },
+        ],
+      }),
+    );
+    const restoredLegacy = await command([
+      "apply",
+      edited,
+      "--ops",
+      operations,
+      "--dry-run",
+    ]);
+    expect(restoredLegacy.code, restoredLegacy.errors).toBe(0);
+    expect(restoredLegacy.result.deck.pageNumbers).not.toHaveProperty(
+      "firstSlide",
+    );
+    expect(restoredLegacy.result.deck.pageNumbers.hideFirst).toBe(true);
+  });
+
   it("rejects malformed or modified ZIP archives without writing outputs", async () => {
     const directory = await temporary();
     const invalid = path.join(directory, "bad.scislide");

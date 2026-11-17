@@ -4,12 +4,13 @@ import type { AnySlideObject, Asset, Deck, Slide } from "./model";
 import { figureViewport } from "./figure-editing";
 import { renderObjectEquation } from "./equation-renderer";
 import {
-  hasInlineMath,
   inlinePlainText,
   layoutInlineText,
+  needsInlineTextLayout,
 } from "./inline-math";
 import { wrapText } from "./layout";
 import { resolvePageNumber } from "./model";
+import { isVisibleAtStep, nextBuildStep } from "./presentation";
 import { shapeGeometry } from "./shape-geometry";
 import { inlineSvgStyles } from "./persistence";
 import {
@@ -263,9 +264,13 @@ async function objectSvg(
   title.textContent = object.name;
   group.append(title);
   if (object.type === "text") {
-    if (hasInlineMath(object.text)) {
+    if (needsInlineTextLayout(object)) {
       try {
         const layout = await layoutInlineText(object, deck);
+        if (object.autoFit === "content") {
+          width = layout.width;
+          height = layout.height;
+        }
         if (isKoreanFontFamily(layout.fontFamily)) await loadKoreanFonts();
         for (const [lineIndex, line] of layout.lines.entries()) {
           for (const [runIndex, run] of line.runs.entries()) {
@@ -273,7 +278,7 @@ async function objectSvg(
               const text = svgElement("text", {
                 x: run.x,
                 y: line.baseline,
-                fill: object.color,
+                fill: run.color ?? object.color,
                 "font-family": layout.fontFamily,
                 "font-size": object.fontSize,
                 "font-weight": layout.fontWeight,
@@ -542,12 +547,13 @@ async function normalizeSvgTextFonts(svg: SVGSVGElement): Promise<boolean> {
   }
 }
 
-/** Shared static export scene: all build steps, page numbering, passive media frames. */
+/** Shared export scene: final state by default, or a passive presentation step. */
 export async function renderSlideSvg(
   deck: Deck,
   slide: Slide,
   index: number,
   fonts?: ExportFontFiles,
+  options: { presentationStep?: number } = {},
 ): Promise<SVGSVGElement> {
   await document.fonts.ready;
   const { width, height } = deck.slideSize;
@@ -566,9 +572,15 @@ export async function renderSlideSvg(
   svg.append(svgElement("rect", { width, height, fill: slide.background }));
   const objects = await Promise.all(
     slide.objects
-      .filter((object) => object.visible && object.opacity > 0)
-      .map((object, i) =>
-        objectSvg(deck, object, `slide-${index}-object-${i}`),
+      // Font namespaces must keep the same source object across build pages.
+      .map((object, objectIndex) => ({ object, objectIndex }))
+      .filter(
+        ({ object }) =>
+          isVisibleAtStep(object, options.presentationStep) &&
+          object.opacity > 0,
+      )
+      .map(({ object, objectIndex }) =>
+        objectSvg(deck, object, `slide-${index}-object-${objectIndex}`),
       ),
   );
   svg.append(...objects);
@@ -712,10 +724,40 @@ export async function exportSlideSvg(deck: Deck, slide: Slide): Promise<Blob> {
   });
 }
 
+export interface PdfExportOptions {
+  /** One page per populated presentation step, including the initial step 0. */
+  includeBuildSteps?: boolean;
+  prepareSvg?: (svg: SVGSVGElement) => void;
+}
+
+export interface PdfExportPage {
+  slide: Slide;
+  /** Original deck position, independent of the number of preceding PDF pages. */
+  slideIndex: number;
+  presentationStep?: number;
+}
+
+/** Keep original slide identity/order so build pages share its logical number. */
+export function getPdfExportPages(
+  deck: Deck,
+  includeBuildSteps = false,
+): PdfExportPage[] {
+  return deck.slides.flatMap((slide, slideIndex) => {
+    if (!includeBuildSteps) return [{ slide, slideIndex }];
+    const pages: PdfExportPage[] = [{ slide, slideIndex, presentationStep: 0 }];
+    let step = nextBuildStep(slide, 0);
+    while (step !== null) {
+      pages.push({ slide, slideIndex, presentationStep: step });
+      step = nextBuildStep(slide, step);
+    }
+    return pages;
+  });
+}
+
 /** Render genuine PDF vectors; raster figures remain embedded raster images. */
 export async function exportDeckPdf(
   deck: Deck,
-  options: { prepareSvg?: (svg: SVGSVGElement) => void } = {},
+  options: PdfExportOptions = {},
 ): Promise<Blob> {
   const fonts: ExportFontFiles = { inter: await loadInterFonts() };
   const { width, height } = deck.slideSize;
@@ -739,8 +781,13 @@ export async function exportDeckPdf(
   try {
     // Prepare every slide before producing a downloadable document. An invalid
     // equation or missing figure aborts the export with its object/slide name.
+    const pages = getPdfExportPages(deck, options.includeBuildSteps);
     const slides = await Promise.all(
-      deck.slides.map((slide, index) => renderSlideSvg(deck, slide, index)),
+      pages.map(({ slide, slideIndex, presentationStep }) =>
+        renderSlideSvg(deck, slide, slideIndex, undefined, {
+          presentationStep,
+        }),
+      ),
     );
     if (
       slides.some((svg) =>
@@ -755,7 +802,7 @@ export async function exportDeckPdf(
       const svg = slides[index];
       addFigurePdfFonts(pdf, svg);
       host.append(svg);
-      verifyPdfContent(svg, pdf, deck.slides[index]);
+      verifyPdfContent(svg, pdf, pages[index].slide);
       svg.remove();
     }
     for (let index = 0; index < slides.length; index++) {

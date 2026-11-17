@@ -505,13 +505,14 @@ export async function renderAgentSvg(
 /** Genuine vector PDF conversion; unsupported figures/fonts fail as in the editor. */
 export async function renderAgentPdf(
   deck: Deck,
-  options: HeadlessRenderOptions,
+  options: HeadlessRenderOptions & { includeBuildSteps?: boolean },
 ): Promise<Uint8Array> {
   await initializeHeadlessDom(options);
   const render = async () => {
     const registry = measurements!;
     try {
       const pdf = await exportDeckPdf(deck, {
+        includeBuildSteps: options.includeBuildSteps,
         prepareSvg(svg) {
           registry.figureFonts = addFigurePdfFonts(registry.pdf, svg);
         },

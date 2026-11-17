@@ -53,6 +53,12 @@ export interface ObjectBuild {
   durationMs: number;
 }
 
+export interface TextStyleRange {
+  start: number;
+  end: number;
+  color: string;
+}
+
 export interface TextObject extends BaseSlideObject {
   type: "text";
   text: string;
@@ -64,6 +70,10 @@ export interface TextObject extends BaseSlideObject {
   fontSize: number;
   fontWeight: number;
   color: string;
+  /** Optional source-range colors preserve ordinary editable text. */
+  textStyles?: TextStyleRange[];
+  /** Preserve font size; derive the box width/height from its content. */
+  autoFit?: "content";
   align: "left" | "center" | "right";
 }
 
@@ -159,6 +169,8 @@ export interface PageNumberSettings {
   enabled: boolean;
   position: "bottom-left" | "bottom-center" | "bottom-right";
   format: "number" | "number-total";
+  /** 1-based first numbered slide. Missing preserves legacy hideFirst counting. */
+  firstSlide?: number;
   startAt: number;
   hideFirst: boolean;
   fontSize: number;
@@ -188,16 +200,19 @@ export function resolvePageNumber(
   color: string;
 } | null {
   const settings = deck.pageNumbers;
+  const firstIndex = (settings?.firstSlide ?? 1) - 1;
   if (
     !settings?.enabled ||
     !Number.isInteger(index) ||
     index < 0 ||
     index >= deck.slides.length ||
-    (settings.hideFirst && index === 0)
+    index < firstIndex ||
+    (settings.firstSlide === undefined && settings.hideFirst && index === 0)
   )
     return null;
-  const current = settings.startAt + index;
-  const last = settings.startAt + deck.slides.length - 1;
+  const offset = settings.firstSlide === undefined ? 0 : firstIndex;
+  const current = settings.startAt + index - offset;
+  const last = settings.startAt + deck.slides.length - 1 - offset;
   return {
     text:
       settings.format === "number-total"
@@ -388,6 +403,11 @@ export function validateDeck(value: unknown): Deck {
     number(settings.startAt, "Page number start", 0, 10_000);
     if (!Number.isInteger(settings.startAt))
       throw new Error("Page number start must be an integer.");
+    if (settings.firstSlide !== undefined) {
+      number(settings.firstSlide, "First numbered slide", 1, 1000);
+      if (!Number.isInteger(settings.firstSlide))
+        throw new Error("First numbered slide must be an integer.");
+    }
     boolean(settings.hideFirst, "First page number visibility");
     number(settings.fontSize, "Page number size", 4, 200);
     color(settings.color, "Page number color");
@@ -498,6 +518,42 @@ export function validateDeck(value: unknown): Deck {
           number(object.fontSize, "Text size", 4, 500);
           number(object.fontWeight, "Text weight", 100, 1000);
           color(object.color, "Text color");
+          if (object.autoFit !== undefined && object.autoFit !== "content")
+            throw new Error("Unsupported text box fitting mode.");
+          if (object.textStyles !== undefined) {
+            if (
+              !Array.isArray(object.textStyles) ||
+              object.textStyles.length > 4096
+            )
+              throw new Error("Text color ranges must be a bounded array.");
+            let previousEnd = 0;
+            for (const candidate of object.textStyles) {
+              const range = record(candidate, "Text color range");
+              number(
+                range.start,
+                "Text color start",
+                0,
+                (object.text as string).length,
+              );
+              number(
+                range.end,
+                "Text color end",
+                0,
+                (object.text as string).length,
+              );
+              if (
+                !Number.isInteger(range.start) ||
+                !Number.isInteger(range.end) ||
+                (range.start as number) < previousEnd ||
+                (range.end as number) <= (range.start as number)
+              )
+                throw new Error(
+                  "Text color ranges must be ordered and non-overlapping.",
+                );
+              color(range.color, "Selected text color");
+              previousEnd = range.end as number;
+            }
+          }
           if (!["left", "center", "right"].includes(object.align as string))
             throw new Error("Unsupported text alignment.");
           break;
@@ -646,9 +702,19 @@ export function validateDeck(value: unknown): Deck {
   for (const groupId of groupOwners.keys())
     if (identifiers.has(groupId))
       throw new Error(`Group ID duplicates the identifier “${groupId}”.`);
+  // Media strings are immutable. Keep JSON normalization of editable/unknown
+  // fields without allocating another serialized copy of every image/video.
+  const sourceAssets = deck.assets as Asset[];
   const snapshot = JSON.parse(
-    JSON.stringify({ ...deck, formatVersion: "0.5.0" }),
+    JSON.stringify({
+      ...deck,
+      formatVersion: "0.5.0",
+      assets: sourceAssets.map((asset) => ({ ...asset, dataUrl: "" })),
+    }),
   ) as Deck;
+  snapshot.assets.forEach((asset, index) => {
+    asset.dataUrl = sourceAssets[index].dataUrl;
+  });
   for (const slide of snapshot.slides) {
     const groups = new Map<string, number>();
     for (const object of slide.objects)

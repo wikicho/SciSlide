@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent } from "react";
 import type {
   Deck,
@@ -12,9 +12,9 @@ import { renderObjectEquation } from "../lib/equation-renderer";
 import type { RenderedEquation } from "../lib/equations";
 import { wrapText } from "../lib/layout";
 import {
-  hasInlineMath,
   inlinePlainText,
   inlineTextLayoutKey,
+  needsInlineTextLayout,
 } from "../lib/inline-math";
 import { InlineMathText } from "./InlineMathText";
 import { resolvePageNumber } from "../lib/model";
@@ -114,7 +114,25 @@ export function EquationView({
   );
 }
 
-export function SlideScene({
+interface TextFrame {
+  width: number;
+  height: number;
+  lines: string[];
+}
+
+interface TextMeasurement {
+  text: string;
+  width: number;
+  fontSize: number;
+  family: string;
+  weight: number;
+  formatted: boolean;
+  revision: number;
+  inline: boolean;
+  lines: string[];
+}
+
+export const SlideScene = memo(function SlideScene({
   deck,
   slide,
   selected = [],
@@ -180,12 +198,15 @@ export function SlideScene({
     Record<string, { width: number; height: number }>
   >({});
   const [textFontRevision, refreshTextMetrics] = useState(0);
+  const textMeasurements = useRef(new Map<string, TextMeasurement>());
+  const previousTextFrames = useRef<Record<string, TextFrame>>({});
   const [inlineMetrics, setInlineMetrics] = useState<
-    Record<string, { key: string; height: number }>
+    Record<string, { key: string; height: number; width?: number }>
   >({});
   const [editingMetrics, setEditingMetrics] = useState<{
     key: string;
     height: number;
+    width?: number;
   }>();
   useEffect(() => {
     const fonts = document.fonts;
@@ -195,7 +216,8 @@ export function SlideScene({
       if (active) refreshTextMetrics((revision) => revision + 1);
     };
     fonts.addEventListener?.("loadingdone", fontsLoaded);
-    void fonts.ready?.then(fontsLoaded).catch(() => undefined);
+    if (fonts.status !== "loaded")
+      void fonts.ready?.then(fontsLoaded).catch(() => undefined);
     return () => {
       active = false;
       fonts.removeEventListener?.("loadingdone", fontsLoaded);
@@ -229,15 +251,25 @@ export function SlideScene({
   useEffect(() => {
     if (!koreanFontKey || !document.fonts?.load) return;
     let active = true;
+    const pending = koreanFontKey
+      .split(",")
+      .filter(
+        (weight) =>
+          !document.fonts.check?.(
+            `${weight} 16px "${KOREAN_FONT_FAMILY}"`,
+            "한글",
+          ),
+      );
+    if (!pending.length) return;
     void Promise.all(
-      koreanFontKey
-        .split(",")
-        .map((weight) =>
-          document.fonts.load(`${weight} 16px "${KOREAN_FONT_FAMILY}"`, "한글"),
-        ),
+      pending.map((weight) =>
+        document.fonts.load(`${weight} 16px "${KOREAN_FONT_FAMILY}"`, "한글"),
+      ),
     )
       .then(() => {
-        if (active) refreshTextMetrics((revision) => revision + 1);
+        // A real FontFaceSet reports loadingdone once for all mounted scenes.
+        if (active && !document.fonts.addEventListener)
+          refreshTextMetrics((revision) => revision + 1);
       })
       .catch(() => undefined);
     return () => {
@@ -256,42 +288,92 @@ export function SlideScene({
     [onMetrics],
   );
   const reportInlineMetrics = useCallback(
-    (id: string, key: string, height: number) => {
+    (id: string, key: string, height: number, width?: number) => {
       setInlineMetrics((current) =>
-        current[id]?.key === key && current[id]?.height === height
+        current[id]?.key === key &&
+        current[id]?.height === height &&
+        current[id]?.width === width
           ? current
-          : { ...current, [id]: { key, height } },
+          : { ...current, [id]: { key, height, width } },
       );
     },
     [],
   );
   const textFrames = useMemo(() => {
-    const frames: Record<
-      string,
-      { width: number; height: number; lines: string[] }
-    > = {};
+    const frames: Record<string, TextFrame> = {};
+    const nextMeasurements = new Map<string, TextMeasurement>();
     for (const original of slide.objects) {
       const object = preview[original.id] ?? original;
       if (object.type !== "text" || !object.visible) continue;
-      const inline = hasInlineMath(object.text);
-      const lines = wrapText(
-        inline ? object.text : inlinePlainText(object.text),
-        object.transform.width,
-        object.fontSize,
-        effectiveTextFontFamily(deck, object),
-        object.fontWeight,
-      );
+      const family = effectiveTextFontFamily(deck, object);
+      const formatted =
+        !!object.textStyles?.length || object.autoFit === "content";
+      let measurement = textMeasurements.current.get(object.id);
+      if (
+        !measurement ||
+        measurement.text !== object.text ||
+        measurement.width !== object.transform.width ||
+        measurement.fontSize !== object.fontSize ||
+        measurement.family !== family ||
+        measurement.weight !== object.fontWeight ||
+        measurement.formatted !== formatted ||
+        measurement.revision !== textFontRevision
+      ) {
+        const inline = needsInlineTextLayout(object);
+        measurement = {
+          text: object.text,
+          width: object.transform.width,
+          fontSize: object.fontSize,
+          family,
+          weight: object.fontWeight,
+          formatted,
+          revision: textFontRevision,
+          inline,
+          lines: wrapText(
+            inline ? object.text : inlinePlainText(object.text),
+            object.transform.width,
+            object.fontSize,
+            family,
+            object.fontWeight,
+          ),
+        };
+      }
+      nextMeasurements.set(object.id, measurement);
+      const { inline, lines } = measurement;
       const measured = inlineMetrics[object.id];
-      const contentHeight =
+      const current =
         inline && measured?.key === inlineTextLayoutKey(object, deck)
-          ? measured.height
-          : lines.length * object.fontSize * 1.3;
+          ? measured
+          : undefined;
+      const contentHeight =
+        current?.height ?? lines.length * object.fontSize * 1.3;
       frames[object.id] = {
-        width: object.transform.width,
-        height: Math.max(object.transform.height, contentHeight),
+        width:
+          object.autoFit === "content" && current
+            ? (current.width ?? object.transform.width)
+            : object.transform.width,
+        height:
+          object.autoFit === "content" && current
+            ? contentHeight
+            : Math.max(object.transform.height, contentHeight),
         lines,
       };
+      const previous = previousTextFrames.current[object.id];
+      if (
+        previous?.width === frames[object.id].width &&
+        previous.height === frames[object.id].height &&
+        previous.lines === lines
+      )
+        frames[object.id] = previous;
     }
+    textMeasurements.current = nextMeasurements;
+    const previous = previousTextFrames.current;
+    if (
+      Object.keys(previous).length === Object.keys(frames).length &&
+      Object.keys(frames).every((id) => frames[id] === previous[id])
+    )
+      return previous;
+    previousTextFrames.current = frames;
     return frames;
   }, [
     slide.objects,
@@ -300,33 +382,59 @@ export function SlideScene({
     deck.theme.equation.fontSetId,
     deck.theme.inlineMathFontSetId,
     deck.theme.fontFamily,
+    deck.slideSize.width,
     textFontRevision,
   ]);
-  useEffect(() => {
-    for (const [id, frame] of Object.entries(textFrames))
-      onMetrics?.(id, frame.width, frame.height);
-  }, [textFrames, onMetrics]);
   const editingKey =
     editingObject?.type === "text" && textEditing
       ? JSON.stringify([
           editingObject.id,
-          textEditing.value,
-          editingObject.transform.width,
-          editingObject.transform.height,
-          editingObject.fontSize,
-          effectiveTextFontFamily(deck, editingObject),
-          editingObject.fontWeight,
+          inlineTextLayoutKey(
+            {
+              ...editingObject,
+              text: textEditing.value,
+              textStyles: textEditing.styles ?? editingObject.textStyles,
+            },
+            deck,
+          ),
+          editingObject.autoFit === "content"
+            ? undefined
+            : editingObject.transform.height,
         ])
       : "";
   const reportEditingHeight = useCallback(
-    (height: number) =>
+    (height: number, width?: number) =>
       setEditingMetrics((current) =>
-        current?.key === editingKey && current.height === height
+        current?.key === editingKey &&
+        current.height === height &&
+        current.width === width
           ? current
-          : { key: editingKey, height },
+          : { key: editingKey, height, width },
       ),
     [editingKey],
   );
+  useEffect(() => {
+    if (!onMetrics) return;
+    for (const [id, frame] of Object.entries(textFrames)) {
+      if (id === editingObject?.id) {
+        if (editingMetrics?.key !== editingKey) continue;
+        onMetrics(
+          id,
+          editingObject.type === "text" && editingObject.autoFit === "content"
+            ? (editingMetrics.width ?? frame.width)
+            : frame.width,
+          editingMetrics.height,
+        );
+      } else onMetrics(id, frame.width, frame.height);
+    }
+  }, [
+    textFrames,
+    onMetrics,
+    deck,
+    editingKey,
+    editingMetrics,
+    editingObject?.id,
+  ]);
   return (
     <svg
       className={drawing && !playback ? "slide-scene drawing" : "slide-scene"}
@@ -367,7 +475,13 @@ export function SlideScene({
               o.type === "equation"
                 ? (localMetrics[o.id] ?? metrics[o.id])
                 : undefined,
-            w = m?.width ?? t.width,
+            w =
+              editingObject?.id === o.id &&
+              editingMetrics?.key === editingKey &&
+              o.type === "text" &&
+              o.autoFit === "content"
+                ? (editingMetrics.width ?? textFrames[o.id]?.width ?? t.width)
+                : (textFrames[o.id]?.width ?? m?.width ?? t.width),
             h =
               editingObject?.id === o.id && editingMetrics?.key === editingKey
                 ? editingMetrics.height
@@ -375,7 +489,7 @@ export function SlideScene({
           return (
             <g
               key={`${slide.id}:${o.id}`}
-              transform={`translate(${t.x} ${t.y}) rotate(${t.rotation} ${w / 2} ${(o.type === "text" ? t.height : h) / 2})`}
+              transform={`translate(${t.x} ${t.y}) rotate(${t.rotation} ${w / 2} ${(o.type === "text" && o.autoFit !== "content" ? t.height : h) / 2})`}
               opacity={o.opacity}
               className={[
                 onPointer && !o.locked ? "canvas-object" : "",
@@ -406,7 +520,7 @@ export function SlideScene({
               )}
               {o.type === "text" &&
                 editingObject?.id !== o.id &&
-                (hasInlineMath(o.text) ? (
+                (needsInlineTextLayout(o) ? (
                   <InlineMathText
                     object={o}
                     deck={deck}
@@ -627,4 +741,4 @@ export function SlideScene({
       )}
     </svg>
   );
-}
+});

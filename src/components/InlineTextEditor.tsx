@@ -5,9 +5,11 @@ import {
   useRef,
   useState,
 } from "react";
-import type { Deck, TextObject } from "../lib/model";
+import type { RefObject } from "react";
+import type { Deck, TextObject, TextStyleRange } from "../lib/model";
 import { wrapText } from "../lib/layout";
-import { hasInlineMath, inlineTextLayoutKey } from "../lib/inline-math";
+import { needsInlineTextLayout, inlineTextLayoutKey } from "../lib/inline-math";
+import { continueBulletLine } from "../lib/text-formatting";
 import { InlineMathText } from "./InlineMathText";
 import {
   effectiveTextFontFamily,
@@ -31,6 +33,8 @@ export interface CanvasTextEditing {
   platform?: KeyboardPlatform;
   suspended?: boolean;
   onEditEquation?: (field: HTMLTextAreaElement) => void;
+  styles?: TextStyleRange[];
+  fieldRef?: RefObject<HTMLTextAreaElement | null>;
 }
 
 /** A native plain-text field in slide coordinates preserves zoom and rotation. */
@@ -42,7 +46,7 @@ export function InlineTextEditor({
 }: {
   object: TextObject;
   editing: CanvasTextEditing;
-  onHeightChange?: (height: number) => void;
+  onHeightChange?: (height: number, width?: number) => void;
   deck?: Deck;
 }) {
   const platform = editing.platform ?? getKeyboardPlatform(desktop?.platform);
@@ -60,10 +64,21 @@ export function InlineTextEditor({
   }, []);
   const { x, y, width, height, rotation } = object.transform;
   const fontFamily = effectiveTextFontFamily(deck, object);
-  const showPreview = !!deck && hasInlineMath(editing.value);
-  const minimumHeight = Math.max(height, object.fontSize * 1.6);
+  const previewObject = {
+    ...object,
+    text: editing.value,
+    textStyles: editing.styles ?? object.textStyles,
+  };
+  const showPreview = !!deck && needsInlineTextLayout(previewObject);
+  const minimumHeight =
+    object.autoFit === "content"
+      ? object.fontSize * 1.3
+      : Math.max(height, object.fontSize * 1.6);
   const sourceWidth = showPreview
-    ? Math.min(width, Math.max(1, deck.slideSize.width - 32))
+    ? Math.min(
+        object.autoFit === "content" ? Math.max(360, width) : width,
+        Math.max(1, deck.slideSize.width - 32),
+      )
     : width;
   const sourceMaximumHeight = showPreview
     ? Math.max(1, Math.min(320, deck.slideSize.height - 64))
@@ -72,24 +87,34 @@ export function InlineTextEditor({
     ? Math.min(sourceMaximumHeight, Math.max(96, object.fontSize * 2.6))
     : minimumHeight;
   const [editorHeight, setEditorHeight] = useState(sourceMinimumHeight);
-  const previewObject = { ...object, text: editing.value };
   const previewKey = deck ? inlineTextLayoutKey(previewObject, deck) : "";
   const [previewMetrics, setPreviewMetrics] = useState<{
     key: string;
     height: number;
+    width?: number;
   }>();
-  const previewHeight = Math.max(
-    minimumHeight,
-    previewMetrics?.key === previewKey
-      ? previewMetrics.height
-      : object.fontSize * 1.3,
-  );
+  const currentPreviewMetrics =
+    previewMetrics?.key === previewKey ? previewMetrics : undefined;
+  const previewWidth =
+    object.autoFit === "content"
+      ? (currentPreviewMetrics?.width ?? width)
+      : width;
+  const previewHeight =
+    object.autoFit === "content"
+      ? (currentPreviewMetrics?.height ?? object.fontSize * 1.3)
+      : Math.max(
+          minimumHeight,
+          currentPreviewMetrics?.height ?? object.fontSize * 1.3,
+        );
+  const rotationHeight = object.autoFit === "content" ? previewHeight : height;
   const reportPreviewMetrics = useCallback(
-    (_id: string, key: string, contentHeight: number) =>
+    (_id: string, key: string, contentHeight: number, contentWidth?: number) =>
       setPreviewMetrics((current) =>
-        current?.key === key && current.height === contentHeight
+        current?.key === key &&
+        current.height === contentHeight &&
+        current.width === contentWidth
           ? current
-          : { key, height: contentHeight },
+          : { key, height: contentHeight, width: contentWidth },
       ),
     [],
   );
@@ -97,13 +122,13 @@ export function InlineTextEditor({
   // preview's rotation and frame height. Clamp it even when neither side fits.
   const radians = (rotation * Math.PI) / 180;
   const rotatedY = [
-    [-width / 2, -height / 2],
-    [width / 2, -height / 2],
-    [-width / 2, previewHeight - height / 2],
-    [width / 2, previewHeight - height / 2],
+    [-previewWidth / 2, -rotationHeight / 2],
+    [previewWidth / 2, -rotationHeight / 2],
+    [-previewWidth / 2, previewHeight - rotationHeight / 2],
+    [previewWidth / 2, previewHeight - rotationHeight / 2],
   ].map(
     ([dx, dy]) =>
-      y + height / 2 + dx * Math.sin(radians) + dy * Math.cos(radians),
+      y + rotationHeight / 2 + dx * Math.sin(radians) + dy * Math.cos(radians),
   );
   const below = Math.max(...rotatedY) + 28;
   const above = Math.min(...rotatedY) - editorHeight - 12;
@@ -172,8 +197,21 @@ export function InlineTextEditor({
     showPreview,
   ]);
   useLayoutEffect(() => {
-    if (showPreview) heightCallback.current?.(previewHeight);
-  }, [showPreview, previewHeight, previewKey]);
+    if (showPreview)
+      heightCallback.current?.(
+        previewHeight,
+        object.autoFit === "content"
+          ? previewWidth
+          : currentPreviewMetrics?.width,
+      );
+  }, [
+    showPreview,
+    previewHeight,
+    previewWidth,
+    previewKey,
+    currentPreviewMetrics?.width,
+    object.autoFit,
+  ]);
 
   return (
     <g
@@ -190,7 +228,7 @@ export function InlineTextEditor({
         <>
           <g
             data-inline-text-preview={object.id}
-            transform={`translate(${x} ${y}) rotate(${rotation} ${width / 2} ${height / 2})`}
+            transform={`translate(${x} ${y}) rotate(${rotation} ${previewWidth / 2} ${rotationHeight / 2})`}
             opacity={object.opacity}
             pointerEvents="none"
           >
@@ -229,7 +267,10 @@ export function InlineTextEditor({
         height={editorHeight}
       >
         <textarea
-          ref={field}
+          ref={(node) => {
+            field.current = node;
+            if (editing.fieldRef) editing.fieldRef.current = node;
+          }}
           aria-label="Edit text on slide"
           aria-description={`Inline math uses $...$ or \\(...\\). ${shortcutLabel("insertInlineEquation", platform)} to insert or edit an equation. Enter for a new line. ${shortcutLabel("finishTextEditing", platform)} to finish. Escape to cancel.`}
           className={`inline-text-editor${showPreview ? " inline-text-source-editor" : ""}`}
@@ -255,7 +296,12 @@ export function InlineTextEditor({
           onCompositionEnd={() => {
             composing.current = false;
           }}
-          onBlur={() => {
+          onBlur={(event) => {
+            if (
+              event.relatedTarget instanceof Element &&
+              event.relatedTarget.closest("[data-text-formatting]")
+            )
+              return;
             if (!editing.suspended) finish(true);
           }}
           onKeyDown={(event) => {
@@ -266,6 +312,28 @@ export function InlineTextEditor({
             ) {
               event.stopPropagation();
               return;
+            }
+            if (
+              event.key === "Enter" &&
+              !event.ctrlKey &&
+              !event.metaKey &&
+              !event.altKey &&
+              !event.shiftKey
+            ) {
+              const next = continueBulletLine(
+                editing.value,
+                event.currentTarget.selectionStart,
+                event.currentTarget.selectionEnd,
+              );
+              if (next) {
+                event.preventDefault();
+                editing.onChange(next.value);
+                const element = event.currentTarget;
+                queueMicrotask(() =>
+                  element.setSelectionRange(next.start, next.end),
+                );
+                return;
+              }
             }
             if (event.defaultPrevented || event.getModifierState("AltGraph"))
               return;

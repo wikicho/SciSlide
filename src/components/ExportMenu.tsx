@@ -11,12 +11,16 @@ export function ExportMenu({
   disabled,
   platform,
   onExport,
+  includeBuildSteps,
+  onBuildStepsChange,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   disabled: boolean;
   platform: KeyboardPlatform;
   onExport: (kind: ExportKind) => void;
+  includeBuildSteps?: boolean;
+  onBuildStepsChange?: (value: boolean) => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -229,6 +233,24 @@ export function ExportMenu({
             PDF presentation<small>All slides · vector equations</small>
           </span>
         </button>
+        {onBuildStepsChange && (
+          <label
+            className="check-field"
+            style={{ padding: "8px 12px", fontSize: 12 }}
+          >
+            <input
+              type="checkbox"
+              aria-label="Include animation steps in PDF"
+              checked={includeBuildSteps ?? false}
+              onChange={(event) => onBuildStepsChange(event.target.checked)}
+            />
+            <span>
+              Include animation steps in PDF
+              <br />
+              <small>Reveal pages keep the slide number</small>
+            </span>
+          </label>
+        )}
         <button
           type="button"
           disabled={disabled}

@@ -7,7 +7,12 @@ import {
   getDeckTheme,
 } from "../lib/deck-themes";
 import type { DeckSlideLayoutId } from "../lib/deck-themes";
-import { SlideScene } from "./SlideScene";
+import { DeferredSlideScene } from "./DeferredSlideScene";
+import {
+  isUserSlideLayoutCompatible,
+  userSlideLayoutPreviewDeck,
+} from "../lib/user-layouts";
+import type { UserSlideLayout } from "../lib/user-layouts";
 
 const layoutCategories = [
   { id: "all", name: "All layouts" },
@@ -19,10 +24,16 @@ export function SlideTemplateDialog({
   deck,
   onChoose,
   onClose,
+  userLayouts = [],
+  onChooseUserLayout,
+  onManageUserLayouts,
 }: {
   deck: Deck;
   onChoose: (id: DeckSlideLayoutId) => void;
   onClose: () => void;
+  userLayouts?: UserSlideLayout[];
+  onChooseUserLayout?: (id: string) => void;
+  onManageUserLayouts?: () => void;
 }) {
   const dialog = useRef<HTMLElement>(null);
   const grid = useRef<HTMLDivElement>(null);
@@ -42,6 +53,15 @@ export function SlideTemplateDialog({
     (template) => category === "all" || template.category === category,
   );
   const dedicatedTheme = getDeckTheme(deck)?.id === "keynote-white";
+  const userPreviews = useMemo(
+    () =>
+      userLayouts.map((entry) => ({
+        entry,
+        preview: userSlideLayoutPreviewDeck(entry),
+        compatible: isUserSlideLayoutCompatible(entry, deck),
+      })),
+    [userLayouts, deck.slideSize.width, deck.slideSize.height],
+  );
   useEffect(() => {
     const previous = document.activeElement;
     dialog.current?.querySelector<HTMLButtonElement>(".template-card")?.focus();
@@ -91,7 +111,9 @@ export function SlideTemplateDialog({
                 {dedicatedTheme ? "KEYNOTE WHITE LAYOUTS" : "SLIDE LAYOUTS"}
               </span>
               <span className="template-count" aria-live="polite">
-                {visibleLayouts.length} layouts
+                {visibleLayouts.length +
+                  (category === "all" ? userLayouts.length : 0)}{" "}
+                layouts
               </span>
             </div>
             <h2 id="template-dialog-title">Choose a slide layout.</h2>
@@ -141,7 +163,7 @@ export function SlideTemplateDialog({
               onClick={() => onChoose(template.id)}
             >
               <span className="template-thumbnail">
-                <SlideScene deck={deck} slide={template.slide} />
+                <DeferredSlideScene deck={deck} slide={template.slide} />
               </span>
               <span className="template-card-label">
                 <span>
@@ -152,9 +174,58 @@ export function SlideTemplateDialog({
               </span>
             </button>
           ))}
+          {userLayouts.length > 0 && category === "all" && (
+            <>
+              <h3 style={{ gridColumn: "1 / -1", margin: 0 }}>Your layouts</h3>
+              {userPreviews.map(({ entry, preview, compatible }) => {
+                return (
+                  <button
+                    key={entry.id}
+                    className="template-card"
+                    disabled={!compatible || !onChooseUserLayout}
+                    aria-label={`Use ${entry.name} user layout`}
+                    title={
+                      compatible
+                        ? "Insert an independent editable copy"
+                        : "This layout requires a document with matching page dimensions"
+                    }
+                    onClick={() => onChooseUserLayout?.(entry.id)}
+                  >
+                    <span
+                      className="template-thumbnail"
+                      style={{
+                        aspectRatio: `${entry.slideSize.width}/${entry.slideSize.height}`,
+                      }}
+                    >
+                      <DeferredSlideScene
+                        deck={preview}
+                        slide={preview.slides[0]}
+                      />
+                    </span>
+                    <span className="template-card-label">
+                      <span>
+                        <strong>{entry.name}</strong>
+                        <small>
+                          {compatible
+                            ? "Saved user layout"
+                            : `${entry.slideSize.width} × ${entry.slideSize.height} · different page size`}
+                        </small>
+                      </span>
+                      <ArrowRight size={16} />
+                    </span>
+                  </button>
+                );
+              })}
+            </>
+          )}
         </div>
         <footer>
           <span>Inserted after the current slide.</span>
+          {onManageUserLayouts && (
+            <button className="button light" onClick={onManageUserLayouts}>
+              Manage user layouts
+            </button>
+          )}
           <button className="button light" onClick={() => onChoose("blank")}>
             <FilePlus2 size={15} /> Blank slide
           </button>

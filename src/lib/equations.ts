@@ -312,6 +312,9 @@ const CACHE_CHARACTERS = 4_000_000;
 const PLAIN_COLOR =
   /^(?:#[\da-f]{3,4}|#[\da-f]{6}|#[\da-f]{8}|[a-z]+|(?:rgb|hsl)a?\([\d.,%\s+-]+\))$/i;
 const cache = new Map<string, RenderedEquation>();
+// Only active requests live here; failures must remain retryable. Bound this
+// map separately from the queue so large decks cannot retain an extra key map.
+const pending = new Map<string, Promise<RenderedEquation>>();
 let cacheCharacters = 0;
 let renderQueue: Promise<unknown> = Promise.resolve();
 
@@ -541,11 +544,13 @@ export function renderEquation(
     cache.set(key, hit);
     return Promise.resolve(copyRendered(hit));
   }
+  const active = pending.get(key);
+  if (active) return active.then(copyRendered);
   // Output jax and dynamic font state are mutable. Serializing conversions also
   // ensures edits, thumbnails and exports can safely request equations together.
   const operation = renderQueue.then(async () => {
     const existing = cache.get(key);
-    if (existing) return copyRendered(existing);
+    if (existing) return existing;
     try {
       const rendered = await convert(
         latex,
@@ -556,11 +561,18 @@ export function renderEquation(
         displayMode,
       );
       remember(key, rendered);
-      return copyRendered(rendered);
+      return rendered;
     } catch (error) {
       throw new Error(errorMessage(error));
     }
   });
+  if (pending.size < CACHE_ENTRIES) {
+    pending.set(key, operation);
+    const forget = () => {
+      if (pending.get(key) === operation) pending.delete(key);
+    };
+    void operation.then(forget, forget);
+  }
   renderQueue = operation.catch(() => undefined);
-  return operation;
+  return operation.then(copyRendered);
 }

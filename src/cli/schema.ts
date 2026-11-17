@@ -250,6 +250,11 @@ const pageNumbers = object({
   enabled: boolean,
   position: { enum: ["bottom-left", "bottom-center", "bottom-right"] },
   format: { enum: ["number", "number-total"] },
+  firstSlide: {
+    ...nullable({ type: "integer", minimum: 1, maximum: 1000 }),
+    description:
+      "1-based first numbered slide, which receives startAt. null restores legacy hideFirst counting.",
+  },
   startAt: { type: "integer", minimum: 0, maximum: 10_000 },
   hideFirst: boolean,
   fontSize: number(4, 200),

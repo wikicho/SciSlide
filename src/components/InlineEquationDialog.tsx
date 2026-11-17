@@ -8,6 +8,7 @@ import {
   shortcutLabel,
 } from "../lib/shortcuts";
 import type { KeyboardPlatform } from "../lib/shortcuts";
+import { EquationSourceTools } from "./EquationSourceTools";
 import "./InlineEquationDialog.css";
 
 // Inline equations use the same source limit as the bundled MathJax renderer.
@@ -79,6 +80,7 @@ export function InlineEquationDialog({
   const input = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
   const completed = useRef(false);
+  const [finished, setFinished] = useState(false);
   const [source, setSource] = useState(initialLatex);
   const latex = source.trim();
   const validationError = sourceError(source);
@@ -116,12 +118,17 @@ export function InlineEquationDialog({
   const cancel = () => {
     if (completed.current) return;
     completed.current = true;
+    setFinished(true);
     onCancel();
   };
   const apply = () => {
     if (!canApply || composing.current || completed.current) return;
     completed.current = true;
-    if (onApply(latex) === false) completed.current = false;
+    setFinished(true);
+    if (onApply(latex) === false) {
+      completed.current = false;
+      setFinished(false);
+    }
   };
 
   return (
@@ -157,9 +164,14 @@ export function InlineEquationDialog({
         } else if (event.key === "Tab") {
           const controls = Array.from(
             section.current?.querySelectorAll<HTMLElement>(
-              "button:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])",
+              "button:not(:disabled), textarea:not(:disabled), input:not(:disabled), select:not(:disabled), summary, [tabindex]:not([tabindex='-1'])",
             ) ?? [],
-          ).filter((control) => !control.hidden);
+          ).filter(
+            (control) =>
+              !control.closest("[hidden]") &&
+              (control.matches("summary") ||
+                !control.closest("details:not([open])")),
+          );
           const first = controls[0];
           const last = controls.at(-1);
           if (event.shiftKey && document.activeElement === first) {
@@ -221,6 +233,14 @@ export function InlineEquationDialog({
             <X size={18} aria-hidden="true" />
           </button>
         </header>
+        <EquationSourceTools
+          sourceRef={input}
+          source={source}
+          disabled={finished}
+          onSourceChange={(next) => {
+            if (!completed.current) setSource(next);
+          }}
+        />
         <div className="inline-equation-body">
           <label htmlFor={sourceId}>LaTeX source</label>
           <textarea

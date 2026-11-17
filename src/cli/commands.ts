@@ -797,8 +797,9 @@ export function applyAgentOperations(
             deck.pageNumbers = mergeRecord(
               deck.pageNumbers ?? DEFAULT_PAGE_NUMBERS,
               patch.pageNumbers,
-              Object.keys(DEFAULT_PAGE_NUMBERS),
+              [...Object.keys(DEFAULT_PAGE_NUMBERS), "firstSlide"],
               "Page number patch",
+              ["firstSlide"],
             ) as unknown as Deck["pageNumbers"];
           break;
         }
