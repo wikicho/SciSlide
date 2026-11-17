@@ -173,10 +173,10 @@ describe("external file drops in the editor", () => {
     return svg;
   }
   async function drag(
-    type: "dragover" | "drop",
+    type: "dragenter" | "dragover" | "dragleave" | "dragend" | "drop",
     files: File[],
     target: Element = canvas(),
-    coordinates = { clientX: 220, clientY: 175 },
+    coordinates: MouseEventInit = { clientX: 220, clientY: 175 },
     types = ["Files"],
   ) {
     const event = new MouseEvent(type, {
@@ -194,6 +194,93 @@ describe("external file drops in the editor", () => {
       await act(async () => pause(5));
     expect(condition()).toBe(true);
   }
+  async function input(
+    field: HTMLInputElement | HTMLTextAreaElement,
+    value: string,
+  ) {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        field instanceof HTMLTextAreaElement
+          ? HTMLTextAreaElement.prototype
+          : HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(field, value);
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
+  it("accepts a native file entry on an SVG child before any dragover, even while the protected file list is empty", async () => {
+    const svg = await render();
+    const target = svg.querySelector("rect")!;
+    const entered = await drag("dragenter", [], target);
+    expect(entered.event.defaultPrevented).toBe(true);
+    expect(entered.transfer.dropEffect).toBe("copy");
+    expect(canvas().classList.contains("file-drop-active")).toBe(true);
+    expect(importFigure).not.toHaveBeenCalled();
+
+    const file = image("quick-drop.png");
+    const dropped = await drag("drop", [file], target);
+    expect(dropped.event.defaultPrevented).toBe(true);
+    expect(importFigure).toHaveBeenCalledExactlyOnceWith(file);
+    expect((await persist()).assets).toEqual([asset(file)]);
+    expect(canvas().classList.contains("file-drop-active")).toBe(false);
+  });
+
+  it("balances a new child entry before the old child leaves, then clears a terminal leave even at the last inside coordinates", async () => {
+    const svg = await render();
+    await click("Text");
+    const previousChild = svg.querySelector("rect")!;
+    const nextChild = host.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Edit text on slide"]',
+    )!;
+    const before = await persist();
+    await drag("dragenter", [], previousChild);
+    expect(canvas().classList.contains("file-drop-active")).toBe(true);
+    // Native DnD enters the next hit target before leaving the old one.
+    // Linux may report null relatedTarget for both leaves, including cancel.
+    await drag("dragenter", [], nextChild);
+    expect(canvas().classList.contains("file-drop-active")).toBe(true);
+    await drag("dragleave", [], previousChild, {
+      clientX: 220,
+      clientY: 175,
+      relatedTarget: null,
+    });
+    expect(canvas().classList.contains("file-drop-active")).toBe(true);
+
+    await drag("dragleave", [], nextChild, {
+      clientX: 220,
+      clientY: 175,
+      relatedTarget: null,
+    });
+    expect(canvas().classList.contains("file-drop-active")).toBe(false);
+    expect(importFigure).not.toHaveBeenCalled();
+    expect(await persist()).toEqual(before);
+  });
+
+  it.each(["drop", "dragend"] as const)(
+    "resets the file-entry depth on %s so a subsequent cancelled drag clears its highlight",
+    async (completion) => {
+      const svg = await render();
+      await drag("dragenter", [], svg);
+      expect(canvas().classList.contains("file-drop-active")).toBe(true);
+      const file = image("completed-drag.png");
+      await drag(completion, completion === "drop" ? [file] : [], svg);
+      await persist();
+      expect(canvas().classList.contains("file-drop-active")).toBe(false);
+      if (completion === "drop")
+        expect(importFigure).toHaveBeenCalledExactlyOnceWith(file);
+      else expect(importFigure).not.toHaveBeenCalled();
+
+      await drag("dragenter", [], svg);
+      expect(canvas().classList.contains("file-drop-active")).toBe(true);
+      await drag("dragleave", [], svg, {
+        clientX: 220,
+        clientY: 175,
+        relatedTarget: null,
+      });
+      expect(canvas().classList.contains("file-drop-active")).toBe(false);
+    },
+  );
 
   it.each([
     {
@@ -367,23 +454,141 @@ describe("external file drops in the editor", () => {
     expect(importFigure).not.toHaveBeenCalled();
   });
 
-  it("does not import canvas figures when files are dropped over the inline text input", async () => {
+  it("commits pending inline text before importing a PNG batch over the editor and undoes only the image batch once", async () => {
     await render();
     await click("Text");
-    const input = host.querySelector<HTMLTextAreaElement>(
+    const editor = host.querySelector<HTMLTextAreaElement>(
       'textarea[aria-label="Edit text on slide"]',
     )!;
-    expect(input).toBeTruthy();
+    expect(editor).toBeTruthy();
     const before = await persist();
-    const file = image("text-target.png");
-    const over = await drag("dragover", [file], input);
-    // The document-level guard prevents browser navigation, while the canvas
-    // must leave the text field outside its insertion path.
-    expect(over.transfer.dropEffect).toBe("none");
-    expect(canvas().classList.contains("file-drop-active")).toBe(false);
-    await drag("drop", [file], input);
+    const pendingText = "Keep this pending text 한글 before the PNGs";
+    await input(editor, pendingText);
+    const files = [image("text-target-one.png"), image("text-target-two.png")];
+    const entered = await drag("dragenter", [], editor);
+    expect(entered.event.defaultPrevented).toBe(true);
+    expect(entered.transfer.dropEffect).toBe("copy");
+    const over = await drag("dragover", [], editor);
+    expect(over.transfer.dropEffect).toBe("copy");
+    expect(canvas().classList.contains("file-drop-active")).toBe(true);
+    const dropped = await drag("drop", files, editor);
+    expect(dropped.event.defaultPrevented).toBe(true);
+    expect(host.querySelector('[aria-label="Edit text on slide"]')).toBeNull();
+    const imported = await persist();
+    expect(imported.slides[0].objects[0]).toMatchObject({
+      id: before.slides[0].objects[0].id,
+      type: "text",
+      text: pendingText,
+    });
+    expect(
+      imported.slides[0].objects.filter((object) => object.type === "figure"),
+    ).toHaveLength(2);
+    expect(imported.assets).toEqual(files.map(asset));
+
+    await click("Undo");
+    const textOnly = await persist();
+    expect(textOnly.assets).toEqual([]);
+    expect(textOnly.slides[0].objects).toHaveLength(1);
+    expect(textOnly.slides[0].objects[0]).toMatchObject({
+      id: before.slides[0].objects[0].id,
+      type: "text",
+      text: pendingText,
+    });
+    await click("Redo");
+    expect(await persist()).toEqual(imported);
+  });
+
+  it("opens the PDF picker from the inline editor and retains pending text when PDF import is cancelled", async () => {
+    await render();
+    await click("Text");
+    const editor = host.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Edit text on slide"]',
+    )!;
+    const pendingText = "Keep this pending text 한글 while choosing a PDF page";
+    await input(editor, pendingText);
+    const pdf = new File(["%PDF-1.7"], "inline-target.pdf", {
+      type: "application/pdf",
+    });
+    vi.mocked(openPdfFigure).mockResolvedValue({
+      name: pdf.name,
+      pageCount: 1,
+      renderPage: vi.fn().mockResolvedValue(asset(image("inline-page.png"))),
+      destroy: vi.fn().mockResolvedValue(undefined),
+    });
+    const entered = await drag("dragenter", [], editor);
+    expect(entered.transfer.dropEffect).toBe("copy");
+    await drag("drop", [pdf], editor);
+    await settle(() => !!host.querySelector(".pdf-figure-dialog"));
+    expect(openPdfFigure).toHaveBeenCalledWith(pdf, expect.any(AbortSignal));
+    expect(host.querySelector('[aria-label="Edit text on slide"]')).toBeNull();
+    const withPendingText = await persist();
+    expect(withPendingText.slides[0].objects).toHaveLength(1);
+    expect(withPendingText.slides[0].objects[0]).toMatchObject({
+      type: "text",
+      text: pendingText,
+    });
+    expect(withPendingText.assets).toEqual([]);
+    await click("Cancel");
+    expect(await persist()).toEqual(withPendingText);
     expect(importFigure).not.toHaveBeenCalled();
-    expect(await persist()).toEqual(before);
+  });
+
+  it("leaves ordinary text drags to the inline editor without activating file import", async () => {
+    await render();
+    await click("Text");
+    const editor = host.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Edit text on slide"]',
+    )!;
+    await input(editor, "Pending text stays in its editor");
+    for (const type of ["dragenter", "dragover", "drop"] as const) {
+      const result = await drag(type, [], editor, undefined, ["text/plain"]);
+      expect(result.event.defaultPrevented).toBe(false);
+      expect(result.transfer.dropEffect).toBe("none");
+      expect(canvas().classList.contains("file-drop-active")).toBe(false);
+    }
+    expect(editor.isConnected).toBe(true);
+    expect(editor.value).toBe("Pending text stays in its editor");
+    expect(importFigure).not.toHaveBeenCalled();
+    expect(openPdfFigure).not.toHaveBeenCalled();
+  });
+
+  it("does not import files dropped over unrelated title and speaker-notes fields", async () => {
+    await render();
+    await click("Toggle speaker notes");
+    const title = host.querySelector<HTMLInputElement>(
+      '[aria-label="Presentation title"]',
+    )!;
+    const notes = host.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Speaker notes"]',
+    )!;
+    const file = image("field-target.png");
+    for (const field of [title, notes]) {
+      const original = field.value;
+      const entered = await drag("dragenter", [], field);
+      expect(entered.transfer.dropEffect).toBe("none");
+      const over = await drag("dragover", [], field);
+      expect(over.transfer.dropEffect).toBe("none");
+      expect(canvas().classList.contains("file-drop-active")).toBe(false);
+      await drag("drop", [file], field);
+      expect(field.value).toBe(original);
+    }
+    expect(importFigure).not.toHaveBeenCalled();
+    expect(await persist()).toEqual(initialDeck());
+  });
+
+  it("does not accept a second file entry or drop while an image import is busy", async () => {
+    await render();
+    const file = image("pending-import.png");
+    const pending = deferred<Asset>();
+    vi.mocked(importFigure).mockReturnValueOnce(pending.promise);
+    await drag("drop", [file]);
+    const entered = await drag("dragenter", []);
+    expect(entered.transfer.dropEffect).toBe("none");
+    expect(canvas().classList.contains("file-drop-active")).toBe(false);
+    await drag("drop", [image("blocked-import.png")]);
+    expect(importFigure).toHaveBeenCalledExactlyOnceWith(file);
+    await act(async () => pending.resolve(asset(file)));
+    expect((await persist()).assets).toEqual([asset(file)]);
   });
 
   it("opens the PDF page picker, preserves the document on cancel, and inserts at the drop position", async () => {
@@ -402,6 +607,9 @@ describe("external file drops in the editor", () => {
     await drag("drop", [pdf]);
     await settle(() => !!host.querySelector(".pdf-figure-dialog"));
     expect(openPdfFigure).toHaveBeenCalledWith(pdf, expect.any(AbortSignal));
+    const modalEntry = await drag("dragenter", []);
+    expect(modalEntry.transfer.dropEffect).toBe("none");
+    expect(canvas().classList.contains("file-drop-active")).toBe(false);
     await drag("drop", [image("behind-modal.png")]);
     expect(importFigure).not.toHaveBeenCalled();
     await click("Cancel");

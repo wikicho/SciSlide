@@ -1,6 +1,6 @@
 # Editing slides
 
-These instructions describe the **0.6.7 development source**; use a newly built package for the changes below. Start with [[Getting-Started]] or see [[Keyboard-Shortcuts]] for platform-specific commands.
+These instructions describe the **0.6.8 development source**; use a newly built package for the changes below. Start with [[Getting-Started]] or see [[Keyboard-Shortcuts]] for platform-specific commands.
 
 ## Slides and layouts
 

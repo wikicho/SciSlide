@@ -8,7 +8,12 @@ import {
   useRef,
   useState,
 } from "react";
-import type { CSSProperties, PointerEvent, ReactNode } from "react";
+import type {
+  CSSProperties,
+  DragEvent as ReactDragEvent,
+  PointerEvent,
+  ReactNode,
+} from "react";
 import {
   Atom,
   ArrowDown,
@@ -261,6 +266,12 @@ function isTextInput(target: EventTarget | null): boolean {
     ].includes(field.type);
   return !!field;
 }
+function isCanvasTextEditor(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLTextAreaElement &&
+    target.classList.contains("inline-text-editor")
+  );
+}
 /** Retain deleted objects' drafts in memory for Undo, but exclude them from the active document. */
 function activeEquationDrafts(deck: Deck, drafts: RecoveredEquationDraft[]) {
   return drafts.filter(
@@ -412,6 +423,7 @@ export default function App() {
   const equationApplyingRef = useRef(false);
   const [pdfFigure, setPdfFigure] = useState<PdfFigureRequest | null>(null);
   const [dropActive, setDropActive] = useState(false);
+  const fileDragDepth = useRef(0);
   const closePdfFigure = useCallback(() => setPdfFigure(null), []);
   const [presenterUrl, setPresenterUrl] = useState<string | null>(null);
   const pasteSequence = useRef({ deckId: "", slideId: "", count: 0 });
@@ -3074,6 +3086,19 @@ export default function App() {
     showEquationLibrary ||
     !!inlineEquationEdit;
   const hasEditorDialog = hasOtherEditorDialog || equationEditorOpen;
+  const acceptCanvasFileDrag = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (
+      !Array.from(event.dataTransfer.types).includes("Files") ||
+      hasEditorDialog ||
+      busy
+    )
+      return;
+    if (event.type === "dragenter") fileDragDepth.current += 1;
+    if (isTextInput(event.target) && !isCanvasTextEditor(event.target)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setDropActive(true);
+  };
   useEffect(
     () =>
       desktop?.onOpenDocument?.(() => {
@@ -4646,29 +4671,29 @@ export default function App() {
             role="region"
             aria-label="Slide canvas"
             aria-describedby="canvas-interaction-hint"
-            onDragOver={(event) => {
+            onDragEnter={acceptCanvasFileDrag}
+            onDragOver={acceptCanvasFileDrag}
+            onDragLeave={() => {
+              // Count balanced native enter/leave events: Linux may omit
+              // relatedTarget, including on cancellation at inside coordinates.
+              fileDragDepth.current = Math.max(0, fileDragDepth.current - 1);
+              if (!fileDragDepth.current) setDropActive(false);
+            }}
+            onDragEnd={() => {
+              fileDragDepth.current = 0;
+              setDropActive(false);
+            }}
+            onDrop={(event) => {
+              fileDragDepth.current = 0;
+              setDropActive(false);
+              const files = Array.from(event.dataTransfer.files);
               if (
-                !Array.from(event.dataTransfer.types).includes("Files") ||
-                isTextInput(event.target) ||
+                (isTextInput(event.target) &&
+                  (!isCanvasTextEditor(event.target) || !files.length)) ||
                 hasEditorDialog ||
                 busy
               )
                 return;
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "copy";
-              setDropActive(true);
-            }}
-            onDragLeave={(event) => {
-              if (
-                !(event.relatedTarget instanceof Node) ||
-                !event.currentTarget.contains(event.relatedTarget)
-              )
-                setDropActive(false);
-            }}
-            onDrop={(event) => {
-              setDropActive(false);
-              if (isTextInput(event.target) || hasEditorDialog || busy) return;
-              const files = Array.from(event.dataTransfer.files);
               if (!files.length) {
                 if (
                   Array.from(event.dataTransfer.types).some((type) =>

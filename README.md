@@ -2,15 +2,15 @@
 
 A scientific presentation editor with editable equations, vector output, and an Electron desktop host.
 
-[Documentation Wiki](https://github.com/wikicho/SciSlide/wiki) · [Downloads](https://github.com/wikicho/SciSlide/releases/tag/v0.6.7) · [Report an issue](https://github.com/wikicho/SciSlide/issues)
+[Documentation Wiki](https://github.com/wikicho/SciSlide/wiki) · [Downloads](https://github.com/wikicho/SciSlide/releases/tag/v0.6.8) · [Report an issue](https://github.com/wikicho/SciSlide/issues)
 
-The current development source is **0.6.7**. It includes safe document switching, per-session recovery history, early SVG export-compatibility feedback, system clipboard copy/cut/paste, external image/PDF drops, independent body/math font settings and text-font inheritance, desktop file opening and custom TeX discovery. The download links below target the **0.6.7 development prerelease**; release assets appear after the release workflow completes.
+The current development source is **0.6.8**. It includes safe document switching, per-session recovery history, early SVG export-compatibility feedback, system clipboard copy/cut/paste, external image/PDF drops, independent body/math font settings and text-font inheritance, desktop file opening and custom TeX discovery. The download links below target the **0.6.8 development prerelease**; release assets appear after the release workflow completes.
 
-Version **0.6.7** improves Export menu navigation and focus, group-lock feedback, pending-text save status and equation-draft review. Recovery-history failures stay visible, speaker notes adapt to small windows, and Fit and the visible grid follow custom slide dimensions. The published [v0.6.6 release](https://github.com/wikicho/SciSlide/releases/tag/v0.6.6) remains available separately.
+Version **0.6.8** fixes quick native Linux PNG/PDF drops onto the white slide canvas, accepts file drops over active inline text while preserving pending edits, and clears the drop highlight after cancellation or leaving the canvas. The published [v0.6.7 release](https://github.com/wikicho/SciSlide/releases/tag/v0.6.7) remains available separately.
 
-See the [v0.6.7 release notes](docs/releases/v0.6.7.md) and the [improvement status audit](docs/specifications/improvement-status-2026-11-14.md) for completed work, remaining checks and the distinction between source changes and installed-build validation.
+See the [v0.6.8 release notes](docs/releases/v0.6.8.md) and the [improvement status audit](docs/specifications/improvement-status-2026-11-14.md) for completed work, remaining checks and the distinction between source changes and installed-build validation.
 
-**v0.6.7 is a development prerelease.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews and font-aware inline formulas inside text; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux and macOS systems. Fourteen existing starter layouts combine scientific structure with minimal Keynote-inspired composition; the **Keynote White** theme adds a dedicated set of fifteen coordinated layouts. Drawing, groups, smart guides, equal-spacing commands and an object/layer list help compose slides. Figures support SVG/PNG/JPEG import and PDF page selection, reversible cropping, enlarged insets and replacement without rebuilding the layout. A personal equation library, separate presenter display and recovery of unfinished equation drafts extend the authoring workflow. The included three-slide cosmology deck uses synthetic demonstration data. Compatible installed AI CLIs generate editable slide drafts. Deck-wide page numbers, embedded video, and ordered click-triggered builds remain available.
+**v0.6.8 is a development prerelease.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews and font-aware inline formulas inside text; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux and macOS systems. Fourteen existing starter layouts combine scientific structure with minimal Keynote-inspired composition; the **Keynote White** theme adds a dedicated set of fifteen coordinated layouts. Drawing, groups, smart guides, equal-spacing commands and an object/layer list help compose slides. Figures support SVG/PNG/JPEG import and PDF page selection, reversible cropping, enlarged insets and replacement without rebuilding the layout. A personal equation library, separate presenter display and recovery of unfinished equation drafts extend the authoring workflow. The included three-slide cosmology deck uses synthetic demonstration data. Compatible installed AI CLIs generate editable slide drafts. Deck-wide page numbers, embedded video, and ordered click-triggered builds remain available.
 
 v0.6.2 introduced platform-specific keyboard shortcuts: Keynote conventions on macOS, PowerPoint on Windows and LibreOffice Impress on Ubuntu/Linux. Native menus, toolbar hints and shortcut help use the same bindings. Drag-and-drop slide ordering remain available; local installer output now uses versioned release directories.
 
@@ -22,16 +22,16 @@ Local installers default to `release/v<version>/macos/`, `windows/` or `linux/`.
 
 ## Download desktop builds
 
-The **v0.6.7 development prerelease** downloads are provided through [GitHub Releases](https://github.com/wikicho/SciSlide/releases/tag/v0.6.7):
+The **v0.6.8 development prerelease** downloads are provided through [GitHub Releases](https://github.com/wikicho/SciSlide/releases/tag/v0.6.8):
 
 | System                            | Download                                                                                                                                                                                                                                             |
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| macOS Apple Silicon (M1 or later) | [arm64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.7/SciSlide-0.6.7-macos-arm64-unsigned.pkg)                                                                                                                                 |
-| macOS Intel                       | [x64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.7/SciSlide-0.6.7-macos-x64-unsigned.pkg)                                                                                                                                     |
-| Windows Intel/AMD x64             | [setup `.exe`](https://github.com/wikicho/SciSlide/releases/download/v0.6.7/SciSlide-0.6.7-windows-x64-setup-unsigned.exe) · [portable `.zip`](https://github.com/wikicho/SciSlide/releases/download/v0.6.7/SciSlide-0.6.7-windows-x64-portable.zip) |
-| Linux Intel/AMD x64               | [`.deb` / amd64](https://github.com/wikicho/SciSlide/releases/download/v0.6.7/SciSlide-0.6.7-linux-x64.deb)                                                                                                                                          |
+| macOS Apple Silicon (M1 or later) | [arm64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.8/SciSlide-0.6.8-macos-arm64-unsigned.pkg)                                                                                                                                 |
+| macOS Intel                       | [x64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.8/SciSlide-0.6.8-macos-x64-unsigned.pkg)                                                                                                                                     |
+| Windows Intel/AMD x64             | [setup `.exe`](https://github.com/wikicho/SciSlide/releases/download/v0.6.8/SciSlide-0.6.8-windows-x64-setup-unsigned.exe) · [portable `.zip`](https://github.com/wikicho/SciSlide/releases/download/v0.6.8/SciSlide-0.6.8-windows-x64-portable.zip) |
+| Linux Intel/AMD x64               | [`.deb` / amd64](https://github.com/wikicho/SciSlide/releases/download/v0.6.8/SciSlide-0.6.8-linux-x64.deb)                                                                                                                                          |
 
-The release workflow produces matching SHA-256 checksum files and installation instructions alongside the packages. macOS installers are unsigned and unnotarized; Windows distributions are unsigned. System security policies may block installation or launch. See the [macOS](desktop/MACOS.md), [Windows](desktop/WINDOWS.md) or [Linux](desktop/LINUX.md) installation guide and the [v0.6.7 release notes](docs/releases/v0.6.7.md). Node.js and TeX are not required for MathJax editing.
+The release workflow produces matching SHA-256 checksum files and installation instructions alongside the packages. macOS installers are unsigned and unnotarized; Windows distributions are unsigned. System security policies may block installation or launch. See the [macOS](desktop/MACOS.md), [Windows](desktop/WINDOWS.md) or [Linux](desktop/LINUX.md) installation guide and the [v0.6.8 release notes](docs/releases/v0.6.8.md). Node.js and TeX are not required for MathJax editing.
 
 The **SciSlide development release** workflow runs when versioned release notes in `docs/releases/` change on `main`, builds all five distributions from that commit, verifies architecture/checksums and publishes one `v<package-version>` development prerelease with all distributions, checksums and platform guides. Manual dispatch remains available for a requested `main` commit; its publication option defaults off. Packaging and automated checks do not replace complete physical-device validation.
 
@@ -68,7 +68,7 @@ pnpm preview
 pnpm desktop:package
 ```
 
-This creates an app for the current operating system and CPU architecture in `release/work/v<version>/`. For the current development version on Linux x64, launch `release/work/v0.6.7/SciSlide-linux-x64/scislide`. Use `--platform`, `--arch`, and `--out` to specify a target, and explicitly pass `--overwrite` to replace existing output. The app includes the editor, Electron runtime, desktop host, and dependency licenses. A TeX distribution is not bundled.
+This creates an app for the current operating system and CPU architecture in `release/work/v<version>/`. For the current development version on Linux x64, launch `release/work/v0.6.8/SciSlide-linux-x64/scislide`. Use `--platform`, `--arch`, and `--out` to specify a target, and explicitly pass `--overwrite` to replace existing output. The app includes the editor, Electron runtime, desktop host, and dependency licenses. A TeX distribution is not bundled.
 
 Build a **Linux x64 `.deb` package** on Debian/Ubuntu with `dpkg-deb` installed:
 
@@ -76,12 +76,12 @@ Build a **Linux x64 `.deb` package** on Debian/Ubuntu with `dpkg-deb` installed:
 pnpm desktop:package:linux --arch=x64
 ```
 
-This creates `release/v0.6.7/linux/SciSlide-0.6.7-linux-x64.deb`, its SHA-256 file and `LINUX-INSTALL.md`. The complete app folder is kept separately at `release/work/v0.6.7/SciSlide-linux-x64/`. Paths follow the package version; `--out` selects an exact custom output directory for both installers and the app. Debian's architecture name is **amd64**. Verify and install the local package:
+This creates `release/v0.6.8/linux/SciSlide-0.6.8-linux-x64.deb`, its SHA-256 file and `LINUX-INSTALL.md`. The complete app folder is kept separately at `release/work/v0.6.8/SciSlide-linux-x64/`. Paths follow the package version; `--out` selects an exact custom output directory for both installers and the app. Debian's architecture name is **amd64**. Verify and install the local package:
 
 ```sh
-cd release/v0.6.7/linux
-sha256sum -c SciSlide-0.6.7-linux-x64.deb.sha256
-sudo apt install ./SciSlide-0.6.7-linux-x64.deb
+cd release/v0.6.8/linux
+sha256sum -c SciSlide-0.6.8-linux-x64.deb.sha256
+sudo apt install ./SciSlide-0.6.8-linux-x64.deb
 scislide
 ```
 
@@ -97,7 +97,7 @@ pnpm desktop:package:mac
 pnpm desktop:package:mac --arch=arm64
 ```
 
-The current source defaults to output paths `release/v0.6.7/macos/SciSlide-0.6.7-macos-arm64-unsigned.pkg` and `release/v0.6.7/macos/SciSlide-0.6.7-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
+The current source defaults to output paths `release/v0.6.8/macos/SciSlide-0.6.8-macos-arm64-unsigned.pkg` and `release/v0.6.8/macos/SciSlide-0.6.8-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
 
 The default `.pkg` implementation uses [Electron's official pure JavaScript packaging](https://packages.electronjs.org/osx-sign/v2.6.0/index.html#pure-javascript-packaging), so it also works on Linux. On macOS with Xcode Command Line Tools, use `pnpm desktop:package:mac --implementation=native` to package with Apple's `pkgbuild` and `productbuild`. **Both methods produce development installers without Developer ID signing or notarization.** macOS security policies may block installation or launch. The packaging process does not change system security settings.
 
@@ -111,7 +111,7 @@ pnpm desktop:package:win
 pnpm desktop:package:win --portable-only
 ```
 
-This command always targets **Intel/AMD x64**, regardless of the build host. The current source creates `release/v0.6.7/windows/SciSlide-0.6.7-windows-x64-setup-unsigned.exe` and `release/v0.6.7/windows/SciSlide-0.6.7-windows-x64-portable.zip`, with SHA-256 checksum files. The installer uses an x64 bootstrap executable, installs for the current user under `%LOCALAPPDATA%\Programs\SciSlide`, and adds a Start menu shortcut. The portable ZIP contains the complete app folder; extract it and launch `SciSlide-win32-x64/scislide.exe`. No Node.js or TeX installation is needed to run MathJax editing.
+This command always targets **Intel/AMD x64**, regardless of the build host. The current source creates `release/v0.6.8/windows/SciSlide-0.6.8-windows-x64-setup-unsigned.exe` and `release/v0.6.8/windows/SciSlide-0.6.8-windows-x64-portable.zip`, with SHA-256 checksum files. The installer uses an x64 bootstrap executable, installs for the current user under `%LOCALAPPDATA%\Programs\SciSlide`, and adds a Start menu shortcut. The portable ZIP contains the complete app folder; extract it and launch `SciSlide-win32-x64/scislide.exe`. No Node.js or TeX installation is needed to run MathJax editing.
 
 See the [Windows installation and build guide](desktop/WINDOWS.md) for compiler selection, checksums and platform limits. The **Windows x64 development distributions** Actions workflow builds on a Windows x64 runner, verifies the executable architectures and hashes, and checks installation/uninstallation in a temporary directory. Its versioned downloadable artifacts contain both distributions and are retained for 30 days. Windows 10 or later is required; physical Windows 10/11 editing and export validation remains open. Local LaTeX compilation is currently disabled on Windows.
 
