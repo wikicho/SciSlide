@@ -1,10 +1,10 @@
 # Getting started
 
-SciSlide is a scientific presentation editor for editable mathematical notation, figures and vector PDF/SVG output. Version **0.6.10** is a development prerelease, available as an Electron desktop app and a browser editor.
+SciSlide is a scientific presentation editor for editable mathematical notation, figures and vector PDF/SVG output. Version **0.7.0** is a development prerelease, available as an Electron desktop app and a browser editor.
 
 ## 1. Install or launch
 
-Download the package for your operating system from the [v0.6.10 release](https://github.com/wikicho/SciSlide/releases/tag/v0.6.10). See [[Installation]] for architecture selection, checksums and platform instructions. Node.js and TeX are **not required** to use a packaged app with MathJax.
+Download the package for your operating system from the [v0.7.0 release](https://github.com/wikicho/SciSlide/releases/tag/v0.7.0). See [[Installation]] for architecture selection, checksums and platform instructions. Node.js and TeX are **not required** to use a packaged app with MathJax.
 
 To run the source checkout instead, see [[Development]]. The browser editor shares the editing interface, but installed-tool integration requires Electron.
 
@@ -16,7 +16,7 @@ The opening **Choose your theme** dialog offers:
 | ------------------------------------------------ | ---------------------------------------------------------------------------------- |
 | Scientific, Minimal White, Minimal Black or Navy | A title slide, with fourteen available Scientific/Keynote-inspired starter layouts |
 | Keynote White                                    | A title slide, with a separate gallery of fifteen coordinated layouts              |
-| Open presentation                                | Open an existing `.scislide` file                                                  |
+| Open presentation                                | Open a `.scislide` or import a PowerPoint `.pptx` file                               |
 | Resume previous work                             | Restore the locally recovered workspace                                            |
 | Explore demo                                     | Open the sample cosmology deck, which uses synthetic demonstration data            |
 

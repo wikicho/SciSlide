@@ -1,5 +1,5 @@
 import { createServer } from "vite";
-import { spawn } from "node:child_process";
+import { spawnDesktop } from "./launch-desktop.mjs";
 import { fileURLToPath } from "node:url";
 import electron from "electron";
 
@@ -9,7 +9,7 @@ const server = await createServer({
   server: { host: "127.0.0.1", port: 5173, strictPort: true },
 });
 await server.listen();
-const app = spawn(electron, ["."], {
+const app = spawnDesktop(electron, [".", ...process.argv.slice(2)], {
   cwd: root,
   stdio: "inherit",
   env: { ...process.env, SCISLIDE_DEV_URL: "http://127.0.0.1:5173/" },

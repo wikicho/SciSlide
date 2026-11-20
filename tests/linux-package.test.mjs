@@ -510,6 +510,43 @@ exit 19
       normal.stdout,
       "MODE=gui\nARG=--no-sandbox\nARG=a deck with spaces.scislide\n",
     );
+    const mixed = {
+      ...env,
+      DISPLAY: ":2",
+      WAYLAND_DISPLAY: "wayland-1",
+      XDG_SESSION_TYPE: "wayland",
+      ELECTRON_OZONE_PLATFORM_HINT: "",
+    };
+    for (const [environment, flags, prepended] of [
+      [mixed, [], ["--ozone-platform=x11"]],
+      [{ ...mixed, DISPLAY: "" }, [], []],
+      [mixed, ["--ozone-platform=wayland"], []],
+      [mixed, ["--ozone-platform-hint=auto"], []],
+      [mixed, ["--ozone-platform-hint=wayland"], ["--ozone-platform=wayland"]],
+      [
+        { ...mixed, ELECTRON_OZONE_PLATFORM_HINT: "wayland" },
+        [],
+        ["--ozone-platform=wayland"],
+      ],
+    ]) {
+      const args = [...flags, "a deck with spaces.scislide"];
+      const result = spawnSync(launcher, args, {
+        env: environment,
+        encoding: "utf8",
+      });
+      assert.equal(result.status, 19, result.stderr);
+      assert.deepEqual(result.stdout.trimEnd().split("\n"), [
+        "MODE=gui",
+        ...[...prepended, ...args].map((arg) => `ARG=${arg}`),
+      ]);
+    }
+    const cli = spawnSync(launcher, ["--version"], {
+      env: mixed,
+      encoding: "utf8",
+    });
+    assert.equal(cli.status, 19, cli.stderr);
+    assert.match(cli.stdout, /^MODE=1\n/);
+    assert.doesNotMatch(cli.stdout, /ozone-platform/);
   },
 );
 

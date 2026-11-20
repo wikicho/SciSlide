@@ -53,9 +53,12 @@ function isTrustedPage(value, devUrl = null) {
   );
 }
 
-function isPresenterPage(value, devUrl = null) {
-  if (!isTrustedPage(value, devUrl)) return false;
-  return /^#presenter=[a-zA-Z0-9-]{20,100}$/.test(new URL(value).hash);
+function presentationWindowRole(value, devUrl = null) {
+  if (!isTrustedPage(value, devUrl)) return null;
+  const match = /^#(presenter|audience)=[a-zA-Z0-9-]{20,100}$/.exec(
+    new URL(value).hash,
+  );
+  return match?.[1] ?? null;
 }
 
 function allowsFullscreen(permission, mainPageUrl, details, devUrl = null) {
@@ -293,7 +296,7 @@ module.exports = {
   parseDevUrl,
   isAppOrigin,
   isTrustedPage,
-  isPresenterPage,
+  presentationWindowRole,
   allowsFullscreen,
   isAllowedRequest,
   validateSaveDocument,

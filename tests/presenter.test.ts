@@ -2,7 +2,8 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PresenterApp } from "../src/components/PresenterApp";
+import { PresenterApp, PresenterDisplay } from "../src/components/PresenterApp";
+import { AudienceApp } from "../src/components/AudienceApp";
 import { createDemoDeck } from "../src/lib/model";
 import type { Deck } from "../src/lib/model";
 import { presenterChannelName, presenterToken } from "../src/lib/presenter";
@@ -171,6 +172,28 @@ describe("presenter window", () => {
       : [];
   }
 
+  it("drives the editor's presenter display directly and keeps its timer across builds", async () => {
+    const onAction = vi.fn();
+    state = { ...state, startedAt: Date.now() - 15_000 };
+    const renderDisplay = () =>
+      act(async () =>
+        root.render(createElement(PresenterDisplay, { deck, state, onAction })),
+      );
+    await renderDisplay();
+    expect(elapsed()).toBe("00:15");
+    expect(host.querySelector(".presenter-notes")?.textContent).toContain(
+      deck.slides[0].notes,
+    );
+    await click("Next step / slide");
+    expect(onAction).toHaveBeenCalledWith("next");
+    await click("Pause timer");
+    state = { ...state, step: 2 };
+    await renderDisplay();
+    await tick(5000);
+    expect(elapsed()).toBe("00:15");
+    expect(TestBroadcastChannel.instances).toEqual([audience]);
+  });
+
   it("accepts only a complete presenter token and keeps each session on its own channel", () => {
     expect(presenterToken(`#presenter=${token}`)).toBe(token);
     expect(presenterToken("#presenter=short")).toBeNull();
@@ -213,6 +236,52 @@ describe("presenter window", () => {
     await tick(3000);
     expect(presenter.sent.at(-1)).toEqual({ type: "ready", needsDeck: false });
   });
+
+  it("shows just the current public slide, plays its media, and sends playback keys to the editor", async () => {
+    audience.onmessage = null;
+    await act(async () => root.render(createElement(AudienceApp, { token })));
+    expect(host.querySelector(".audience-view")?.childElementCount).toBe(0);
+    await send({ type: "deck", deck, state });
+    const scenes = host.querySelectorAll("[data-scene-slide]");
+    expect(scenes).toHaveLength(1);
+    expect(scenes[0].getAttribute("data-scene-slide")).toBe(deck.slides[0].id);
+    expect(scenes[0].getAttribute("data-playback")).toBe("true");
+    expect(scenes[0].getAttribute("data-media")).not.toBe("false");
+    expect(host.textContent).not.toContain(deck.slides[0].notes);
+    expect(host.querySelector("button, nav, output")).toBeNull();
+    await send({ type: "state", state: { ...state, step: 2 } });
+    expect(scenes[0].getAttribute("data-build-step")).toBe("2");
+    await key("ArrowRight");
+    await key("Escape");
+    expect(actions()).toEqual([
+      { type: "action", action: "next" },
+      { type: "action", action: "exit" },
+    ]);
+    await send({ type: "ended" });
+    expect(host.querySelector(".audience-view")?.childElementCount).toBe(0);
+  });
+
+  it.each([false, true])(
+    "ends audience fullscreen once when the browser delivers Escape keydown: %s",
+    async (deliversKey) => {
+      await act(async () => root.render(createElement(AudienceApp, { token })));
+      let fullscreen: Element | null = null;
+      Object.defineProperty(document, "fullscreenElement", {
+        configurable: true,
+        get: () => fullscreen,
+      });
+      try {
+        fullscreen = document.documentElement;
+        document.dispatchEvent(new Event("fullscreenchange"));
+        if (deliversKey) await key("Escape");
+        fullscreen = null;
+        document.dispatchEvent(new Event("fullscreenchange"));
+        expect(actions()).toEqual([{ type: "action", action: "exit" }]);
+      } finally {
+        Reflect.deleteProperty(document, "fullscreenElement");
+      }
+    },
+  );
 
   it("sends remote navigation controls and updates the final slide boundary", async () => {
     await render();

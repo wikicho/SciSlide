@@ -208,7 +208,7 @@ describe("system clipboard in the editor", () => {
   async function open(next: Deck) {
     vi.mocked(readDeckArchive).mockResolvedValueOnce(next);
     const input = host.querySelector<HTMLInputElement>(
-      'input[type="file"][accept=".scislide"]',
+      'input[type="file"][accept*=".scislide"]',
     )!;
     await act(async () => {
       Object.defineProperty(input, "files", {

@@ -2,15 +2,15 @@
 
 A scientific presentation editor with editable equations, vector output, and an Electron desktop host.
 
-[Documentation Wiki](https://github.com/wikicho/SciSlide/wiki) · [Downloads](https://github.com/wikicho/SciSlide/releases/tag/v0.6.10) · [Report an issue](https://github.com/wikicho/SciSlide/issues)
+[Documentation Wiki](https://github.com/wikicho/SciSlide/wiki) · [Downloads](https://github.com/wikicho/SciSlide/releases/tag/v0.7.0) · [Report an issue](https://github.com/wikicho/SciSlide/issues)
 
-The current development source is **0.6.10**. It includes safe document switching, per-session recovery history, early SVG export-compatibility feedback, system clipboard copy/cut/paste, external image/PDF drops, independent body/math font settings and text-font inheritance, desktop file opening and custom TeX discovery. The download links below target the **0.6.10 development prerelease**; release assets appear after the release workflow completes.
+The current development source is **0.7.0**. It includes safe document switching, per-session recovery history, early SVG export-compatibility feedback, system clipboard copy/cut/paste, external image/PDF drops, independent body/math font settings and text-font inheritance, desktop file opening and custom TeX discovery. The download links below target the **0.7.0 development prerelease**; release assets appear after the release workflow completes.
 
-Version **0.6.10** preserves the last acknowledged file-save state across workspace recovery and checkpoints the latest work before closing. It distinguishes later unsaved edits from older recovery copies while preserving unapplied equation drafts. The authoring controls and large-image responsiveness improvements from the published [v0.6.9 release](https://github.com/wikicho/SciSlide/releases/tag/v0.6.9) remain available.
+Version **0.7.0** adds automatic audience display placement, editable PowerPoint import, and faster startup and embedded-image handling. See the [previous 0.6.10 release](https://github.com/wikicho/SciSlide/releases/tag/v0.6.10) for the save and recovery improvements.
 
-See the [v0.6.10 release notes](docs/releases/v0.6.10.md) and the [improvement status audit](docs/specifications/improvement-status-2026-11-14.md) for completed work, remaining checks and the distinction between source changes and installed-build validation.
+See the [v0.7.0 release notes](docs/releases/v0.7.0.md) and the [improvement status audit](docs/specifications/improvement-status-2026-11-14.md) for completed work, remaining checks and the distinction between source changes and installed-build validation.
 
-**v0.6.10 is a development prerelease.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews and font-aware inline formulas inside text; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux and macOS systems. Fourteen existing starter layouts combine scientific structure with minimal Keynote-inspired composition; the **Keynote White** theme adds a dedicated set of fifteen coordinated layouts. Drawing, groups, smart guides, equal-spacing commands and an object/layer list help compose slides. Figures support SVG/PNG/JPEG import and PDF page selection, reversible cropping, enlarged insets and replacement without rebuilding the layout. A personal equation library, separate presenter display and recovery of unfinished equation drafts extend the authoring workflow. The included three-slide cosmology deck uses synthetic demonstration data. Compatible installed AI CLIs generate editable slide drafts. Deck-wide page numbers, embedded video, and ordered click-triggered builds remain available.
+**v0.7.0 is a development prerelease.** The shared React/TypeScript editor runs in a browser or Electron. MathJax provides immediate equation previews and font-aware inline formulas inside text; the desktop app can explicitly compile equations with installed LaTeX or XeLaTeX on supported Linux and macOS systems. Fourteen existing starter layouts combine scientific structure with minimal Keynote-inspired composition; the **Keynote White** theme adds a dedicated set of fifteen coordinated layouts. Drawing, groups, smart guides, equal-spacing commands and an object/layer list help compose slides. Figures support SVG/PNG/JPEG import and PDF page selection, reversible cropping, enlarged insets and replacement without rebuilding the layout. A personal equation library, separate presenter display and recovery of unfinished equation drafts extend the authoring workflow. The included three-slide cosmology deck uses synthetic demonstration data. Compatible installed AI CLIs generate editable slide drafts. Deck-wide page numbers, embedded video, and ordered click-triggered builds remain available.
 
 v0.6.2 introduced platform-specific keyboard shortcuts: Keynote conventions on macOS, PowerPoint on Windows and LibreOffice Impress on Ubuntu/Linux. Native menus, toolbar hints and shortcut help use the same bindings. Drag-and-drop slide ordering remain available; local installer output now uses versioned release directories.
 
@@ -22,16 +22,16 @@ Local installers default to `release/v<version>/macos/`, `windows/` or `linux/`.
 
 ## Download desktop builds
 
-The **v0.6.10 development prerelease** downloads are provided through [GitHub Releases](https://github.com/wikicho/SciSlide/releases/tag/v0.6.10):
+The **v0.7.0 development prerelease** downloads are provided through [GitHub Releases](https://github.com/wikicho/SciSlide/releases/tag/v0.7.0):
 
-| System                            | Download                                                                                                                                                                                                                                                 |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| macOS Apple Silicon (M1 or later) | [arm64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.10/SciSlide-0.6.10-macos-arm64-unsigned.pkg)                                                                                                                                   |
-| macOS Intel                       | [x64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.6.10/SciSlide-0.6.10-macos-x64-unsigned.pkg)                                                                                                                                       |
-| Windows Intel/AMD x64             | [setup `.exe`](https://github.com/wikicho/SciSlide/releases/download/v0.6.10/SciSlide-0.6.10-windows-x64-setup-unsigned.exe) · [portable `.zip`](https://github.com/wikicho/SciSlide/releases/download/v0.6.10/SciSlide-0.6.10-windows-x64-portable.zip) |
-| Linux Intel/AMD x64               | [`.deb` / amd64](https://github.com/wikicho/SciSlide/releases/download/v0.6.10/SciSlide-0.6.10-linux-x64.deb)                                                                                                                                            |
+| System                            | Download                                                                                                                                                                                                                                             |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS Apple Silicon (M1 or later) | [arm64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.7.0/SciSlide-0.7.0-macos-arm64-unsigned.pkg)                                                                                                                                 |
+| macOS Intel                       | [x64 `.pkg`](https://github.com/wikicho/SciSlide/releases/download/v0.7.0/SciSlide-0.7.0-macos-x64-unsigned.pkg)                                                                                                                                     |
+| Windows Intel/AMD x64             | [setup `.exe`](https://github.com/wikicho/SciSlide/releases/download/v0.7.0/SciSlide-0.7.0-windows-x64-setup-unsigned.exe) · [portable `.zip`](https://github.com/wikicho/SciSlide/releases/download/v0.7.0/SciSlide-0.7.0-windows-x64-portable.zip) |
+| Linux Intel/AMD x64               | [`.deb` / amd64](https://github.com/wikicho/SciSlide/releases/download/v0.7.0/SciSlide-0.7.0-linux-x64.deb)                                                                                                                                          |
 
-The release workflow produces matching SHA-256 checksum files and installation instructions alongside the packages. macOS installers are unsigned and unnotarized; Windows distributions are unsigned. System security policies may block installation or launch. See the [macOS](desktop/MACOS.md), [Windows](desktop/WINDOWS.md) or [Linux](desktop/LINUX.md) installation guide and the [v0.6.10 release notes](docs/releases/v0.6.10.md). Node.js and TeX are not required for MathJax editing.
+The release workflow produces matching SHA-256 checksum files and installation instructions alongside the packages. macOS installers are unsigned and unnotarized; Windows distributions are unsigned. System security policies may block installation or launch. See the [macOS](desktop/MACOS.md), [Windows](desktop/WINDOWS.md) or [Linux](desktop/LINUX.md) installation guide and the [v0.7.0 release notes](docs/releases/v0.7.0.md). Node.js and TeX are not required for MathJax editing.
 
 The **SciSlide development release** workflow runs when versioned release notes in `docs/releases/` change on `main`, builds all five distributions from that commit, verifies architecture/checksums and publishes one `v<package-version>` development prerelease with all distributions, checksums and platform guides. Manual dispatch remains available for a requested `main` commit; its publication option defaults off. Packaging and automated checks do not replace complete physical-device validation.
 
@@ -68,7 +68,7 @@ pnpm preview
 pnpm desktop:package
 ```
 
-This creates an app for the current operating system and CPU architecture in `release/work/v<version>/`. For the current development version on Linux x64, launch `release/work/v0.6.10/SciSlide-linux-x64/scislide`. Use `--platform`, `--arch`, and `--out` to specify a target, and explicitly pass `--overwrite` to replace existing output. The app includes the editor, Electron runtime, desktop host, and dependency licenses. A TeX distribution is not bundled.
+This creates an app for the current operating system and CPU architecture in `release/work/v<version>/`. For the current development version on Linux x64, launch `release/work/v0.7.0/SciSlide-linux-x64/scislide`. Use `--platform`, `--arch`, and `--out` to specify a target, and explicitly pass `--overwrite` to replace existing output. The app includes the editor, Electron runtime, desktop host, and dependency licenses. A TeX distribution is not bundled.
 
 Build a **Linux x64 `.deb` package** on Debian/Ubuntu with `dpkg-deb` installed:
 
@@ -76,12 +76,12 @@ Build a **Linux x64 `.deb` package** on Debian/Ubuntu with `dpkg-deb` installed:
 pnpm desktop:package:linux --arch=x64
 ```
 
-This creates `release/v0.6.10/linux/SciSlide-0.6.10-linux-x64.deb`, its SHA-256 file and `LINUX-INSTALL.md`. The complete app folder is kept separately at `release/work/v0.6.10/SciSlide-linux-x64/`. Paths follow the package version; `--out` selects an exact custom output directory for both installers and the app. Debian's architecture name is **amd64**. Verify and install the local package:
+This creates `release/v0.7.0/linux/SciSlide-0.7.0-linux-x64.deb`, its SHA-256 file and `LINUX-INSTALL.md`. The complete app folder is kept separately at `release/work/v0.7.0/SciSlide-linux-x64/`. Paths follow the package version; `--out` selects an exact custom output directory for both installers and the app. Debian's architecture name is **amd64**. Verify and install the local package:
 
 ```sh
-cd release/v0.6.10/linux
-sha256sum -c SciSlide-0.6.10-linux-x64.deb.sha256
-sudo apt install ./SciSlide-0.6.10-linux-x64.deb
+cd release/v0.7.0/linux
+sha256sum -c SciSlide-0.7.0-linux-x64.deb.sha256
+sudo apt install ./SciSlide-0.7.0-linux-x64.deb
 scislide
 ```
 
@@ -97,7 +97,7 @@ pnpm desktop:package:mac
 pnpm desktop:package:mac --arch=arm64
 ```
 
-The current source defaults to output paths `release/v0.6.10/macos/SciSlide-0.6.10-macos-arm64-unsigned.pkg` and `release/v0.6.10/macos/SciSlide-0.6.10-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
+The current source defaults to output paths `release/v0.7.0/macos/SciSlide-0.7.0-macos-arm64-unsigned.pkg` and `release/v0.7.0/macos/SciSlide-0.7.0-macos-x64-unsigned.pkg`. Each installer also has a SHA-256 checksum file. The installation location is `/Applications/SciSlide.app`. See the [macOS installation guide](desktop/MACOS.md) for architecture selection and current limitations.
 
 The default `.pkg` implementation uses [Electron's official pure JavaScript packaging](https://packages.electronjs.org/osx-sign/v2.6.0/index.html#pure-javascript-packaging), so it also works on Linux. On macOS with Xcode Command Line Tools, use `pnpm desktop:package:mac --implementation=native` to package with Apple's `pkgbuild` and `productbuild`. **Both methods produce development installers without Developer ID signing or notarization.** macOS security policies may block installation or launch. The packaging process does not change system security settings.
 
@@ -111,7 +111,7 @@ pnpm desktop:package:win
 pnpm desktop:package:win --portable-only
 ```
 
-This command always targets **Intel/AMD x64**, regardless of the build host. The current source creates `release/v0.6.10/windows/SciSlide-0.6.10-windows-x64-setup-unsigned.exe` and `release/v0.6.10/windows/SciSlide-0.6.10-windows-x64-portable.zip`, with SHA-256 checksum files. The installer uses an x64 bootstrap executable, installs for the current user under `%LOCALAPPDATA%\Programs\SciSlide`, and adds a Start menu shortcut. The portable ZIP contains the complete app folder; extract it and launch `SciSlide-win32-x64/scislide.exe`. No Node.js or TeX installation is needed to run MathJax editing.
+This command always targets **Intel/AMD x64**, regardless of the build host. The current source creates `release/v0.7.0/windows/SciSlide-0.7.0-windows-x64-setup-unsigned.exe` and `release/v0.7.0/windows/SciSlide-0.7.0-windows-x64-portable.zip`, with SHA-256 checksum files. The installer uses an x64 bootstrap executable, installs for the current user under `%LOCALAPPDATA%\Programs\SciSlide`, and adds a Start menu shortcut. The portable ZIP contains the complete app folder; extract it and launch `SciSlide-win32-x64/scislide.exe`. No Node.js or TeX installation is needed to run MathJax editing.
 
 See the [Windows installation and build guide](desktop/WINDOWS.md) for compiler selection, checksums and platform limits. The **Windows x64 development distributions** Actions workflow builds on a Windows x64 runner, verifies the executable architectures and hashes, and checks installation/uninstallation in a temporary directory. Its versioned downloadable artifacts contain both distributions and are retained for 30 days. Windows 10 or later is required; physical Windows 10/11 editing and export validation remains open. Local LaTeX compilation is currently disabled on Windows.
 
@@ -158,7 +158,9 @@ Commands return structured JSON and stable native IDs. Batches are validated bef
 
 ## Using the Editor
 
-SciSlide starts with **Choose your theme**. Select **Scientific**, **Minimal White**, **Minimal Black**, **Navy**, **Keynote White**, **Geometric**, **Dune**, or **Ocean**, then choose **Create presentation** to begin with one editable title slide. Geometric, Dune and Ocean offer simple, editable covers inspired by common presentation design styles. Keynote White starts with a white background, black text and bundled Inter typography, and **New slide** opens its coordinated fifteen-layout gallery. The other themes retain the existing fourteen-layout picker. Added layouts and blank slides inherit the selected theme. Use **Open presentation** to open a `.scislide` file, **Resume previous work** to continue a recovered workspace, or **Explore demo** to try the sample deck. The chooser preserves recovered work until you explicitly choose how to continue. **New presentation** opens the chooser again; **Cancel** returns to the current deck.
+SciSlide starts with **Choose your theme**. Select **Scientific**, **Minimal White**, **Minimal Black**, **Navy**, **Keynote White**, **Geometric**, **Dune**, or **Ocean**, then choose **Create presentation** to begin with one editable title slide. Geometric, Dune and Ocean offer simple, editable covers inspired by common presentation design styles. Keynote White starts with a white background, black text and bundled Inter typography, and **New slide** opens its coordinated fifteen-layout gallery. The other themes retain the existing fourteen-layout picker. Added layouts and blank slides inherit the selected theme. Use **Open presentation** to open a `.scislide` file or import a PowerPoint `.pptx` file, **Resume previous work** to continue a recovered workspace, or **Explore demo** to try the sample deck. The chooser preserves recovered work until you explicitly choose how to continue. **New presentation** opens the chooser again; **Cancel** returns to the current deck.
+
+In the Electron desktop app, **Open** accepts multiple `.scislide` and `.pptx` files and opens each in its own editor window. Opening another file keeps the current document and its unsaved edits in place. File-manager opens and command-line file arguments also use separate windows; opening the same `.scislide` file again focuses its existing window. Each window has its own Save destination, Undo history, local workspace recovery and close confirmation. Native menu commands follow the focused editor. Recently edited documents remain available in the shared recovery history.
 
 Double-click a text box to edit directly on the slide, or select it and press **Enter**. New text boxes open ready for typing. **Enter** inserts a new line; **Ctrl / ⌘ + Enter** or clicking outside finishes the edit, and **Escape** cancels it. Each completed edit is one undo step. Korean IME input, plain-text paste, alignment, font size, rotation and canvas zoom are supported. The Inspector remains available for text and formatting; equations continue to use the LaTeX source editor.
 
@@ -170,10 +172,12 @@ Text frames grow vertically to fit their content and follow loaded-font metrics.
 2. Add objects with **Text / Equation / Figure / Video**. Figures support SVG, PNG, JPEG and PDF pages; videos support local MP4 and WebM files.
 3. Click and drag an object to move it. Resize it with the lower-right handle, or enter its position, rotation, and color in the Inspector.
 4. Select an equation, then choose **MathJax · Live preview** or **Local LaTeX · Installed packages**. Equation source and previews are not applied to the slide until you click **Apply equation**.
-5. Desktop **Open / Save / Save As** use native file dialogs. Save writes to the selected original path; Save As lets you choose a new path. The web version downloads the source file.
+5. Desktop **Open / Save / Save As** use native file dialogs. Save updates the current `.scislide` file or prompts for a location for a new or imported presentation. Save As lets you choose a new path. The web version downloads the source file.
 6. Use **Present** for the slideshow, and **Export** to save all slides as **PowerPoint (.pptx)** or PDF, or the current slide as SVG.
 
 The desktop menu provides New Presentation, Open, Save, Save As, object editing, presentation mode, PowerPoint/PDF/SVG export and keyboard shortcut help. A successful save notification appears after the native file write completes. The web version distinguishes starting a download from completing a save to disk.
+
+**PowerPoint import:** use **Open presentation** or drop one `.pptx` file onto the canvas. The import retains slide dimensions and order, speaker notes, editable text and basic shapes, and supported embedded images. The import report lists omitted or simplified content by slide number. Save the result as a `.scislide` file.
 
 **PowerPoint export:** text and shapes remain editable, while equations and figures are embedded graphics. Slides keep their dimensions, order, page numbers and speaker notes. Equation graphics cannot be edited as Office equations. Install the deck's text fonts on the computer running PowerPoint to avoid font substitution. Click builds export in their final state, and videos become static placeholders. Keep a `.scislide` source file to continue editing LaTeX, crops and SciSlide-specific settings. See [Export and presenting](docs/wiki/Export-and-Presenting.md) for details.
 
@@ -324,9 +328,9 @@ The personal library is stored locally in the current web or desktop environment
 
 ## Presenter Display
 
-Choose **Presenter display** to start the audience slideshow and open a separate presenter window. Move the window to your presenter screen. It shows the current click build, next slide, speaker notes, elapsed/remaining time and navigation. Set **Target minutes**, then use **Pause timer / Resume timer / Reset timer** as needed. Notes and timer controls stay on the presenter screen. Its video previews are static placeholders; playback stays on the audience slideshow.
+Set your displays to **Extend**, open SciSlide on the screen you want to present from, and choose **Present**. The desktop app keeps the current build, next slide, notes, timer and navigation on that screen. It opens the slides fullscreen on the other display. Video plays on the audience screen. Choose **End presentation** or press **Esc** to close the audience window and return to the editor.
 
-Allow the presenter popup if the browser blocks it. Ordinary **Present** remains available for a single display. Closing the presenter window leaves the audience slideshow running; ending the presentation closes the presenter window. Display placement and fullscreen behavior depend on the browser/desktop environment.
+In browsers with window management support, allow screen access and pop-ups for automatic placement. Double-click the audience slide if you need fullscreen. With one display, **Present** starts a single-screen slideshow. Choose **Presenter display** to open a separate notes window for manual placement if automatic placement is unavailable.
 
 ## Workspace Recovery and Equation Drafts
 
@@ -344,7 +348,7 @@ The reviewed connections are **Codex CLI 0.160.x** and **Gemini CLI 0.62.x**. Cl
 
 Review the generated slides and notes, then click **Insert draft slides** to add them after the current slide. Generated titles, bullet points and MathJax equations are ordinary editable objects. MathJax syntax and equation size are checked before insertion. Scientific claims and citations need review. Invalid output is rejected, and a changed source slide requires a fresh draft. Undo restores the previous deck. The draft's overall title labels its preview and does not rename the presentation.
 
-The host uses fixed provider commands and passes requests through stdin in a private temporary workspace. Codex runs with read-only enforcement and restricted agent integrations; compatible Claude/Gemini modes disable content-generation tools. Gemini reuses existing authentication through private temporary links to known vendor authentication files, or its normal keychain/environment authentication; those links are removed at job completion. User customizations and organization policies can make a connection unavailable. Requests time out after three minutes, output is bounded, and Cancel or closing the dialog terminates the job. Only one generation runs at a time.
+The host uses fixed provider commands and passes requests through stdin in a private temporary workspace. Codex runs with read-only enforcement and restricted agent integrations; compatible Claude/Gemini modes disable content-generation tools. Gemini reuses existing authentication through private temporary links to known vendor authentication files, or its normal keychain/environment authentication; those links are removed at job completion. User customizations and organization policies can make a connection unavailable. Requests time out after three minutes, output is bounded, and Cancel or closing the dialog terminates the job. Only one generation runs at a time in each editor window.
 
 The web editor shows the desktop requirement and does not launch local programs. Image generation, file/repository access, web research, full-deck replacement, streaming chat and direct API-key setup are later features. Native `.scislide` documents use format version **0.5.0**.
 
@@ -534,13 +538,13 @@ Local LaTeX equations retain their source, preamble, engine, result SVG and dime
 ## Current Limitations
 
 - Modern Korean text is supported in the editor, PDF and SVG through bundled **Nanum Gothic Regular/Bold**. No system font installation or remote font request is needed. Text objects containing Korean use Nanum Gothic; Latin-only objects retain Inter. Korean weights 400/500 use Regular and 600/700 use Bold. Decomposed modern Hangul is normalized to NFC for display/export while the editable source is preserved. PDF text remains selectable, and SVG embeds the required font and its license. Unsupported glyphs, including Hanja and standalone old/combining Jamo, still stop PDF export with a clear error; use native equations for mathematical symbols unavailable in the text font. Local LaTeX equation outlines do not extend body-text font coverage.
-- PowerPoint export uses graphic equations, static video placeholders and final build states; playable media, PowerPoint animations, Office equation editing and PPTX import are not implemented. Text fonts are referenced rather than embedded in PPTX.
+- PowerPoint export uses graphic equations, static video placeholders and final build states; playable media, PowerPoint animations, and Office equation editing are not implemented. Text fonts are referenced rather than embedded in PPTX.
 - Original PDF vector preservation, linked masters/themes, shared deck macros, linked equation-library entries, citations, editable charts, collaboration and Beamer conversion are planned. Group nesting/scaling/rotation, attached connectors, freehand paths and a path editor are also future work. Basic appear/fade click builds are available; advanced motion, exit effects, timing chains, equation-term highlighting and a timeline are not yet available.
 - Local LaTeX targets system installations on Linux and macOS with functioning isolation. Arbitrary complete documents, home package folders, every TeX distribution path, and every package combination are not guaranteed to work.
 - External references and active content in SVG figures are unsupported. PDF export does not support filters, masks, textPath, or some complex SVG effects. These produce an error before export.
 - Automatic recovery and the personal library remain local to each web/Electron environment. Recovery records are limited to 100 MiB, browser quotas can be smaller, and localStorage fallback is more limited. Large media decks may exceed recovery storage; use source-file saves and check failure feedback.
-- The object clipboard is limited to the current SciSlide editor session. Presenter display requires popup and communication support; automatic multi-monitor placement is not provided.
-- Bundling the complete MathJax font data makes the build large. Split loading and a separate asset/cache store remain future work.
+- The object clipboard is limited to the current SciSlide editor session. The browser presenter display requires pop-ups and BroadcastChannel. Automatic placement also requires browser window management support and screen access.
+- MathJax fonts load when the first equation needs them. The complete offline installer includes all supported font data.
 
 ## Development and Validation
 

@@ -81,9 +81,9 @@ These features are **not implemented in v0.6.3.1**:
 | Scientific authoring | Shared deck macros, linked equation-library entries, citations/BibTeX, editable charts with units/error bars              |
 | Layout               | Linked masters, nested groups, collective group scaling/rotation, attached connectors, freehand drawing                   |
 | Figures              | Preservation of original PDF vectors and expanded provenance tools                                                        |
-| Presentation         | Advanced animation, a dedicated build-order panel, automatic monitor placement                                            |
+| Presentation         | Advanced animation and a dedicated build-order panel                                            |
 | Host tools           | A Windows Local LaTeX isolation adapter and authorized home-installed TeX resources                                       |
-| Interchange          | PPTX import, editable Office equations/media/animations, standalone HTML export and collaboration                         |
+| Interchange          | Broader PPTX compatibility, editable Office equations/media/animations, standalone HTML export and collaboration          |
 | Project governance   | A selected project license and dedicated contribution/security documents                                                  |
 
 No delivery dates are promised by this list. The [project specification](https://github.com/wikicho/SciSlide/blob/v0.6.3.1/SciSlide-Project-Specification.md) records the broader requirements; its baseline narrative predates 0.6.2. Use this wiki, the [0.6.3.1 release notes](https://github.com/wikicho/SciSlide/blob/v0.6.3.1/docs/releases/v0.6.3.1.md), and source code to determine the current feature set.

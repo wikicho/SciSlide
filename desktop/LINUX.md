@@ -1,18 +1,18 @@
-# SciSlide 0.6.10 — Linux x64
+# SciSlide 0.7.0 — Linux x64
 
 The Debian package contains SciSlide and its Electron runtime for **x64 (Intel/AMD 64-bit)** Linux. Debian calls this architecture **amd64**. Ubuntu 24.04 x64 is the packaging target; other Debian/Ubuntu releases need separate desktop validation. MathJax editing uses bundled fonts and equation resources without Node.js, TeX or a development server.
 
-Version **0.6.3.1** adds the headless agent CLI and four-part update version support. The canvas object traversal, pane toggles, inline equation editing, Local LaTeX compile shortcut and verified installer downloads introduced in v0.6.3 remain available. LibreOffice Impress-style shortcuts and drag-and-drop slide ordering remain available. The current development source is **0.6.10**. The links below target the 0.6.10 development prerelease; release assets appear after the release workflow completes.
+Version **0.6.3.1** adds the headless agent CLI and four-part update version support. The canvas object traversal, pane toggles, inline equation editing, Local LaTeX compile shortcut and verified installer downloads introduced in v0.6.3 remain available. LibreOffice Impress-style shortcuts and drag-and-drop slide ordering remain available. The current development source is **0.7.0**. The links below target the 0.7.0 development prerelease; release assets appear after the release workflow completes.
 
 ## Install, launch and remove
 
-Download the `.deb` and its matching `.sha256` from the [v0.6.10 development prerelease](https://github.com/wikicho/SciSlide/releases/tag/v0.6.10), or download a Linux workflow artifact and extract it first. Local source builds keep Debian distribution files in `release/v<version>/linux/` and the unpacked application in `release/work/v<version>/`. CI uses an explicit output directory for its upload steps.
+Download the `.deb` and its matching `.sha256` from the [v0.7.0 development prerelease](https://github.com/wikicho/SciSlide/releases/tag/v0.7.0), or download a Linux workflow artifact and extract it first. Local source builds keep Debian distribution files in `release/v<version>/linux/` and the unpacked application in `release/work/v<version>/`. CI uses an explicit output directory for its upload steps.
 
 From the folder containing both files:
 
 ```sh
-sha256sum -c SciSlide-0.6.10-linux-x64.deb.sha256
-sudo apt install ./SciSlide-0.6.10-linux-x64.deb
+sha256sum -c SciSlide-0.7.0-linux-x64.deb.sha256
+sudo apt install ./SciSlide-0.7.0-linux-x64.deb
 scislide
 ```
 
@@ -56,20 +56,20 @@ pnpm desktop:package:linux --arch=x64
 The command builds the editor and creates:
 
 ```text
-release/work/v0.6.10/SciSlide-linux-x64/
-release/v0.6.10/linux/SciSlide-0.6.10-linux-x64.deb
-release/v0.6.10/linux/SciSlide-0.6.10-linux-x64.deb.sha256
-release/v0.6.10/linux/LINUX-INSTALL.md
+release/work/v0.7.0/SciSlide-linux-x64/
+release/v0.7.0/linux/SciSlide-0.7.0-linux-x64.deb
+release/v0.7.0/linux/SciSlide-0.7.0-linux-x64.deb.sha256
+release/v0.7.0/linux/LINUX-INSTALL.md
 ```
 
-Only x64 is supported by this Debian distribution command. `--out` selects another output directory; `--overwrite` replaces recognized generated outputs. The standalone application folder produced by this command can also be launched with `release/work/v0.6.10/SciSlide-linux-x64/scislide`, with all runtime files kept together. Its Chromium sandbox still requires a supported host environment. Do not run the editor as root.
+Only x64 is supported by this Debian distribution command. `--out` selects another output directory; `--overwrite` replaces recognized generated outputs. The standalone application folder produced by this command can also be launched with `release/work/v0.7.0/SciSlide-linux-x64/scislide`, with all runtime files kept together. Its Chromium sandbox still requires a supported host environment. Do not run the editor as root.
 
 Verify and install a current local build with:
 
 ```sh
-cd release/v0.6.10/linux
-sha256sum -c SciSlide-0.6.10-linux-x64.deb.sha256
-sudo apt install ./SciSlide-0.6.10-linux-x64.deb
+cd release/v0.7.0/linux
+sha256sum -c SciSlide-0.7.0-linux-x64.deb.sha256
+sudo apt install ./SciSlide-0.7.0-linux-x64.deb
 scislide
 ```
 
@@ -119,7 +119,9 @@ Ubuntu/Linux shortcuts follow [LibreOffice Impress](https://help.libreoffice.org
 
 **Alt+Shift+E** inserts an equation, reveals Inspector and focuses **LATEX SOURCE**, following LibreOffice's [Formula Object shortcut](https://help.libreoffice.org/latest/en-US/text/shared/01/04160300.html); **Ctrl+Alt+=** remains an alias from the Impress guide. **Shift+F3** performs an immediate duplicate rather than opening Impress's options dialog. **Ctrl+D**, **Ctrl+G**, **Ctrl+Shift+/** and **Ctrl+Enter** remain aliases for duplicate, group, help and presenting from the current slide. **Ctrl+Shift+G** now groups, matching Impress. Text formatting applies to whole selected text objects; inline text editing retains clipboard, cursor, IME and undo behavior, and **Ctrl+Enter** applies the edit.
 
-SciSlide's **Ctrl+Alt+P / Ctrl+Alt+S** export PDF/current-slide SVG. In a slideshow, **Enter** advances a build or slide, **Backspace** goes back, and **Esc / -** exits; arrow, Space and Page Up/Down navigation remain available. Media controls keep their own keys. **My equations** provides a local named/tagged library with JSON transfer. **Presenter display** provides a separate notes/preview/timer window; move it to your screen manually.
+SciSlide's **Ctrl+Alt+P / Ctrl+Alt+S** export PDF/current-slide SVG. In a slideshow, **Enter** advances a build or slide, **Backspace** goes back, and **Esc / -** exits; arrow, Space and Page Up/Down navigation remain available. Media controls keep their own keys. **My equations** provides a local named/tagged library with JSON transfer. With two extended displays, **Present** keeps notes, previews and timer on the editor’s display and opens fullscreen slides on the other display.
+
+On a Wayland desktop with XWayland available, SciSlide uses XWayland by default to place the audience window on the second monitor. Pure Wayland sessions and an explicit `--ozone-platform=wayland` selection use the compositor’s fullscreen placement. If both windows appear on the same monitor, move the slide window with your desktop’s “Move window to another monitor” shortcut. To change an existing session’s backend, quit SciSlide before relaunching it.
 
 Workspace recovery uses bounded IndexedDB and retains unfinished equation drafts, with a localStorage fallback. Libraries and unapplied drafts remain local workspace data; save portable files explicitly. New saves use native format **0.5.0** and read/migrate formats **0.1.0–0.4.0**. Older apps that read only 0.4.0 or earlier cannot open new files; **Save As** preserves an older original.
 

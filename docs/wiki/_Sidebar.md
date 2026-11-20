@@ -13,4 +13,4 @@
 - [Architecture and roadmap](Architecture-and-Roadmap)
 - [Development](Development)
 
-[Download v0.6.10](https://github.com/wikicho/SciSlide/releases/tag/v0.6.10) · [Source](https://github.com/wikicho/SciSlide)
+[Download v0.7.0](https://github.com/wikicho/SciSlide/releases/tag/v0.7.0) · [Source](https://github.com/wikicho/SciSlide)

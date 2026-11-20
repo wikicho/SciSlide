@@ -52,3 +52,18 @@
   opacity: 0.55;
   cursor: not-allowed;
 }
+
+.pptx-import-warnings {
+  max-height: min(45vh, 360px);
+  overflow: auto;
+  padding: 0 16px 0 24px;
+  overflow-wrap: anywhere;
+}
+
+.pptx-import-warnings > li {
+  margin-block: 8px;
+}
+
+.pptx-import-warnings ul {
+  padding-inline-start: 20px;
+}

@@ -263,8 +263,6 @@ function spacingCandidates(
     const first = ordered[i];
     for (let j = i + 1; j < ordered.length; j++) {
       const second = ordered[j];
-      const band = sharedBand([source, first, second], axis);
-      if (!band) continue;
       const existingGap = second[axis] - end(first, axis);
       if (existingGap <= EPSILON) continue;
       const middleGap = (existingGap - source[size]) / 2;
@@ -281,6 +279,8 @@ function spacingCandidates(
       for (const placement of placements) {
         const adjustment = placement.position - source[axis];
         if (Math.abs(adjustment) > tolerance + EPSILON) continue;
+        const band = sharedBand([source, first, second], axis);
+        if (!band) continue;
         const moved = { ...source, [axis]: placement.position };
         if (!clearSpacingSpan(moved, first, second, eligible, axis, band))
           continue;
@@ -358,6 +358,7 @@ export function snapMove(
     new Map(),
     new Map(),
   ];
+  const checkedCorrections = [new Set<number>(), new Set<number>()];
   // Try raw and aligned rows/columns, then spacing-adjusted ones. Every primary
   // correction remains relative to the raw pointer proposal, not a previous snap.
   for (let pass = 0; pass < 2; pass++) {
@@ -373,6 +374,9 @@ export function snapMove(
         ),
       ]);
       for (const correction of crossCorrections) {
+        // The next pass only needs rows or columns discovered since the last one.
+        if (checkedCorrections[index].has(correction)) continue;
+        checkedCorrections[index].add(correction);
         const source = { ...proposed, [cross]: proposed[cross] + correction };
         for (const candidate of spacingCandidates(
           source,

@@ -50,7 +50,12 @@ export function shapeGeometry(object: ShapeObject): ShapePrimitive[] {
           }
         : {
             tag: "rect",
-            attributes: { ...attributes, width, height, rx: 12 },
+          attributes: {
+            ...attributes,
+            width,
+            height,
+            rx: object.cornerRadius ?? 12,
+          },
           },
     ];
   }

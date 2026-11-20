@@ -1132,6 +1132,11 @@ button .lucide {
   align-items: center;
   justify-content: center;
 }
+.audience-view {
+  position: fixed;
+  inset: 0;
+  background: #000;
+}
 .presentation-view > .slide-scene {
   width: 100%;
   height: auto;
@@ -2408,6 +2413,36 @@ button .lucide {
   align-content: center;
   justify-content: center;
   text-align: center;
+}
+@media (min-width: 701px) {
+  .presenter-shell:not(.presenter-message) {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+  }
+  .presenter-previews {
+    flex: 1 0 150px;
+    min-height: 150px;
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .presenter-previews section {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .presenter-previews .slide-scene {
+    flex: 1;
+    min-height: 0;
+    height: 0;
+  }
+  .presenter-details {
+    flex: 0 0 max(216px, 28%);
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .presenter-details section {
+    overflow: auto;
+  }
 }
 .presentation-toast {
   position: absolute;

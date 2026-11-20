@@ -15,6 +15,7 @@ import { exportDeckPdf, exportSlideSvg } from "../src/lib/export";
 import { exportDeckPptx } from "../src/lib/export-pptx";
 import { createBlankSlide, createDemoDeck } from "../src/lib/model";
 import type { Deck } from "../src/lib/model";
+import type { PresenterMessage } from "../src/lib/presenter";
 import {
   buildDeckArchive,
   downloadBlob,
@@ -1514,6 +1515,147 @@ describe("OS-specific keyboard commands in the editor", () => {
     expect(close).toHaveBeenCalledOnce();
     expect(channel.close).toHaveBeenCalledOnce();
     expect(await persist()).toEqual(deck);
+  });
+
+  it("presents from the beginning on a second display and synchronizes builds and navigation", async () => {
+    enableDesktop("win32");
+    nativeBridge.api!.hasAudienceDisplay = () => true;
+    deck.slides[0].objects[0].build = {
+      step: 1,
+      effect: "appear",
+      durationMs: 200,
+    };
+    deck.slides.push({ ...createBlankSlide(), title: "Second slide" });
+    const popup = { closed: false, close: vi.fn() };
+    const open = vi
+      .spyOn(window, "open")
+      .mockReturnValue(popup as unknown as Window);
+    let channel!: Channel;
+    class Channel {
+      postMessage = vi.fn();
+      close = vi.fn();
+      onmessage?: (event: { data: PresenterMessage }) => void;
+      constructor() {
+        channel = this;
+      }
+    }
+    vi.stubGlobal("BroadcastChannel", Channel);
+    await render("Win32");
+    await key("End");
+    await command("presentFromStart");
+    expect(open.mock.calls[0][0]).toContain("#audience=");
+    expect(host.querySelector(".presenter-notes")?.textContent).toContain(
+      deck.slides[0].notes,
+    );
+    expect(host.querySelector(".presentation-view")).toBeNull();
+    const receive = (data: PresenterMessage) =>
+      act(async () => channel.onmessage!({ data }));
+    await receive({ type: "ready", needsDeck: true });
+    expect(channel.postMessage.mock.lastCall?.[0].deck.slides[0].notes).toBe(
+      "",
+    );
+    expect(channel.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: "deck",
+        state: expect.objectContaining({ slideId: deck.slides[0].id, step: 0 }),
+      }),
+    );
+    await click("Next step / slide");
+    expect(channel.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: "state",
+        state: expect.objectContaining({ slideId: deck.slides[0].id, step: 1 }),
+      }),
+    );
+    await receive({ type: "action", action: "next" });
+    expect(host.querySelector(".presenter-navigation")?.textContent).toContain(
+      "Second slide",
+    );
+    await key("Escape");
+    expect(popup.close).toHaveBeenCalledOnce();
+    expect(channel.close).toHaveBeenCalledOnce();
+    expect(host.querySelector(".app-shell")).toBeTruthy();
+  });
+
+  it("places the browser audience on the extended screen and ends playback on disconnect", async () => {
+    const local = { left: 0, top: 0, isInternal: true };
+    const target = {
+      left: -1600,
+      top: 100,
+      availLeft: -1600,
+      availTop: 100,
+      availWidth: 1600,
+      availHeight: 870,
+      isInternal: false,
+    };
+    const details = Object.assign(new EventTarget(), {
+      currentScreen: local,
+      screens: [local, target],
+    });
+    vi.stubGlobal("screen", { isExtended: true });
+    vi.stubGlobal("getScreenDetails", vi.fn().mockResolvedValue(details));
+    const popup = { closed: false, close: vi.fn() };
+    const open = vi
+      .spyOn(window, "open")
+      .mockReturnValue(popup as unknown as Window);
+    const channel = { postMessage: vi.fn(), close: vi.fn() };
+    vi.stubGlobal(
+      "BroadcastChannel",
+      class {
+        constructor() {
+          return channel;
+        }
+      },
+    );
+    await render("Linux");
+    await click("Present");
+    expect(open.mock.calls[0][2]).toContain(
+      "left=-1600,top=100,width=1600,height=870",
+    );
+    expect(host.querySelector(".presenter-shell")).toBeTruthy();
+    details.screens = [local];
+    await act(async () => details.dispatchEvent(new Event("screenschange")));
+    expect(popup.close).toHaveBeenCalledOnce();
+    expect(channel.close).toHaveBeenCalledOnce();
+    expect(host.querySelector(".app-shell")).toBeTruthy();
+  });
+
+  it("uses single-screen playback when screen access is declined", async () => {
+    vi.stubGlobal("screen", { isExtended: true });
+    vi.stubGlobal(
+      "getScreenDetails",
+      vi
+        .fn()
+        .mockRejectedValue(
+          new DOMException("Permission denied", "NotAllowedError"),
+        ),
+    );
+    const open = vi.spyOn(window, "open");
+    await render("Linux");
+    await click("Present");
+    expect(open).not.toHaveBeenCalled();
+    expect(host.querySelector(".presentation-view")).toBeTruthy();
+  });
+
+  it("keeps the editor usable if the audience popup is blocked or closed", async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers({
+      toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"],
+    });
+    enableDesktop("linux");
+    nativeBridge.api!.hasAudienceDisplay = () => true;
+    const popup = { closed: false, close: vi.fn() };
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    await render("Linux");
+    await click("Present");
+    expect(host.querySelector(".app-shell")).toBeTruthy();
+    expect(host.textContent).toContain("The audience display is unavailable");
+    open.mockReturnValue(popup as unknown as Window);
+    await click("Present");
+    expect(host.querySelector(".presenter-shell")).toBeTruthy();
+    popup.closed = true;
+    await act(async () => vi.advanceTimersByTimeAsync(501));
+    expect(host.querySelector(".app-shell")).toBeTruthy();
   });
 
   it("guards new native object commands in text fields and applies legacy native text editing", async () => {

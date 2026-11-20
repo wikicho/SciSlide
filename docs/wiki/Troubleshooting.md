@@ -50,7 +50,7 @@ Detection does not prove login success. Check the same account/CLI in the termin
 
 ## Presenter window or video playback is missing
 
-Allow presenter popups and move the separate window to your screen manually. Automatic monitor placement is not implemented; ordinary **Present** works with one display. Presenter video previews are static, with playback on the audience slideshow only.
+Select **Extend** in your operating system’s display settings and start **Present** from the presenter’s monitor. In the browser, allow screen access and pop-ups. If your browser lacks automatic placement, choose **Presenter display** and move the notes window to your screen. Video plays on the audience display.
 
 Video codec/autoplay support depends on the runtime. Try manual playback controls or a compatible local MP4/WebM. The app does not transcode videos. See [Export and presenting](Export-and-Presenting).
 

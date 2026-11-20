@@ -1,4 +1,4 @@
-# SciSlide 0.6.10 — macOS development installer
+# SciSlide 0.7.0 — macOS development installer
 
 Choose the installer that matches your Mac: **arm64** for Apple Silicon (M1 or later), or **x64** for Intel. The installer copies SciSlide to `/Applications/SciSlide.app`. Node.js, a development server and TeX are not required for MathJax editing.
 
@@ -8,7 +8,7 @@ Quit an existing SciSlide window before installing an update. Both architectures
 
 ## Command-line update downloads
 
-v0.6.10 includes a launcher inside the installed app:
+v0.7.0 includes a launcher inside the installed app:
 
 ```sh
 /Applications/SciSlide.app/Contents/Resources/scislide-cli/bin/scislide --check-update
@@ -28,7 +28,7 @@ The CLI chooses the `.pkg` matching the running app's arm64/x64 architecture, ve
 
 ## Headless agent commands
 
-v0.6.3.1 includes `schema`, `create`, `inspect`, `validate`, `apply`, `unpack`, `pack` and `export`. Run `scislide --cli schema` to discover native objects and edit operations. These commands return JSON and create/edit `.scislide` documents or export SVG/PDF without an editor window or a separate Node installation. Use the launcher path above when `scislide` is not on PATH. See the [agent CLI guide](https://github.com/wikicho/SciSlide/blob/v0.6.10/docs/AGENT_CLI.md) for examples and export limits.
+v0.6.3.1 includes `schema`, `create`, `inspect`, `validate`, `apply`, `unpack`, `pack` and `export`. Run `scislide --cli schema` to discover native objects and edit operations. These commands return JSON and create/edit `.scislide` documents or export SVG/PDF without an editor window or a separate Node installation. Use the launcher path above when `scislide` is not on PATH. See the [agent CLI guide](https://github.com/wikicho/SciSlide/blob/v0.7.0/docs/AGENT_CLI.md) for examples and export limits.
 
 ## Use the editor
 
@@ -71,7 +71,7 @@ Keyboard shortcuts use **Command** and **Option**, following [Apple's Keynote sh
 
 Bold, size and text-alignment commands apply to whole selected text objects on the canvas. During inline text editing, **⌘+Enter** applies the edit; text-field clipboard, navigation and IME behavior remain native. Existing **⌘+Shift+S**, **⌘+G / ⌘+Shift+G** and canvas **⌘+Enter** remain accepted for Save As, Group/Ungroup and Present. During a slideshow, **Esc** exits. **Q** also exits when focus is outside text fields and media controls. In the browser, use a toolbar control when the browser reserves a combination.
 
-**My equations** stores named/tagged formulas locally and transfers them through JSON import/export. **Presenter display** opens a separate window with current/next previews, notes, navigation and a timer; move it to your presenter screen. Recovery uses IndexedDB, bounded to 100 MiB, and retains up to 200 unfinished equation drafts, with a localStorage fallback. Libraries and unapplied drafts are local workspace data; continue saving portable files explicitly.
+**My equations** stores named/tagged formulas locally and transfers them through JSON import/export. With an extended display connected, **Present** opens fullscreen slides there and keeps the notes, previews and timer on the editor’s screen. Recovery uses IndexedDB, bounded to 100 MiB, and retains up to 200 unfinished equation drafts, with a localStorage fallback. Libraries and unapplied drafts are local workspace data; continue saving portable files explicitly.
 
 New saves use native format **0.5.0**, including reversible figure crops. Versions **0.1.0–0.4.0** are migrated on opening; the original is untouched until Save. Apps that support only 0.4.0 or earlier cannot read new 0.5.0 files. Use **Save As** to preserve an older original; PDF/SVG does not downgrade editable source.
 
@@ -81,12 +81,12 @@ The worker uses macOS `sandbox-exec` with read-only system TeX/runtime/font path
 
 To open bundled examples, use Finder's **Show Package Contents** on SciSlide.app and browse to `Contents/Resources/examples/`. Copy a sample presentation to your own folder before editing it. The sample data is synthetic.
 
-The editor is a prototype. Modern Korean body text is supported through bundled Nanum Gothic; unsupported body-text glyphs still produce a PDF export error. Page numbering, embedded MP4/WebM videos and click-step appear/fade builds are available. Videos play in presentation mode; PowerPoint/PDF/SVG exports show a static placeholder. PowerPoint export keeps editable text/shapes, equation graphics and notes; text fonts must be installed on the computer opening the PPTX. Advanced animation, HTML export, automatic multi-monitor placement and automatic updates remain future work. Packaging checks do not establish complete physical-Mac editing/export validation.
+The editor is a prototype. Modern Korean body text is supported through bundled Nanum Gothic; unsupported body-text glyphs still produce a PDF export error. Page numbering, embedded MP4/WebM videos and click-step appear/fade builds are available. Videos play in presentation mode; PowerPoint/PDF/SVG exports show a static placeholder. PowerPoint export keeps editable text/shapes, equation graphics and notes; text fonts must be installed on the computer opening the PPTX. Advanced animation, HTML export and automatic updates remain future work. Packaging checks do not establish complete physical-Mac editing/export validation.
 
 Each installer has a matching `.sha256` file. To verify a download, put the installer and checksum file in the same folder and run:
 
 ```sh
-shasum -a 256 -c SciSlide-0.6.10-macos-arm64-unsigned.pkg.sha256
+shasum -a 256 -c SciSlide-0.7.0-macos-arm64-unsigned.pkg.sha256
 ```
 
 Use the x64 filename for an Intel installer. This checks that the file matches its accompanying checksum; it does not certify the publisher or replace Apple's code signing and notarization.

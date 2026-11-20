@@ -12,6 +12,25 @@ const STORE = "recovery";
 const RECORD = "workspace";
 const LEGACY_RECOVERY_KEY = "scislide.recovery.v1";
 
+function recoveryKeys(workspaceId?: string): {
+  record: string;
+  local: string[];
+} {
+  // The default chooser keeps the existing recovery location. File windows own
+  // separate snapshots and never hydrate another editor's deck.
+  if (workspaceId === undefined || workspaceId === "main")
+    return {
+      record: RECORD,
+      local: [WORKSPACE_RECOVERY_KEY, LEGACY_RECOVERY_KEY],
+    };
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(workspaceId))
+    throw new Error("Workspace recovery ID is invalid.");
+  return {
+    record: `${RECORD}:${workspaceId}`,
+    local: [`${WORKSPACE_RECOVERY_KEY}.${workspaceId}`],
+  };
+}
+
 export interface EquationDraft {
   /** True means Apply removes typography overrides and follows document defaults. */
   inheritTypography?: boolean;
@@ -306,10 +325,13 @@ async function openDatabase(): Promise<IDBDatabase | null> {
   });
 }
 
-async function readIndexedRecovery(database: IDBDatabase): Promise<unknown> {
+async function readIndexedRecovery(
+  database: IDBDatabase,
+  record: string,
+): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(STORE, "readonly");
-    const request = transaction.objectStore(STORE).get(RECORD);
+    const request = transaction.objectStore(STORE).get(record);
     transaction.oncomplete = () => resolve(request.result);
     transaction.onabort = transaction.onerror = () =>
       reject(
@@ -321,10 +343,11 @@ async function readIndexedRecovery(database: IDBDatabase): Promise<unknown> {
 async function writeIndexedRecovery(
   database: IDBDatabase,
   recovery: WorkspaceRecovery,
+  record: string,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(STORE, "readwrite");
-    transaction.objectStore(STORE).put(recovery, RECORD);
+    transaction.objectStore(STORE).put(recovery, record);
     // A successful put is insufficient: resolve only after the atomic transaction commits.
     transaction.oncomplete = () => resolve();
     transaction.onabort = transaction.onerror = () =>
@@ -345,10 +368,10 @@ function newestRecovery(
   );
 }
 
-function readFallbackRecovery(): WorkspaceRecovery | null {
+function readFallbackRecovery(keys: string[]): WorkspaceRecovery | null {
   const candidates: WorkspaceRecovery[] = [];
   let failure: unknown;
-  for (const key of [WORKSPACE_RECOVERY_KEY, LEGACY_RECOVERY_KEY]) {
+  for (const key of keys) {
     try {
       const source = localStorage.getItem(key);
       if (source === null) continue;
@@ -380,7 +403,10 @@ function readFallbackRecovery(): WorkspaceRecovery | null {
   return null;
 }
 
-export async function loadWorkspaceRecovery(): Promise<WorkspaceRecovery | null> {
+export async function loadWorkspaceRecovery(
+  workspaceId?: string,
+): Promise<WorkspaceRecovery | null> {
+  const keys = recoveryKeys(workspaceId);
   const candidates: WorkspaceRecovery[] = [];
   let failure: unknown;
   let database: IDBDatabase | null = null;
@@ -388,7 +414,7 @@ export async function loadWorkspaceRecovery(): Promise<WorkspaceRecovery | null>
   try {
     database = await openDatabase();
     if (database) {
-      const raw = await readIndexedRecovery(database);
+      const raw = await readIndexedRecovery(database, keys.record);
       indexedEmpty = raw === undefined;
       if (!indexedEmpty) candidates.push(validateWorkspaceRecovery(raw));
     }
@@ -396,7 +422,7 @@ export async function loadWorkspaceRecovery(): Promise<WorkspaceRecovery | null>
     failure = error;
   }
   try {
-    const fallback = readFallbackRecovery();
+    const fallback = readFallbackRecovery(keys.local);
     if (fallback) candidates.push(fallback);
   } catch (error) {
     failure ??= error;
@@ -407,7 +433,7 @@ export async function loadWorkspaceRecovery(): Promise<WorkspaceRecovery | null>
       lastSavedAt = Math.max(lastSavedAt, Date.parse(latest.savedAt));
       if (database && indexedEmpty) {
         try {
-          await writeIndexedRecovery(database, latest);
+          await writeIndexedRecovery(database, latest, keys.record);
         } catch {
           /* A readable local snapshot remains usable if migration fails. */
         }
@@ -432,11 +458,20 @@ let saveQueue: Promise<unknown> = Promise.resolve();
 export function saveWorkspaceRecovery(
   deck: Deck,
   equationDrafts: RecoveredEquationDraft[] = [],
-  context?: RecoveryContext,
+  scopeOrContext?: string | RecoveryContext,
+  scopedContext?: RecoveryContext,
 ): Promise<"indexeddb" | "localStorage"> {
   // Clone before awaiting so caller edits cannot change the pending snapshot.
   let recovery: WorkspaceRecovery;
+  let keys: ReturnType<typeof recoveryKeys>;
   try {
+    const workspaceId =
+      typeof scopeOrContext === "string" ? scopeOrContext : undefined;
+    const context =
+      typeof scopeOrContext === "string"
+        ? scopedContext
+        : (scopeOrContext ?? scopedContext);
+    keys = recoveryKeys(workspaceId);
     // Preserve ordering even for same-millisecond saves or a clock adjustment.
     lastSavedAt = Math.max(Date.now(), lastSavedAt + 1);
     recovery = validateWorkspaceRecovery({
@@ -454,17 +489,52 @@ export function saveWorkspaceRecovery(
     const database = await openDatabase();
     if (!database) {
       // Keep the original timestamp even when no equation drafts remain.
-      localStorage.setItem(WORKSPACE_RECOVERY_KEY, JSON.stringify(recovery));
+      localStorage.setItem(keys.local[0], JSON.stringify(recovery));
       return "localStorage";
     }
     try {
-      await writeIndexedRecovery(database, recovery);
+      await writeIndexedRecovery(database, recovery, keys.record);
       return "indexeddb";
     } finally {
       database.close();
     }
   };
   const result = saveQueue.then(save, save);
+  saveQueue = result.catch(() => undefined);
+  return result;
+}
+
+/** Closed file windows retain their document in shared history, not an orphan workspace. */
+export function clearWorkspaceRecovery(workspaceId: string): Promise<void> {
+  if (workspaceId === "main") return Promise.resolve();
+  let keys: ReturnType<typeof recoveryKeys>;
+  try {
+    keys = recoveryKeys(workspaceId);
+  } catch (error) {
+    return Promise.reject(error);
+  }
+  const clear = async () => {
+    const database = await openDatabase();
+    if (database) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const transaction = database.transaction(STORE, "readwrite");
+          transaction.objectStore(STORE).delete(keys.record);
+          transaction.oncomplete = () => resolve();
+          transaction.onabort = transaction.onerror = () =>
+            reject(
+              transaction.error ??
+                new Error("Workspace recovery could not be cleared."),
+            );
+        });
+      } finally {
+        database.close();
+      }
+    }
+    for (const key of keys.local) localStorage.removeItem(key);
+  };
+  // Wait for every earlier autosave before removing the window's last snapshot.
+  const result = saveQueue.then(clear, clear);
   saveQueue = result.catch(() => undefined);
   return result;
 }

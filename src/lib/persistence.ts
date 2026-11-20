@@ -102,10 +102,13 @@ type ArchivedDeck = Omit<Deck, "assets" | "slides"> & {
 };
 
 function bytesToDataUrl(bytes: Uint8Array, mime: string): string {
+  const prefix = `data:${mime};base64,`;
+  if ("toBase64" in bytes && typeof bytes.toBase64 === "function")
+    return prefix + bytes.toBase64();
   let binary = "";
   for (let i = 0; i < bytes.length; i += 0x8000)
     binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return `data:${mime};base64,${btoa(binary)}`;
+  return prefix + btoa(binary);
 }
 
 function dataUrlToBytes(dataUrl: string, mime: string): Uint8Array {
@@ -114,8 +117,15 @@ function dataUrlToBytes(dataUrl: string, mime: string): Uint8Array {
     throw new Error("Embedded media has an invalid media type.");
   try {
     if (match[2].split(";").includes("base64")) {
+      if (
+        "fromBase64" in Uint8Array &&
+        typeof Uint8Array.fromBase64 === "function"
+      )
+        return Uint8Array.fromBase64(match[3]);
       const binary = atob(match[3]);
-      return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < bytes.length; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes;
     }
     return new TextEncoder().encode(decodeURIComponent(match[3]));
   } catch {
@@ -137,7 +147,7 @@ async function sha256(bytes: Uint8Array): Promise<string> {
   ).join("");
 }
 
-async function readBytes(file: Blob): Promise<Uint8Array> {
+export async function readBytes(file: Blob): Promise<Uint8Array> {
   if (typeof file.arrayBuffer === "function")
     return new Uint8Array(await file.arrayBuffer());
   // FileReader also covers browsers or test environments without Blob.arrayBuffer.
@@ -804,25 +814,24 @@ async function rasterDimensions(
 export async function importFigure(file: File): Promise<Asset> {
   if (!file.size || file.size > MAX_FIGURE_BYTES)
     throw new Error("Choose a figure smaller than 20 MB.");
-  let bytes = await readBytes(file);
-  const rasterMime = detectedRasterMime(bytes);
-  let mime: string;
+  const bytes = await readBytes(file);
+  const mime = detectedRasterMime(bytes) ?? "image/svg+xml";
+  let dataUrl: string;
   let dimensions: { width: number; height: number };
-  if (rasterMime) {
-    mime = rasterMime;
-    dimensions = await rasterDimensions(bytesToDataUrl(bytes, mime));
-  } else {
+  if (mime === "image/svg+xml") {
     const source = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     const sanitized = sanitizeSvg(source);
-    bytes = new TextEncoder().encode(sanitized);
-    mime = "image/svg+xml";
     dimensions = svgDimensions(sanitized);
+    dataUrl = bytesToDataUrl(new TextEncoder().encode(sanitized), mime);
+  } else {
+    dataUrl = bytesToDataUrl(bytes, mime);
+    dimensions = await rasterDimensions(dataUrl);
   }
   return {
     id: newId(),
     name: file.name,
     mime,
-    dataUrl: bytesToDataUrl(bytes, mime),
+    dataUrl,
     ...dimensions,
   };
 }
