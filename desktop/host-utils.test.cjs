@@ -15,7 +15,7 @@ const {
 const {
   parseDevUrl,
   isTrustedPage,
-  isPresenterPage,
+  presentationWindowRole,
   allowsFullscreen,
   isAllowedRequest,
   validateSaveDocument,
@@ -185,6 +185,7 @@ function menuWindow({
   busy = false,
   loading = false,
   fullscreen = false,
+  extended = false,
   fail = false,
 } = {}) {
   const calls = [];
@@ -200,6 +201,7 @@ function menuWindow({
       };
   if (inputType) activeElement.type = inputType;
   const context = {
+    window: { scislideDesktop: { hasAudienceDisplay: () => extended } },
     document: {
       activeElement,
       fullscreenElement: fullscreen ? {} : null,
@@ -391,6 +393,7 @@ test("native presentation commands share text, modal, busy and fullscreen bounda
       { busy: true },
       { loading: true },
       { fullscreen: true },
+      { extended: true },
     ]) {
       const { contents, calls } = menuWindow(options);
       await dispatchMenuCommand(contents, command);
@@ -629,24 +632,28 @@ test("the sandbox preload and host allowlists forward all platform menu actions 
     assert.ok(received.includes(command), command);
 });
 
-test("only an exact local presenter page can open a secondary window", () => {
+test("only exact local presentation routes can open a secondary window", () => {
   const token = "9b244a24-6546-491a-a341-fbe6e34c6052";
-  assert.equal(isPresenterPage(`scislide://app/#presenter=${token}`), true);
-  assert.equal(
-    isPresenterPage(
-      `http://127.0.0.1:5173/#presenter=${token}`,
-      "http://127.0.0.1:5173/",
-    ),
-    true,
-  );
-  for (const value of [
-    "scislide://app/",
-    "scislide://app/#presenter=short",
-    `scislide://app/assets/index.html#presenter=${token}`,
-    `scislide://app/?url=x#presenter=${token}`,
-    `https://example.com/#presenter=${token}`,
-  ])
-    assert.equal(isPresenterPage(value), false);
+  for (const role of ["presenter", "audience"]) {
+    const hash = `#${role}=${token}`;
+    assert.equal(presentationWindowRole(`scislide://app/${hash}`), role);
+    assert.equal(
+      presentationWindowRole(
+        `http://127.0.0.1:5173/${hash}`,
+        "http://127.0.0.1:5173/",
+      ),
+      role,
+    );
+    for (const value of [
+      "scislide://app/",
+      `scislide://app/#${role}=short`,
+      `scislide://app/${hash}&extra=1`,
+      `scislide://app/assets/index.html${hash}`,
+      `scislide://app/?url=x${hash}`,
+      `https://example.com/${hash}`,
+    ])
+      assert.equal(presentationWindowRole(value), null);
+  }
 });
 
 test("JSON export is limited to bounded equation libraries", () => {
@@ -1062,7 +1069,7 @@ test("sandbox preload validates availability before forwarding fixed menu state"
   });
 });
 
-test("availability IPC trusts only the main editor and disabled native commands cannot dispatch", async () => {
+test("availability IPC trusts registered editors and disabled native commands cannot dispatch", async () => {
   const handlers = new Map();
   const sent = [];
   const items = new Map(
@@ -1089,8 +1096,12 @@ test("availability IPC trusts only the main editor and disabled native commands 
       quit() {},
     },
     protocol: { registerSchemesAsPrivileged() {} },
+    BrowserWindow: { getFocusedWindow: () => window },
     Menu: { getApplicationMenu: () => menu },
-    ipcMain: { handle: (channel, action) => handlers.set(channel, action) },
+    ipcMain: {
+      on() {},
+      handle: (channel, action) => handlers.set(channel, action),
+    },
   };
   const context = vm.createContext({
     require: (name) => (name === "electron" ? electron : require(name)),
@@ -1103,7 +1114,10 @@ test("availability IPC trusts only the main editor and disabled native commands 
     await fs.readFile(path.join(__dirname, "main.cjs"), "utf8"),
     context,
   );
-  vm.runInContext("mainWindow = testWindow; registerIpc();", context);
+  vm.runInContext(
+    "editorWindows.set(testWindow.webContents, {window:testWindow, commandAvailability:{}}); registerIpc();",
+    context,
+  );
   const update = handlers.get("scislide:set-command-availability");
   const trusted = { sender: contents, senderFrame: frame };
   update(trusted, { save: false, showShortcuts: true });

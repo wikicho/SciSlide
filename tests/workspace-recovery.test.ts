@@ -4,6 +4,7 @@ import { createDemoDeck } from "../src/lib/model";
 import type { Deck } from "../src/lib/model";
 import { saveRecovery } from "../src/lib/persistence";
 import {
+  clearWorkspaceRecovery,
   loadWorkspaceRecovery,
   saveWorkspaceRecovery,
   validateWorkspaceRecovery,
@@ -18,9 +19,11 @@ import type {
 function testIndexedDB() {
   const state: {
     value?: unknown;
+    windows: Map<string, unknown>;
     failNextWrite: boolean;
     failNextRead: boolean;
   } = {
+    windows: new Map(),
     failNextWrite: false,
     failNextRead: false,
   };
@@ -30,6 +33,8 @@ function testIndexedDB() {
     close: () => undefined,
     transaction: (_store: string, mode: string) => {
       let pending: unknown;
+      let record = "workspace";
+      let deleted = false;
       let request: { result?: unknown; onsuccess?: () => void } | undefined;
       const transaction = {
         error: null as DOMException | null,
@@ -37,23 +42,29 @@ function testIndexedDB() {
         onabort: undefined as (() => void) | undefined,
         onerror: undefined as (() => void) | undefined,
         objectStore: () => ({
-          get: () => {
+          get: (key: string) => {
+            record = key;
             request = {};
             return request;
           },
-          put: (value: unknown) => {
+          put: (value: unknown, key: string) => {
+            record = key;
             pending = structuredClone(value);
             request = {};
             return request;
+          },
+          delete: (key: string) => {
+            record = key;
+            deleted = true;
           },
         }),
       };
       queueMicrotask(() => {
         if (request) {
+          const value =
+            record === "workspace" ? state.value : state.windows.get(record);
           request.result =
-            state.value === undefined
-              ? undefined
-              : structuredClone(state.value);
+            value === undefined ? undefined : structuredClone(value);
           request.onsuccess?.();
         }
         queueMicrotask(() => {
@@ -72,7 +83,11 @@ function testIndexedDB() {
             );
             transaction.onabort?.();
           } else {
-            if (mode === "readwrite") state.value = pending;
+            if (mode === "readwrite") {
+              if (record === "workspace") state.value = pending;
+              else if (deleted) state.windows.delete(record);
+              else state.windows.set(record, pending);
+            }
             transaction.oncomplete?.();
           }
         });
@@ -121,6 +136,78 @@ describe("complete workspace recovery", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
+
+  it("keeps simultaneous editor snapshots independent in IndexedDB", async () => {
+    const mock = testIndexedDB();
+    vi.stubGlobal("indexedDB", mock.factory);
+    const first = createDemoDeck();
+    first.title = "First window";
+    const second = createDemoDeck();
+    second.title = "Second window";
+    const secondDraft = unappliedDraft(second);
+    await Promise.all([
+      saveWorkspaceRecovery(first, [], "main"),
+      saveWorkspaceRecovery(second, [secondDraft], "window-two"),
+    ]);
+    expect((await loadWorkspaceRecovery("main"))?.deck.title).toBe(
+      "First window",
+    );
+    expect((await loadWorkspaceRecovery())?.deck.id).toBe(first.id);
+    expect((await loadWorkspaceRecovery("window-two"))?.equationDrafts).toEqual(
+      [secondDraft],
+    );
+    await saveWorkspaceRecovery(
+      { ...first, title: "First window edited" },
+      [],
+      "main",
+    );
+    expect((await loadWorkspaceRecovery("window-two"))?.deck.title).toBe(
+      "Second window",
+    );
+    expect(await loadWorkspaceRecovery("window-three")).toBeNull();
+  });
+
+  it("isolates fallback recovery and does not hydrate new windows from legacy recovery", async () => {
+    vi.stubGlobal("indexedDB", undefined);
+    const legacy = createDemoDeck();
+    saveRecovery(legacy);
+    expect(await loadWorkspaceRecovery("window-two")).toBeNull();
+    expect((await loadWorkspaceRecovery("main"))?.deck.id).toBe(legacy.id);
+    const second = createDemoDeck();
+    second.title = "Second window";
+    await saveWorkspaceRecovery(second, [], "window-two");
+    expect((await loadWorkspaceRecovery("window-two"))?.deck.title).toBe(
+      "Second window",
+    );
+    expect((await loadWorkspaceRecovery("main"))?.deck.id).toBe(legacy.id);
+    await saveWorkspaceRecovery(legacy, [unappliedDraft(legacy)], "main");
+    expect((await loadWorkspaceRecovery("window-two"))?.equationDrafts).toEqual(
+      [],
+    );
+    expect((await loadWorkspaceRecovery("main"))?.equationDrafts).toHaveLength(
+      1,
+    );
+  });
+
+  it.each(["indexeddb", "localStorage"])(
+    "clears only the closed window after pending %s saves commit",
+    async (storage) => {
+      vi.stubGlobal(
+        "indexedDB",
+        storage === "indexeddb" ? testIndexedDB().factory : undefined,
+      );
+      const first = createDemoDeck();
+      const second = createDemoDeck();
+      await saveWorkspaceRecovery(first, [], "main");
+      const pending = saveWorkspaceRecovery(second, [], "window-two");
+      const closing = clearWorkspaceRecovery("window-two");
+      await Promise.all([pending, closing]);
+      expect(await loadWorkspaceRecovery("window-two")).toBeNull();
+      expect((await loadWorkspaceRecovery("main"))?.deck.id).toBe(first.id);
+      await clearWorkspaceRecovery("main");
+      expect((await loadWorkspaceRecovery("main"))?.deck.id).toBe(first.id);
+    },
+  );
 
   it.each(["indexeddb", "localStorage"] as const)(
     "round-trips file provenance, stable session, media and local drafts through %s without sharing caller context",
@@ -334,6 +421,39 @@ describe("complete workspace recovery", () => {
       expect(loaded.deck.slides).toEqual(deck.slides);
     }
   });
+
+  it.each(["indexeddb", "localStorage"] as const)(
+    "keeps clean context calls and scoped context calls independent through %s",
+    async (backend) => {
+      vi.stubGlobal(
+        "indexedDB",
+        backend === "indexeddb" ? testIndexedDB().factory : undefined,
+      );
+      const main = createDemoDeck();
+      const second = createDemoDeck();
+      second.title = "Window two with saved provenance";
+      const mainContext: RecoveryContext = {
+        file: { name: "Main.scislide", kind: "saved" },
+        sessionId: "main-saved-session",
+      };
+      const secondaryContext: RecoveryContext = {
+        file: { name: "Second.scislide", kind: "opened" },
+        sessionId: "secondary-saved-session",
+      };
+      await Promise.all([
+        saveWorkspaceRecovery(main, [], mainContext),
+        saveWorkspaceRecovery(second, [], "window-two", secondaryContext),
+      ]);
+      expect(await loadWorkspaceRecovery()).toMatchObject(mainContext);
+      expect(await loadWorkspaceRecovery("window-two")).toMatchObject({
+        ...secondaryContext,
+        deck: { title: second.title },
+      });
+      await clearWorkspaceRecovery("window-two");
+      expect(await loadWorkspaceRecovery("window-two")).toBeNull();
+      expect(await loadWorkspaceRecovery()).toMatchObject(mainContext);
+    },
+  );
 
   it("preserves complete media and unapplied equation source in IndexedDB", async () => {
     const mock = testIndexedDB();

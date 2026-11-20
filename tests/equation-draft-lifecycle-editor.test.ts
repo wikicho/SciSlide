@@ -296,7 +296,7 @@ describe("equation draft lifecycle across object and slide deletion", () => {
     };
     vi.mocked(readDeckArchive).mockResolvedValueOnce(next);
     const field = host.querySelector<HTMLInputElement>(
-      'input[type="file"][accept=".scislide"]',
+      'input[type="file"][accept*=".scislide"]',
     )!;
     await act(async () => {
       Object.defineProperty(field, "files", {

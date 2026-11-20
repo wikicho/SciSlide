@@ -1,4 +1,4 @@
-# SciSlide 0.6.10 — Linux x64 standalone app
+# SciSlide 0.7.0 — Linux x64 standalone app
 
 Run the `scislide` executable in this folder. Keep the Electron runtime files together. Node.js, TeX and a development server are not required for MathJax editing.
 
@@ -6,9 +6,11 @@ Run the `scislide` executable in this folder. Keep the Electron runtime files to
 ./scislide
 ```
 
-For system installation, the separate `SciSlide-0.6.10-linux-x64.deb` adds a desktop launcher and icon. Install it with `sudo apt install ./SciSlide-0.6.10-linux-x64.deb`, then launch `scislide`. Ubuntu 24.04 x64 is the packaging target; Debian calls the architecture `amd64`. No SciSlide APT repository or Snap package is currently provided.
+For system installation, the separate `SciSlide-0.7.0-linux-x64.deb` adds a desktop launcher and icon. Install it with `sudo apt install ./SciSlide-0.7.0-linux-x64.deb`, then launch `scislide`. Ubuntu 24.04 x64 is the packaging target; Debian calls the architecture `amd64`. No SciSlide APT repository or Snap package is currently provided.
 
-Version **0.6.10** preserves acknowledged file-save state when resuming a workspace and checkpoints current work before closing. Later edits remain unsaved, and unapplied equation drafts stay separate from portable files. The authoring controls and image-heavy document improvements introduced in 0.6.9 remain available. See the [release notes](https://github.com/wikicho/SciSlide/blob/v0.6.10/docs/releases/v0.6.10.md) for the changes and validation limits.
+Since 0.6.10, SciSlide preserves acknowledged file-save state when resuming a workspace and checkpoints current work before closing. Later edits remain unsaved, and unapplied equation drafts stay separate from portable files. The authoring controls and image-heavy document improvements introduced in 0.6.9 remain available. See the [release notes](https://github.com/wikicho/SciSlide/blob/v0.7.0/docs/releases/v0.7.0.md) for the changes and validation limits.
+
+Quick native PNG/PDF drops, file drops over pending inline text, and drop-highlight cleanup remain available.
 
 ## Update CLI
 
@@ -18,11 +20,11 @@ Portable builds include `bin/scislide`; Debian packages expose it as `scislide`.
 
 ## Headless agent commands
 
-v0.6.3.1 includes `schema`, `create`, `inspect`, `validate`, `apply`, `unpack`, `pack` and `export`. Run `scislide --cli schema` to discover native objects and edit operations. These commands return JSON and create/edit `.scislide` documents or export SVG/PDF without an editor window or a separate Node installation. Use the launcher path above when `scislide` is not on PATH. See the [agent CLI guide](https://github.com/wikicho/SciSlide/blob/v0.6.10/docs/AGENT_CLI.md) for examples and export limits.
+v0.6.3.1 includes `schema`, `create`, `inspect`, `validate`, `apply`, `unpack`, `pack` and `export`. Run `scislide --cli schema` to discover native objects and edit operations. These commands return JSON and create/edit `.scislide` documents or export SVG/PDF without an editor window or a separate Node installation. Use the launcher path above when `scislide` is not on PATH. See the [agent CLI guide](https://github.com/wikicho/SciSlide/blob/v0.7.0/docs/AGENT_CLI.md) for examples and export limits.
 
 ## Start and edit a presentation
 
-Choose **Scientific**, **Minimal White**, **Minimal Black**, **Navy** or **Keynote White**, then **Create presentation**. **Open presentation** loads a `.scislide` file, **Resume previous work** restores a recovered workspace and **Explore demo** opens the sample deck. Keynote White has fifteen coordinated white/black layouts; the other themes retain fourteen Scientific/Keynote-inspired layouts. **New slide** or **+** opens the theme's picker, including **Blank slide**. Added slides are editable and can be undone.
+Choose **Scientific**, **Minimal White**, **Minimal Black**, **Navy** or **Keynote White**, then **Create presentation**. **Open presentation** loads a `.scislide` file or imports PowerPoint `.pptx`, **Resume previous work** restores a recovered workspace and **Explore demo** opens the sample deck. Keynote White has fifteen coordinated white/black layouts; the other themes retain fourteen Scientific/Keynote-inspired layouts. **New slide** or **+** opens the theme's picker, including **Blank slide**. Added slides are editable and can be undone.
 
 Double-click text or press **Enter** on a selected text box to edit on the slide. **Enter** adds a line, **Ctrl+Enter** or clicking outside applies one undoable edit, and **Escape** cancels. Korean IME input and plain-text paste are supported. Write `$\chi$` or `\(\frac{1}{2}\)` inside a text box for inline mathematics. MathJax formulas match the surrounding font's lowercase height and preserve their mathematical baseline; tall formulas expand their own line's spacing. Editing and native saves retain the original source. PDF/SVG preserve vector formulas and selectable ordinary text.
 
@@ -30,7 +32,7 @@ Press **Ctrl+Shift+M** in canvas or Inspector text to insert/edit an inline equa
 
 With the canvas focused, **Tab / Shift+Tab** selects eligible objects/groups in stacking order and follows normal UI focus order at the boundaries. **Ctrl+Alt+I / Ctrl+Shift+L** toggle and focus Inspector / Objects & Layers independently. Duplicate targets the focused thumbnail even with a retained canvas selection. Text fields, dialogs and playback retain their input; native menu availability follows focus, selection and busy state.
 
-**Open / Save / Save As** use native dialogs. Save updates the selected source file; **Export** saves all slides as PowerPoint (`.pptx`) or PDF, or the current slide as SVG. PowerPoint keeps editable ordinary text and shapes, speaker notes and page numbers; equations and figures become graphics, videos become static placeholders, and click builds show their final state. PPTX does not embed text fonts or create editable Office equations. Copy bundled examples to your documents folder before editing them. `examples/inline-math.scislide` demonstrates English/Korean inline formulas, `examples/keynote-white-theme.scislide` contains all fifteen layouts, and `examples/electron-local-latex.scislide` includes a saved Local LaTeX result. Scientific demonstration data is synthetic.
+**Open / Save / Save As** use native dialogs. Open can select several `.scislide` or `.pptx` files; each opens in a separate editor window while your current work stays open. Opening an already open `.scislide` file focuses its window. Each editor maintains independent Undo, local workspace recovery and close confirmation; menu commands follow the focused editor. Save asks for a `.scislide` destination the first time you save an imported PowerPoint presentation. Review any issues in **PowerPoint import details**, grouped by slide number. **Export** saves all slides as PowerPoint (`.pptx`) or PDF, or the current slide as SVG. PowerPoint keeps editable ordinary text and shapes, speaker notes and page numbers; equations and figures become graphics, videos become static placeholders, and click builds show their final state. PPTX does not embed text fonts or create editable Office equations. Copy bundled examples to your documents folder before editing them. `examples/inline-math.scislide` demonstrates English/Korean inline formulas, `examples/keynote-white-theme.scislide` contains all fifteen layouts, and `examples/electron-local-latex.scislide` includes a saved Local LaTeX result. Scientific demonstration data is synthetic.
 
 ## Figures and object layout
 
@@ -50,7 +52,7 @@ For selected objects, **Ctrl++ / Ctrl+-** move one layer forward / backward, and
 
 **My equations** stores named/tagged formulas locally and transfers them through JSON import/export. Recovery uses IndexedDB, bounded to 100 MiB, and retains up to 200 unfinished equation drafts, with a localStorage fallback. Personal libraries and unapplied drafts are workspace data, separate from portable source files; save explicitly and check failure feedback.
 
-**Presenter display** opens a separate window with current/next previews, notes, navigation and a configurable timer; move it to your presenter screen. Audience video playback remains separate from passive presenter previews. **Video** embeds MP4/WebM; PDF/SVG use static labeled placeholders. Deck-wide page numbers and ordered click-triggered appear/fade builds are available. Live-camera feeds, automatic multi-monitor placement and advanced animation remain future work.
+With two extended displays, choose **Present** on the presenter’s monitor. The current and next slides, notes and timer stay there. The audience sees fullscreen slides with video on the other monitor. **Video** embeds MP4/WebM; PDF/SVG use static labeled placeholders. Deck-wide page numbers and ordered click-triggered appear/fade builds are available. Live-camera feeds and advanced animation remain future work.
 
 ## Installed tools and compatibility
 

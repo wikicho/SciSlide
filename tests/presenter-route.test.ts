@@ -13,6 +13,10 @@ vi.mock("../src/components/PresenterApp", () => ({
   PresenterApp: (props: { token: string }) =>
     createElement("div", { "data-presenter-token": props.token }),
 }));
+vi.mock("../src/components/AudienceApp", () => ({
+  AudienceApp: (props: { token: string }) =>
+    createElement("div", { "data-audience-token": props.token }),
+}));
 
 describe("separate presenter window routing", () => {
   afterEach(() => {
@@ -22,6 +26,9 @@ describe("separate presenter window routing", () => {
   });
   it.each([
     ["#presenter=01234567-89ab-cdef-0123-456789abcdef", "presenter"],
+    ["#audience=01234567-89ab-cdef-0123-456789abcdef", "audience"],
+    ["#audience=short", "editor"],
+    ["#audience=01234567-89ab-cdef-0123-456789abcdef&extra=true", "editor"],
     ["#presenter=short", "editor"],
     ["#presenter=01234567-89ab-cdef-0123-456789abcdef&extra=true", "editor"],
     ["#", "editor"],
@@ -32,7 +39,7 @@ describe("separate presenter window routing", () => {
     await import("../src/main");
     const strictMode = render.mock.calls[0][0];
     const element = strictMode.props.children;
-    if (destination === "presenter")
+    if (destination !== "editor")
       expect(element.props.token).toBe("01234567-89ab-cdef-0123-456789abcdef");
     else expect(element.props.token).toBeUndefined();
     const rendered = element.type(element.props);
@@ -41,6 +48,9 @@ describe("separate presenter window routing", () => {
     );
     expect(Boolean(rendered.props["data-presenter-token"])).toBe(
       destination === "presenter",
+    );
+    expect(Boolean(rendered.props["data-audience-token"])).toBe(
+      destination === "audience",
     );
   });
 });

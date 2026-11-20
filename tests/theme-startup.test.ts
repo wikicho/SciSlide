@@ -190,8 +190,8 @@ describe("theme selection at presentation startup", () => {
     return structuredClone((await persist())!);
   }
 
-  async function settle(condition: () => boolean) {
-    for (let index = 0; index < 30 && !condition(); index++)
+  async function settle(condition: () => boolean, attempts = 30) {
+    for (let index = 0; index < attempts && !condition(); index++)
       await act(async () => pause(5));
     expect(condition()).toBe(true);
   }
@@ -475,5 +475,42 @@ describe("theme selection at presentation startup", () => {
     await upload(new File(["fixture"], "talk.scislide"));
     expect(chooserHeading()).toBeUndefined();
     expect(await persist()).toEqual(opened);
+  });
+
+  it("opens a PowerPoint file as a new unsaved deck and shows warnings by slide", async () => {
+    const { default: PptxGenJS } = await import("pptxgenjs");
+    const pptx = new PptxGenJS();
+    pptx.addSlide().addText("Editable first slide");
+    const second = pptx.addSlide();
+    second.addNotes("Speaker notes");
+    second.addTable([["Unsupported table"]]);
+    const bytes = (await pptx.write({
+      outputType: "arraybuffer",
+    })) as ArrayBuffer;
+    await render();
+    expect(
+      host.querySelector('input[type="file"][accept*=".pptx"]'),
+    ).not.toBeNull();
+    await upload(new File([bytes], "Research.pptx"));
+    await settle(
+      () => !!host.querySelector('[aria-labelledby="pptx-report-title"]'),
+      400,
+    );
+    const report = host.querySelector('[aria-labelledby="pptx-report-title"]')!;
+    expect(report.textContent).toContain("Slide 2");
+    expect(report.textContent).toContain("A table was omitted.");
+    expect(report.textContent).not.toContain("Slide 1");
+    expect(
+      host.querySelector('[aria-label="Document save status"]')?.textContent,
+    ).not.toMatch(/Saved to file|Opened file/);
+    await click("Continue editing");
+    const deck = await persist();
+    expect(deck?.title).toBe("Research");
+    expect(deck?.slides[0].objects[0]).toMatchObject({
+      type: "text",
+      text: "Editable first slide",
+    });
+    expect(deck?.slides[1].notes).toBe("Speaker notes");
+    expect(readDeckArchive).not.toHaveBeenCalled();
   });
 });

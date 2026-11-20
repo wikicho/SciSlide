@@ -125,6 +125,7 @@ import { EquationLibraryDialog } from "./components/EquationLibraryDialog";
 import { createLibraryEquationObject } from "./lib/equation-library";
 import type { EquationLibraryEntry } from "./lib/equation-library";
 import {
+  clearWorkspaceRecovery,
   loadWorkspaceRecovery,
   saveWorkspaceRecovery,
 } from "./lib/workspace-recovery";
@@ -134,7 +135,12 @@ import type {
   RecoveryContext,
 } from "./lib/workspace-recovery";
 import { presenterChannelName, isPresenterAction } from "./lib/presenter";
-import type { PresenterMessage } from "./lib/presenter";
+import type { PresenterAction, PresenterMessage } from "./lib/presenter";
+import { PresenterDisplay } from "./components/PresenterApp";
+import {
+  browserAudienceDisplay,
+  type AudienceDisplay,
+} from "./lib/presentation-displays";
 import {
   shapeFromDrag,
   isLineShape,
@@ -184,6 +190,8 @@ import {
 import type { UserSlideLayout } from "./lib/user-layouts";
 import { ThemeChooser } from "./components/ThemeChooser";
 import { SaveChangesDialog } from "./components/SaveChangesDialog";
+import { PptxImportReport } from "./components/PptxImportReport";
+import type { PptxImportWarning } from "./lib/import-pptx";
 import { RecoveryHistoryDialog } from "./components/RecoveryHistoryDialog";
 import {
   listDocumentRecoveries,
@@ -248,6 +256,45 @@ type FigureImportTarget = {
   placeholderId?: string;
 };
 type PdfFigureRequest = FigureImportTarget & { file: File };
+
+interface PresentationWindow {
+  role: "audience" | "presenter";
+  url: string;
+  channel: BroadcastChannel;
+  popup: Window;
+  startedAt: number;
+  lastDeck: Deck | null;
+  unwatch?: () => void;
+}
+
+function publishPlayback(
+  connection: PresentationWindow,
+  deck: Deck,
+  position: { slideId: string; step: number },
+  needsDeck = false,
+) {
+  const state = { ...position, startedAt: connection.startedAt };
+  if (!needsDeck && connection.lastDeck === deck) {
+    connection.channel.postMessage({
+      type: "state",
+      state,
+    } satisfies PresenterMessage);
+    return;
+  }
+  const snapshot =
+    connection.role === "audience"
+      ? {
+          ...deck,
+          slides: deck.slides.map((slide) => ({ ...slide, notes: "" })),
+        }
+      : deck;
+  connection.channel.postMessage({
+    type: "deck",
+    deck: snapshot,
+    state,
+  } satisfies PresenterMessage);
+  connection.lastDeck = deck;
+}
 
 type LocalRender = NonNullable<
   NonNullable<EquationObject["localTex"]>["render"]
@@ -351,7 +398,10 @@ export default function App() {
   );
   const shortcutTitle = (label: string, action: ShortcutAction) =>
     `${label} · ${shortcutLabel(action, keyboardPlatform)}`;
-  const [initialRecovery] = useState(() => loadRecovery());
+  const workspaceId = desktop?.workspaceId;
+  const [initialRecovery] = useState(() =>
+    !workspaceId || workspaceId === "main" ? loadRecovery() : null,
+  );
   const [deck, setDeck] = useState<Deck>(
     () => initialRecovery ?? createDemoDeck(),
   );
@@ -456,16 +506,29 @@ export default function App() {
   const equationApplyingRef = useRef(false);
   const [pdfFigure, setPdfFigure] = useState<PdfFigureRequest | null>(null);
   const [dropActive, setDropActive] = useState(false);
+  const [pptxImportWarnings, setPptxImportWarnings] = useState<
+    PptxImportWarning[]
+  >([]);
   const fileDragDepth = useRef(0);
   const closePdfFigure = useCallback(() => setPdfFigure(null), []);
-  const [presenterUrl, setPresenterUrl] = useState<string | null>(null);
+  const [displayWindow, setDisplayWindow] = useState<PresentationWindow | null>(
+    null,
+  );
+  const displayRequest = useRef<Promise<AudienceDisplay | null> | null>(null);
   const pasteSequence = useRef({ deckId: "", slideId: "", count: 0 });
   const recoveryWritable = useRef(false);
   const recoveredDrafts = useRef<RecoveredEquationDraft[]>([]);
   const saveWorkspaceSnapshot = useCallback(
-    (snapshot: Deck, drafts: RecoveredEquationDraft[]) =>
-      saveWorkspaceRecovery(snapshot, drafts, recoveryContextFor(snapshot)),
-    [recoveryContextFor],
+    (snapshot: Deck, drafts: RecoveredEquationDraft[], scope = workspaceId) =>
+      scope === undefined
+        ? saveWorkspaceRecovery(snapshot, drafts, recoveryContextFor(snapshot))
+        : saveWorkspaceRecovery(
+            snapshot,
+            drafts,
+            scope,
+            recoveryContextFor(snapshot),
+          ),
+    [recoveryContextFor, workspaceId],
   );
   const saveHistorySnapshot = useCallback(
     (id: string, snapshot: Deck, drafts: RecoveredEquationDraft[]) =>
@@ -473,13 +536,8 @@ export default function App() {
     [recoveryContextFor],
   );
   const [draftRevision, setDraftRevision] = useState(0);
-  const presenter = useRef<{
-    channel: BroadcastChannel;
-    popup: Window;
-    startedAt: number;
-    lastDeck: Deck | null;
-  } | null>(null);
-  const presenterControls = useRef<(action: string) => void>(() => {});
+  const presentationWindow = useRef<PresentationWindow | null>(null);
+  const presenterControls = useRef<(action: PresenterAction) => void>(() => {});
   const presenterState = useRef({ slideId: "", step: 0 });
   const replaceFigureInput = useRef<HTMLInputElement>(null);
   const replaceFigureTarget = useRef<{
@@ -614,7 +672,7 @@ export default function App() {
   useEffect(() => {
     let live = true;
     const initial = deckRef.current;
-    loadWorkspaceRecovery()
+    loadWorkspaceRecovery(workspaceId)
       .then((recovery) => {
         if (!live) return;
         recoveryWritable.current = true;
@@ -788,7 +846,8 @@ export default function App() {
     );
     setRecoveryStatus("Saving locally…");
     const timer = setTimeout(() => {
-      if (session !== documentSession.current) return;
+      if (session !== documentSession.current || !recoveryWritable.current)
+        return;
       void saveHistorySnapshot(historyId, deck, drafts)
         .then(() => {
           if (!live || session !== documentSession.current) return;
@@ -2421,9 +2480,11 @@ export default function App() {
     setDraftRevision((revision) => revision + 1);
     setEquationEditorId(null);
     setPdfFigure(null);
+    setPptxImportWarnings([]);
     setMetrics({});
     setEditingLayoutId(null);
     setEditingLayoutSlideId(null);
+    setZoom(100);
     deckRef.current = next;
     setDeck(next);
     setHistoryTick((tick) => tick + 1);
@@ -2540,6 +2601,32 @@ export default function App() {
       setHistoryBusy(false);
     }
   };
+  const openDocumentFile = async (
+    file: Blob,
+    filename: string,
+    session: number,
+    nativePath?: string,
+  ) => {
+    const imported = /\.pptx$/i.test(filename)
+      ? await (await import("./lib/import-pptx")).importPptx(file, filename)
+      : undefined;
+    const next = imported?.deck ?? (await readDeckArchive(file));
+    setBusy("");
+    if (session !== documentSession.current || !(await confirmDocumentChange()))
+      return false;
+    if (!imported && nativePath)
+      await desktop?.acceptOpenDocument?.(nativePath);
+    else await desktop?.clearDocument();
+    if (imported) {
+      replaceDocument(next, "");
+      setPptxImportWarnings(imported.warnings);
+      notify("PowerPoint imported. Save as .scislide to keep your edits.");
+    } else {
+      replaceDocument(next, filename, nativePath ? "saved" : "opened");
+      notify("프레젠테이션을 불러왔습니다.");
+    }
+    return true;
+  };
   const openDesktopDocument = async (pending = false): Promise<boolean> => {
     if (busy || openingDesktopDocument.current || transitioning.current)
       return false;
@@ -2556,20 +2643,13 @@ export default function App() {
         ? await desktop.takeOpenDocument?.()
         : await desktop.openDocument();
       if (!result) return false;
-      const next = await readDeckArchive(
+      const opened = await openDocumentFile(
         new Blob([new Uint8Array(result.bytes).buffer]),
+        result.name,
+        session,
+        result.path,
       );
-      setBusy("");
-      if (
-        session !== documentSession.current ||
-        !(await confirmDocumentChange())
-      )
-        return false;
-      if (desktop.acceptOpenDocument)
-        await desktop.acceptOpenDocument(result.path);
-      replaceDocument(next, result.name, "saved");
-      notify("프레젠테이션을 불러왔습니다.");
-      return true;
+      return opened && !/\.pptx$/i.test(result.name);
     } catch (e) {
       notify((e as Error).message);
       return pending;
@@ -2610,16 +2690,7 @@ export default function App() {
     const session = documentSession.current;
     setBusy("Opening deck");
     try {
-      const next = await readDeckArchive(file);
-      setBusy("");
-      if (
-        session !== documentSession.current ||
-        !(await confirmDocumentChange())
-      )
-        return;
-      await desktop?.clearDocument();
-      replaceDocument(next, file.name, "opened");
-      notify("프레젠테이션을 불러왔습니다.");
+      await openDocumentFile(file, file.name, session);
     } catch (e) {
       notify((e as Error).message);
     } finally {
@@ -2731,7 +2802,7 @@ export default function App() {
     target: FigureImportTarget,
   ) => {
     if (busy || transitioning.current || !files.length) return;
-    if (files.length === 1 && /\.scislide$/i.test(files[0].name)) {
+    if (files.length === 1 && /\.(scislide|pptx)$/i.test(files[0].name)) {
       await open(files[0]);
       return;
     }
@@ -2750,7 +2821,7 @@ export default function App() {
       )
     ) {
       notify(
-        "Drop PNG, JPEG or SVG images, a single PDF, or a single .scislide document.",
+        "Drop PNG, JPEG or SVG images, a single PDF, or a single .scislide or .pptx presentation.",
       );
       return;
     }
@@ -2940,28 +3011,35 @@ export default function App() {
       setBusy("");
     }
   };
-  const startPresent = () => {
+  const beginPlayback = (localAudience: boolean) => {
     finishTextEditing();
     cancelGesture();
     setDrawingTool(null);
     setPresentationStep(0);
     setPresenting(true);
-    document.documentElement.requestFullscreen?.().catch(() => {});
+    if (localAudience)
+      document.documentElement.requestFullscreen?.().catch(() => {});
   };
-  const stopPresent = () => {
-    if (presenter.current) {
-      presenter.current.channel.postMessage({
-        type: "ended",
-      } satisfies PresenterMessage);
-      presenter.current.popup.close();
-      presenter.current.channel.close();
-      presenter.current = null;
-    }
-    setPresenterUrl(null);
+  const closeDisplayWindow = useCallback(() => {
+    const connection = presentationWindow.current;
+    if (!connection) return;
+    presentationWindow.current = null;
+    connection.unwatch?.();
+    connection.channel.postMessage({
+      type: "ended",
+    } satisfies PresenterMessage);
+    if (!connection.popup.closed) connection.popup.close();
+    connection.channel.close();
+    setDisplayWindow(null);
+  }, []);
+  const stopPresent = useCallback(() => {
+    const localAudience = presentationWindow.current?.role !== "audience";
+    closeDisplayWindow();
     setPresenting(false);
     setPresentationStep(0);
-    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
-  };
+    if (localAudience && document.fullscreenElement)
+      document.exitFullscreen?.().catch(() => {});
+  }, [closeDisplayWindow]);
   const nextPresentation = () => {
     const next = nextBuildStep(slide, presentationStep);
     if (next !== null) setPresentationStep(next);
@@ -2977,11 +3055,16 @@ export default function App() {
       setPresentationStep(maxBuildStep(previousSlide));
     }
   };
-  const openPresenter = () => {
-    if (presenter.current && !presenter.current.popup.closed) {
-      presenter.current.popup.focus();
+  const openDisplayWindow = (
+    role: PresentationWindow["role"],
+    display?: AudienceDisplay,
+  ) => {
+    const previous = presentationWindow.current;
+    if (previous && !previous.popup.closed) {
+      previous.popup.focus();
       return true;
     }
+    closeDisplayWindow();
     if (typeof BroadcastChannel === "undefined") {
       notify("Presenter display is unavailable in this browser.");
       return false;
@@ -2989,44 +3072,43 @@ export default function App() {
     const token = crypto.randomUUID();
     const channel = new BroadcastChannel(presenterChannelName(token));
     const url = new URL(window.location.href);
-    url.hash = `presenter=${token}`;
+    url.hash = `${role}=${token}`;
     const popup = window.open(
       url.href,
-      `SciSlide-presenter-${token}`,
-      "popup,width=1100,height=800",
+      `SciSlide-${role}-${token}`,
+      display?.features ?? "popup,width=1100,height=800",
     );
     if (!popup) {
       channel.close();
-      notify("Allow pop-up windows to open the presenter display.");
+      notify(
+        role === "presenter"
+          ? "Allow pop-up windows to open the presenter display."
+          : desktop
+            ? "The audience display is unavailable. Check the display connection and try Present again."
+            : "Allow pop-ups for SciSlide, then choose Present again to open the audience window.",
+      );
       return false;
     }
-    const connection = {
+    const connection: PresentationWindow = {
+      role,
+      url: url.href,
       channel,
       popup,
       startedAt: Date.now(),
-      lastDeck: null as Deck | null,
+      lastDeck: null,
     };
-    presenter.current = connection;
-    setPresenterUrl(url.href);
+    presentationWindow.current = connection;
+    setDisplayWindow(connection);
+    connection.unwatch = display?.watchDisconnect?.(stopPresent);
     channel.onmessage = (event: MessageEvent<PresenterMessage>) => {
-      if (!event.data || presenter.current !== connection) return;
+      if (!event.data || presentationWindow.current !== connection) return;
       if (event.data.type === "ready") {
-        const state = {
-          ...presenterState.current,
-          startedAt: connection.startedAt,
-        };
-        if (event.data.needsDeck || connection.lastDeck !== deckRef.current) {
-          channel.postMessage({
-            type: "deck",
-            deck: deckRef.current,
-            state,
-          } satisfies PresenterMessage);
-          connection.lastDeck = deckRef.current;
-        } else
-          channel.postMessage({
-            type: "state",
-            state,
-          } satisfies PresenterMessage);
+        publishPlayback(
+          connection,
+          deckRef.current,
+          presenterState.current,
+          event.data.needsDeck,
+        );
       } else if (
         event.data.type === "action" &&
         isPresenterAction(event.data.action)
@@ -3035,8 +3117,31 @@ export default function App() {
     };
     return true;
   };
-  const startWithPresenter = () => {
-    if (openPresenter()) startPresent();
+  const startPresent = (withPresenter = false) => {
+    if (displayRequest.current || presenting) return;
+    const launch = (display: AudienceDisplay | null) => {
+      if (display) {
+        if (openDisplayWindow("audience", display)) beginPlayback(false);
+      } else if (!withPresenter || openDisplayWindow("presenter")) {
+        beginPlayback(true);
+      }
+    };
+    if (desktop) {
+      launch(desktop.hasAudienceDisplay?.() ? { features: "popup" } : null);
+      return;
+    }
+    const request = browserAudienceDisplay();
+    if (!request) {
+      launch(null);
+      return;
+    }
+    const session = documentSession.current;
+    displayRequest.current = request;
+    void request.then((display) => {
+      if (displayRequest.current !== request) return;
+      displayRequest.current = null;
+      if (session === documentSession.current) launch(display);
+    });
   };
   presenterControls.current = (action) => {
     if (action === "next") nextPresentation();
@@ -3049,59 +3154,42 @@ export default function App() {
     } else if (action === "exit") stopPresent();
   };
   useEffect(() => {
-    const connection = presenter.current;
-    if (!connection) return;
-    if (!presenting) {
-      connection.channel.postMessage({
-        type: "ended",
-      } satisfies PresenterMessage);
-      connection.popup.close();
-      connection.channel.close();
-      presenter.current = null;
-      setPresenterUrl(null);
-      return;
-    }
-    const state = {
+    const connection = presentationWindow.current;
+    // The child requests its first snapshot after subscribing to the channel.
+    if (!connection?.lastDeck || !presenting) return;
+    publishPlayback(connection, deck, {
       slideId: slide.id,
       step: presentationStep,
-      startedAt: connection.startedAt,
-    };
-    if (connection.lastDeck !== deck) {
-      connection.channel.postMessage({
-        type: "deck",
-        deck,
-        state,
-      } satisfies PresenterMessage);
-      connection.lastDeck = deck;
-    } else
-      connection.channel.postMessage({
-        type: "state",
-        state,
-      } satisfies PresenterMessage);
+    });
   }, [deck, slide.id, presentationStep, presenting]);
   useEffect(() => {
+    if (!displayWindow) return;
     const timer = setInterval(() => {
-      const connection = presenter.current;
-      if (connection?.popup.closed) {
-        connection.channel.close();
-        presenter.current = null;
-        setPresenterUrl(null);
-      }
-    }, 1000);
-    return () => {
-      clearInterval(timer);
-      presenter.current?.popup.close();
-      presenter.current?.channel.close();
-    };
-  }, []);
+      if (!displayWindow.popup.closed) return;
+      if (displayWindow.role === "audience") stopPresent();
+      else closeDisplayWindow();
+    }, 500);
+    return () => clearInterval(timer);
+  }, [displayWindow, closeDisplayWindow, stopPresent]);
+  useEffect(
+    () => () => {
+      displayRequest.current = null;
+      closeDisplayWindow();
+    },
+    [closeDisplayWindow],
+  );
   useEffect(() => {
     const onFullscreenChange = () => {
-      if (!document.fullscreenElement) setPresenting(false);
+      if (
+        !document.fullscreenElement &&
+        presentationWindow.current?.role !== "audience"
+      )
+        stopPresent();
     };
     document.addEventListener("fullscreenchange", onFullscreenChange);
     return () =>
       document.removeEventListener("fullscreenchange", onFullscreenChange);
-  }, []);
+  }, [stopPresent]);
   const selectAllObjects = () =>
     setSelected(
       expandSelection(
@@ -3362,12 +3450,13 @@ export default function App() {
         startPresent();
         break;
       case "presenterView":
-        startWithPresenter();
+        startPresent(true);
         break;
     }
   };
   const hasOtherEditorDialog =
     showRecoveryHistory ||
+    !!pptxImportWarnings.length ||
     !!saveChanges ||
     showHelp ||
     showAiDraft ||
@@ -3543,6 +3632,7 @@ export default function App() {
         void saveWorkspaceSnapshot(
           deckRef.current,
           activeEquationDrafts(deckRef.current, recoveredDrafts.current),
+          workspaceId,
         ).catch(() => undefined);
         if (!showRecoveryHistory)
           void saveHistorySnapshot(
@@ -3568,7 +3658,7 @@ export default function App() {
         event.preventDefault();
         event.returnValue = "";
       }
-      presenter.current?.popup.close();
+      presentationWindow.current?.popup.close();
     };
     document.addEventListener("visibilitychange", hidden);
     window.addEventListener("beforeunload", unload);
@@ -3590,31 +3680,76 @@ export default function App() {
           const drafts = structuredClone(
             activeEquationDrafts(snapshot, recoveredDrafts.current),
           );
+          const unchanged = () =>
+            session === documentSession.current &&
+            sameDocument(snapshot, deckRef.current) &&
+            JSON.stringify(drafts) ===
+              JSON.stringify(
+                activeEquationDrafts(deckRef.current, recoveredDrafts.current),
+              );
+          const changedWhileClosing = () =>
+            notify(
+              "The presentation changed while closing. Review the latest changes before closing.",
+            );
           if (recoveryWritable.current && workspaceActive.current) {
             try {
               await saveWorkspaceSnapshot(snapshot, drafts);
             } catch {
-              // A successfully saved file or the explicitly kept history copy
-              // remains available even if this secondary checkpoint fails.
               notify(
                 "Local recovery could not be updated. Keep your saved .scislide file.",
               );
             }
           }
-          if (
-            session !== documentSession.current ||
-            !sameDocument(snapshot, deckRef.current) ||
-            JSON.stringify(drafts) !==
-              JSON.stringify(
-                activeEquationDrafts(deckRef.current, recoveredDrafts.current),
-              )
-          ) {
-            notify(
-              "The presentation changed while closing. Review the latest changes before closing.",
-            );
+          if (!unchanged()) {
+            changedWhileClosing();
             return;
           }
-          await desktop?.confirmCloseDocument?.();
+          if (!workspaceId || workspaceId === "main") {
+            await desktop?.confirmCloseDocument?.();
+            return;
+          }
+          // Preserve secondary-window history before clearing only its slot.
+          // Keep the slot and approved close behavior if preservation fails.
+          const writable = recoveryWritable.current;
+          let cleared = false;
+          try {
+            if (workspaceActive.current || canResumeWorkspace)
+              await saveHistorySnapshot(
+                recoverySessionId.current,
+                snapshot,
+                drafts,
+              );
+            if (!unchanged()) {
+              changedWhileClosing();
+              return;
+            }
+            recoveryWritable.current = false;
+            await clearWorkspaceRecovery(workspaceId);
+            cleared = true;
+          } catch {
+            recoveryWritable.current = writable;
+          }
+          if (!unchanged()) {
+            recoveryWritable.current = writable;
+            if (cleared && writable && workspaceActive.current)
+              await saveWorkspaceSnapshot(
+                deckRef.current,
+                activeEquationDrafts(deckRef.current, recoveredDrafts.current),
+              ).catch(() => undefined);
+            changedWhileClosing();
+            return;
+          }
+          try {
+            await desktop?.confirmCloseDocument?.();
+          } catch (error) {
+            recoveryWritable.current = writable;
+            if (cleared && writable && workspaceActive.current)
+              await saveWorkspaceSnapshot(
+                deckRef.current,
+                activeEquationDrafts(deckRef.current, recoveredDrafts.current),
+              ).catch(() => undefined);
+            throw error;
+          }
         })
         .catch((error: Error) => notify(error.message))
         .finally(() => {
@@ -4155,26 +4290,7 @@ export default function App() {
         if (!playback) return;
         e.preventDefault();
         if (!playback.execute) return;
-        switch (playback.action) {
-          case "exit":
-            stopPresent();
-            break;
-          case "next":
-            nextPresentation();
-            break;
-          case "previous":
-            previousPresentation();
-            break;
-          case "first":
-            switchSlide(deck.slides[0].id);
-            break;
-          case "last": {
-            const last = deck.slides[deck.slides.length - 1];
-            switchSlide(last.id);
-            setPresentationStep(maxBuildStep(last));
-            break;
-          }
-        }
+        presenterControls.current(playback.action);
         return;
       }
       if (action) {
@@ -4368,7 +4484,7 @@ export default function App() {
           hidden
           ref={openInput}
           type="file"
-          accept=".scislide"
+          accept=".scislide,.pptx"
           onChange={(e) => {
             if (e.target.files?.[0]) void open(e.target.files[0]);
             e.target.value = "";
@@ -4382,6 +4498,23 @@ export default function App() {
             {busy || toast}
           </div>
         )}
+      </>
+    );
+
+  if (presenting && displayWindow?.role === "audience")
+    return (
+      <>
+        {saveChangesDialog}
+        {recoveryHistoryDialog}
+        <PresenterDisplay
+          deck={deck}
+          state={{
+            slideId: slide.id,
+            step: presentationStep,
+            startedAt: displayWindow.startedAt,
+          }}
+          onAction={presenterControls.current}
+        />
       </>
     );
 
@@ -4429,20 +4562,22 @@ export default function App() {
           >
             <ChevronRight size={20} />
           </IconButton>
-          {presenterUrl ? (
+          {displayWindow ? (
             <a
               className="presenter-link"
-              href={presenterUrl}
+              href={displayWindow.url}
               target="_blank"
               onClick={(e) => {
                 e.preventDefault();
-                openPresenter();
+                openDisplayWindow("presenter");
               }}
             >
               Presenter display
             </a>
           ) : (
-            <button onClick={openPresenter}>Presenter display</button>
+            <button onClick={() => openDisplayWindow("presenter")}>
+              Presenter display
+            </button>
           )}
           <button onClick={stopPresent}>
             <X size={16} /> Exit
@@ -4534,7 +4669,7 @@ export default function App() {
           <button
             className="button light"
             title={shortcutTitle("Present", "present")}
-            onClick={startPresent}
+            onClick={() => startPresent()}
           >
             <Presentation size={16} /> Present
           </button>
@@ -4577,8 +4712,8 @@ export default function App() {
         >
           <div className="toolbar-group">
             <IconButton
-              title={shortcutTitle("Open .scislide", "open")}
-              ariaLabel="Open .scislide"
+              title={shortcutTitle("Open .scislide or .pptx", "open")}
+              ariaLabel="Open presentation"
               onClick={() => void openDesktopDocument()}
             >
               <FolderOpen size={18} /> <span>Open…</span>
@@ -4608,7 +4743,11 @@ export default function App() {
           <button type="button" className="tool" onClick={openUserLayouts}>
             <Layers size={16} /> User layouts
           </button>
-          <button type="button" className="tool" onClick={startWithPresenter}>
+          <button
+            type="button"
+            className="tool"
+            onClick={() => startPresent(true)}
+          >
             <Presentation size={16} /> Presenter display
           </button>
           <button
@@ -5072,7 +5211,7 @@ export default function App() {
           >
             {dropActive && (
               <div className="file-drop-hint" role="status">
-                Drop images, PDF or a .scislide document
+                Drop images, PDF, .scislide or .pptx
               </div>
             )}
             <div
@@ -6680,7 +6819,7 @@ export default function App() {
         hidden
         ref={openInput}
         type="file"
-        accept=".scislide"
+        accept=".scislide,.pptx"
         onChange={(e) => {
           if (e.target.files?.[0]) void open(e.target.files[0]);
           e.target.value = "";
@@ -7073,6 +7212,12 @@ export default function App() {
       )}
       {saveChangesDialog}
       {recoveryHistoryDialog}
+      {!!pptxImportWarnings.length && (
+        <PptxImportReport
+          warnings={pptxImportWarnings}
+          onClose={() => setPptxImportWarnings([])}
+        />
+      )}
       {showEquationLibrary && (
         <EquationLibraryDialog
           onClose={() => setShowEquationLibrary(false)}

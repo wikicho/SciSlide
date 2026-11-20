@@ -330,11 +330,16 @@ function addShape(
     };
     if (object.strokeWidth <= 0) options.line!.transparency = 100;
     if (primitive.tag === "rect") {
-      // shapeGeometry uses a 12px horizontal radius, clamped by SVG's bounds.
-      options.rectRadius = inches(
-        Math.min(12, object.transform.width / 2, object.transform.height / 2),
+      const radius = Math.min(
+        Number(a.rx),
+        object.transform.width / 2,
+        object.transform.height / 2,
       );
-      target.addShape(pptx.ShapeType.roundRect, options);
+      if (radius) options.rectRadius = inches(radius);
+      target.addShape(
+        radius ? pptx.ShapeType.roundRect : pptx.ShapeType.rect,
+        options,
+      );
     } else if (primitive.tag === "ellipse") {
       target.addShape(pptx.ShapeType.ellipse, options);
     } else {

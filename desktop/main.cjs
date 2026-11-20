@@ -6,6 +6,7 @@ const {
   ipcMain,
   Menu,
   protocol,
+  screen,
   session,
 } = require("electron");
 const fs = require("node:fs/promises");
@@ -17,7 +18,7 @@ const {
   MAX_DOCUMENT_BYTES,
   parseDevUrl,
   isTrustedPage,
-  isPresenterPage,
+  presentationWindowRole,
   isAppOrigin,
   allowsFullscreen,
   isAllowedRequest,
@@ -25,6 +26,7 @@ const {
   validateSaveExport,
   validateCompile,
   validateJobId,
+  validateCommandAvailability,
   resolveAsset,
 } = require("./host-utils.cjs");
 const { pdfResourcePolicy } = require("./pdf-policy.cjs");
@@ -55,41 +57,84 @@ const devUrl = app.isPackaged
   : parseDevUrl(process.env.SCISLIDE_DEV_URL);
 const appUrl = devUrl || "scislide://app/";
 const distRoot = path.join(__dirname, "..", "dist");
-const runningJobs = new Set();
-let mainWindow = null;
-let documentPath = null;
-const openCandidates = new Set();
-let closeConfirmationEnabled = false;
-let closeRequested = false;
-let closeApproved = false;
-let fileOperations = Promise.resolve();
+const runningJobs = new Map();
+const editorWindows = new Map();
+let focusedEditor = null;
+let launchOperations = Promise.resolve();
 let texModule;
 let aiModule;
 let quittingAfterCleanup = false;
+let quitCleanup;
+const closingJobs = new Set();
 let desktopInitialized = false;
 const pendingDocuments = [];
+const documentExtensions = new Set([".scislide", ".pptx"]);
 
 function queueDocuments(arguments_, workingDirectory = process.cwd()) {
   for (let filename of arguments_) {
     if (typeof filename !== "string" || filename.startsWith("-")) continue;
     try {
       if (filename.startsWith("file:")) filename = fileURLToPath(filename);
-      if (path.extname(filename).toLowerCase() !== ".scislide") continue;
+      if (!documentExtensions.has(path.extname(filename).toLowerCase()))
+        continue;
       filename = path.resolve(workingDirectory, filename);
       if (!pendingDocuments.includes(filename)) pendingDocuments.push(filename);
     } catch {
       // Ignore malformed launch arguments; document contents are checked on read.
     }
   }
-  if (mainWindow && !mainWindow.isDestroyed())
-    mainWindow.webContents.send("scislide:document-requested");
 }
 
-async function focusEditor() {
-  if (!mainWindow || mainWindow.isDestroyed()) await createMainWindow();
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.show();
-  mainWindow.focus();
+function getFocusedEditor() {
+  const window = BrowserWindow.getFocusedWindow();
+  if (window) return editorWindows.get(window.webContents) || null;
+  return focusedEditor && !focusedEditor.window.isDestroyed()
+    ? focusedEditor
+    : null;
+}
+
+async function focusEditor(editor = getFocusedEditor()) {
+  editor ||= [...editorWindows.values()].at(-1) || (await createMainWindow());
+  const window = editor.window;
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+}
+
+function editorForPath(filename) {
+  const normalize = (value) =>
+    process.platform === "win32" ? value.toLowerCase() : value;
+  const target = normalize(path.resolve(filename));
+  return [...editorWindows.values()].find((editor) =>
+    [
+      editor.documentPath,
+      editor.openingPath,
+      editor.savingPath,
+      ...editor.pendingDocuments,
+      ...editor.openCandidates,
+    ]
+      .filter(Boolean)
+      .some((value) => normalize(path.resolve(value)) === target),
+  );
+}
+
+async function openDocumentWindow(filename) {
+  // Resolve aliases before checking for an existing editor of the same file.
+  const selectedPath = await fs.realpath(filename).catch(() => filename);
+  const editor =
+    editorForPath(selectedPath) || (await createMainWindow(selectedPath));
+  await focusEditor(editor);
+  return editor;
+}
+
+function openQueuedDocuments(ensureWindow = false) {
+  const result = launchOperations.then(async () => {
+    while (pendingDocuments.length)
+      await openDocumentWindow(pendingDocuments.shift());
+    if (ensureWindow && !editorWindows.size) await createMainWindow();
+  });
+  launchOperations = result.catch(() => undefined);
+  return result;
 }
 
 const MIME = {
@@ -155,32 +200,33 @@ async function detectInstalledTex(binDirectory) {
 }
 
 function validateSender(event) {
+  const editor = editorWindows.get(event.sender);
   if (
-    !mainWindow ||
-    mainWindow.isDestroyed() ||
-    event.sender !== mainWindow.webContents ||
+    !editor ||
+    editor.window.isDestroyed() ||
     event.senderFrame !== event.sender.mainFrame ||
     !isTrustedPage(event.senderFrame.url, devUrl)
   )
     throw new Error(
       "This desktop action is only available to SciSlide's main window.",
     );
+  return editor;
 }
 
 function ipc(channel, action, { editorOnly = false } = {}) {
   ipcMain.handle(channel, (event, ...args) => {
-    validateSender(event);
+    const editor = validateSender(event);
     if (editorOnly && new URL(event.senderFrame.url).hash)
       throw new Error(
         "Command availability is only available to the main editor.",
       );
-    return action(...args);
+    return action(editor, ...args);
   });
 }
 
-function withFileOperation(action) {
-  const result = fileOperations.then(action, action);
-  fileOperations = result.catch(() => undefined);
+function withFileOperation(editor, action) {
+  const result = editor.fileOperations.then(action, action);
+  editor.fileOperations = result.catch(() => undefined);
   return result;
 }
 
@@ -204,13 +250,14 @@ async function writeAtomically(destination, bytes) {
 }
 
 async function readDocument(selectedPath) {
-  if (path.extname(selectedPath).toLowerCase() !== ".scislide")
-    throw new Error("Choose a .scislide document.");
+  const extension = path.extname(selectedPath).toLowerCase();
+  if (!documentExtensions.has(extension))
+    throw new Error("Choose a .scislide or .pptx document.");
   const file = await fs.open(selectedPath, "r");
   try {
     const stat = await file.stat();
     if (!stat.isFile() || !stat.size || stat.size > MAX_DOCUMENT_BYTES)
-      throw new Error("Choose a .scislide document smaller than 64 MB.");
+      throw new Error(`Choose a ${extension} document smaller than 64 MB.`);
     const bytes = Buffer.alloc(stat.size + 1);
     let read = 0;
     while (read < bytes.length) {
@@ -221,14 +268,14 @@ async function readDocument(selectedPath) {
     if (read !== stat.size || (await file.stat()).size !== stat.size)
       throw new Error("The document changed while opening. Try again.");
     if (bytes[0] !== 0x50 || bytes[1] !== 0x4b)
-      throw new Error("The document must be a .scislide archive.");
+      throw new Error(`The document must be a ${extension} archive.`);
     return new Uint8Array(bytes.subarray(0, read));
   } finally {
     await file.close();
   }
 }
 
-async function chosenDestination(selectedPath, extension) {
+async function chosenDestination(editor, selectedPath, extension) {
   if (selectedPath.toLowerCase().endsWith(`.${extension}`)) return selectedPath;
   const destination = `${selectedPath}.${extension}`;
   // Native dialogs do not consistently append extensions on every platform.
@@ -238,7 +285,7 @@ async function chosenDestination(selectedPath, extension) {
     () => false,
   );
   if (exists) {
-    const result = await dialog.showMessageBox(mainWindow, {
+    const result = await dialog.showMessageBox(editor.window, {
       type: "question",
       title: "Replace existing file?",
       message: `Replace ${path.basename(destination)}?`,
@@ -252,77 +299,137 @@ async function chosenDestination(selectedPath, extension) {
   return destination;
 }
 
+function syncEditorMenu(editor = getFocusedEditor()) {
+  setMenuCommandAvailability(
+    Menu.getApplicationMenu(),
+    Object.fromEntries(
+      [...COMMANDS].map((command) => [
+        command,
+        editor ? editor.commandAvailability[command] !== false : false,
+      ]),
+    ),
+  );
+}
+
+function setDocumentPath(editor, filename) {
+  editor.documentPath = filename;
+  editor.window.setTitle?.(
+    filename ? `${path.basename(filename)} · SciSlide` : "SciSlide",
+  );
+  editor.window.setRepresentedFilename?.(filename || "");
+}
+
+function getAudienceDisplay(editorWindow) {
+  const current = screen.getDisplayMatching(editorWindow.getBounds());
+  const alternatives = screen.getAllDisplays().filter(
+    (display) =>
+      display.id !== current.id &&
+      // Mirrored outputs can have distinct IDs and share a desktop origin.
+      (display.bounds.x !== current.bounds.x ||
+        display.bounds.y !== current.bounds.y),
+  );
+  return alternatives.find((display) => !display.internal) ?? alternatives[0];
+}
+
 function registerIpc() {
+  ipcMain.on("scislide:has-audience-display", (event) => {
+    try {
+      const editor = validateSender(event);
+      event.returnValue =
+        !new URL(event.senderFrame.url).hash &&
+        !!getAudienceDisplay(editor.window);
+    } catch {
+      event.returnValue = false;
+    }
+  });
   ipc(
     "scislide:take-open-document",
-    () =>
-      withFileOperation(async () => {
-        const selectedPath = pendingDocuments.shift();
+    (editor) =>
+      withFileOperation(editor, async () => {
+        const selectedPath = editor.pendingDocuments.shift();
         if (!selectedPath) return null;
-        const bytes = await readDocument(selectedPath);
-        openCandidates.add(selectedPath);
-        return { bytes, name: path.basename(selectedPath), path: selectedPath };
+        editor.openingPath = selectedPath;
+        try {
+          const bytes = await readDocument(selectedPath);
+          if (path.extname(selectedPath).toLowerCase() === ".scislide")
+            editor.openCandidates.add(selectedPath);
+          return {
+            bytes,
+            name: path.basename(selectedPath),
+            path: selectedPath,
+          };
+        } finally {
+          editor.openingPath = null;
+        }
       }),
     { editorOnly: true },
   );
   ipc(
     "scislide:set-command-availability",
-    (states) => {
-      setMenuCommandAvailability(Menu.getApplicationMenu(), states);
+    (editor, states) => {
+      Object.assign(
+        editor.commandAvailability,
+        validateCommandAvailability(states),
+      );
+      if (getFocusedEditor() === editor) syncEditorMenu(editor);
     },
     { editorOnly: true },
   );
-  ipc("scislide:open-document", () =>
-    withFileOperation(async () => {
-      const result = await dialog.showOpenDialog(mainWindow, {
-        title: "Open SciSlide document",
-        filters: [{ name: "SciSlide document", extensions: ["scislide"] }],
-        properties: ["openFile"],
+  ipc("scislide:open-document", (editor) =>
+    withFileOperation(editor, async () => {
+      const result = await dialog.showOpenDialog(editor.window, {
+        title: "Open presentations",
+        filters: [
+          { name: "Presentations", extensions: ["scislide", "pptx"] },
+          { name: "SciSlide", extensions: ["scislide"] },
+          { name: "PowerPoint", extensions: ["pptx"] },
+        ],
+        properties: ["openFile", "multiSelections"],
       });
       if (result.canceled || !result.filePaths[0]) return null;
-      const selectedPath = result.filePaths[0];
-      const bytes = await readDocument(selectedPath);
-      openCandidates.add(selectedPath);
-      return { bytes, name: path.basename(selectedPath), path: selectedPath };
+      for (const selectedPath of result.filePaths)
+        await openDocumentWindow(selectedPath);
+      // The requesting renderer keeps its current document, including unsaved edits.
+      return null;
     }),
   );
   ipc(
     "scislide:accept-open-document",
-    (selectedPath) =>
-      withFileOperation(() => {
+    (editor, selectedPath) =>
+      withFileOperation(editor, () => {
         if (
           typeof selectedPath !== "string" ||
-          !openCandidates.has(selectedPath)
+          !editor.openCandidates.has(selectedPath)
         )
           throw new Error(
             "Only a document read by this editor can be accepted.",
           );
-        documentPath = selectedPath;
-        openCandidates.clear();
+        setDocumentPath(editor, selectedPath);
+        editor.openCandidates.clear();
       }),
     { editorOnly: true },
   );
   ipc(
     "scislide:watch-close-document",
-    (enabled) => {
+    (editor, enabled) => {
       if (typeof enabled !== "boolean")
         throw new TypeError("Close confirmation state must be a boolean.");
-      closeConfirmationEnabled = enabled;
+      editor.closeConfirmationEnabled = enabled;
     },
     { editorOnly: true },
   );
   ipc(
     "scislide:confirm-close-document",
-    () => {
-      if (!closeRequested || !mainWindow || mainWindow.isDestroyed()) return;
-      closeApproved = true;
-      mainWindow.close();
+    (editor) => {
+      if (!editor.closeRequested || editor.window.isDestroyed()) return;
+      editor.closeApproved = true;
+      editor.window.close();
     },
     { editorOnly: true },
   );
   ipc(
     "scislide:write-clipboard",
-    (value) => {
+    (_editor, value) => {
       if (
         !value ||
         typeof value !== "object" ||
@@ -360,39 +467,54 @@ function registerIpc() {
     },
     { editorOnly: true },
   );
-  ipc("scislide:save-document", (value) => {
+  ipc("scislide:save-document", (editor, value) => {
     const request = validateSaveDocument(value);
-    return withFileOperation(async () => {
-      let destination = documentPath;
+    return withFileOperation(editor, async () => {
+      let destination = editor.documentPath;
       if (!destination || request.saveAs) {
-        const result = await dialog.showSaveDialog(mainWindow, {
+        const result = await dialog.showSaveDialog(editor.window, {
           title: "Save SciSlide document",
           defaultPath: destination || request.suggestedName,
           filters: [{ name: "SciSlide document", extensions: ["scislide"] }],
           properties: ["createDirectory", "showOverwriteConfirmation"],
         });
         if (result.canceled || !result.filePath) return null;
-        destination = await chosenDestination(result.filePath, "scislide");
+        destination = await chosenDestination(
+          editor,
+          result.filePath,
+          "scislide",
+        );
         if (!destination) return null;
       }
-      await writeAtomically(destination, request.bytes);
-      documentPath = destination;
-      return { path: destination, name: path.basename(destination) };
+      destination = await fs.realpath(destination).catch(() => destination);
+      const owner = editorForPath(destination);
+      if (owner && owner !== editor)
+        throw new Error(
+          "This file is open in another SciSlide window. Save there or choose a different filename.",
+        );
+      editor.savingPath = destination;
+      try {
+        await writeAtomically(destination, request.bytes);
+        setDocumentPath(editor, destination);
+        return { path: destination, name: path.basename(destination) };
+      } finally {
+        editor.savingPath = null;
+      }
     });
   });
   ipc(
     "scislide:clear-document",
-    () =>
-      withFileOperation(() => {
-        documentPath = null;
-        openCandidates.clear();
+    (editor) =>
+      withFileOperation(editor, () => {
+        setDocumentPath(editor, null);
+        editor.openCandidates.clear();
       }),
     { editorOnly: true },
   );
-  ipc("scislide:save-export", (value) => {
+  ipc("scislide:save-export", (editor, value) => {
     const request = validateSaveExport(value);
-    return withFileOperation(async () => {
-      const result = await dialog.showSaveDialog(mainWindow, {
+    return withFileOperation(editor, async () => {
+      const result = await dialog.showSaveDialog(editor.window, {
         title:
           request.kind === "json"
             ? "Export equation library"
@@ -413,6 +535,7 @@ function registerIpc() {
       });
       if (result.canceled || !result.filePath) return null;
       const destination = await chosenDestination(
+        editor,
         result.filePath,
         request.kind,
       );
@@ -422,8 +545,8 @@ function registerIpc() {
     });
   });
   ipc("scislide:detect-tex", () => detectInstalledTex());
-  ipc("scislide:choose-tex-directory", async () => {
-    const result = await dialog.showOpenDialog(mainWindow, {
+  ipc("scislide:choose-tex-directory", async (editor) => {
+    const result = await dialog.showOpenDialog(editor.window, {
       title: "Choose the folder containing latex or xelatex",
       properties: ["openDirectory"],
     });
@@ -448,7 +571,7 @@ function registerIpc() {
     );
     return capabilities;
   });
-  ipc("scislide:compile-tex", async (value) => {
+  ipc("scislide:compile-tex", async (editor, value) => {
     const request = validateCompile(value);
     if (runningJobs.has(request.jobId))
       throw new Error("That equation job is already running.");
@@ -456,33 +579,45 @@ function registerIpc() {
       throw new Error(
         "Two equations are already compiling. Wait or cancel one.",
       );
-    runningJobs.add(request.jobId);
+    runningJobs.set(request.jobId, editor);
     try {
-      return await (await compiler()).compileTex(request);
+      const module = await compiler();
+      if (editor.window.isDestroyed())
+        throw new Error("This editor was closed.");
+      return await module.compileTex(request);
     } finally {
       runningJobs.delete(request.jobId);
     }
   });
-  ipc("scislide:cancel-compile", async (value) => {
+  ipc("scislide:cancel-compile", async (editor, value) => {
     const jobId = validateJobId(value);
-    if (runningJobs.has(jobId)) await (await compiler()).cancelCompile(jobId);
+    if (runningJobs.get(jobId) === editor)
+      await (await compiler()).cancelCompile(jobId);
   });
   ipc("scislide:detect-ai", async () => (await aiHost()).detectAi());
-  ipc("scislide:generate-ai", async (value) =>
-    (await aiHost()).generateAi(value),
-  );
-  ipc("scislide:cancel-ai", async (value) => (await aiHost()).cancelAi(value));
+  ipc("scislide:generate-ai", async (editor, value) => {
+    const module = await aiHost();
+    if (editor.window.isDestroyed()) throw new Error("This editor was closed.");
+    editor.ai ||= module.createAiHost();
+    return editor.ai.generateAi(value);
+  });
+  ipc("scislide:cancel-ai", async (editor, value) => {
+    const module = await aiHost();
+    module.validateAiJobId(value);
+    if (editor.ai) await editor.ai.cancelAi(value);
+  });
 }
 
 function sendCommand(command) {
+  const editor = getFocusedEditor();
   if (
     !COMMANDS.has(command) ||
-    !mainWindow ||
-    mainWindow.isDestroyed() ||
+    !editor ||
+    editor.window.isDestroyed() ||
     !isMenuCommandEnabled(Menu.getApplicationMenu(), command)
   )
     return;
-  const contents = mainWindow.webContents;
+  const contents = editor.window.webContents;
   if (!isTrustedPage(contents.getURL(), devUrl)) return;
   void dispatchMenuCommand(contents, command);
 }
@@ -491,7 +626,7 @@ function installMenu() {
   const template = buildMenuTemplate(process.platform, sendCommand, {
     development: Boolean(devUrl),
     onAbout: () =>
-      dialog.showMessageBox(mainWindow, {
+      dialog.showMessageBox(getFocusedEditor()?.window, {
         type: "info",
         title: "SciSlide",
         message: "SciSlide",
@@ -505,9 +640,8 @@ async function configureSession() {
   const desktopSession = session.defaultSession;
   const permitFullscreen = (contents, permission, details) =>
     Boolean(
-      mainWindow &&
-      !mainWindow.isDestroyed() &&
-      contents === mainWindow.webContents &&
+      editorWindows.has(contents) &&
+      !editorWindows.get(contents).window.isDestroyed() &&
       allowsFullscreen(permission, contents.getURL(), details, devUrl),
     );
   desktopSession.setPermissionRequestHandler(
@@ -563,11 +697,13 @@ async function configureSession() {
   });
 }
 
-async function createMainWindow() {
-  closeConfirmationEnabled = false;
-  closeRequested = false;
-  closeApproved = false;
-  mainWindow = new BrowserWindow({
+async function createMainWindow(selectedPath = null) {
+  const workspaceId =
+    !selectedPath &&
+    ![...editorWindows.values()].some((editor) => editor.workspaceId === "main")
+      ? "main"
+      : randomUUID();
+  const window = new BrowserWindow({
     title: "SciSlide",
     width: 1440,
     height: 900,
@@ -577,6 +713,7 @@ async function createMainWindow() {
     backgroundColor: "#f3f5f8",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
+      additionalArguments: [`--scislide-workspace=${workspaceId}`],
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
@@ -586,17 +723,56 @@ async function createMainWindow() {
       webviewTag: false,
     },
   });
-  protectTextComposition(mainWindow.webContents);
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (!isPresenterPage(url, devUrl)) return { action: "deny" };
+  const editor = {
+    window,
+    workspaceId,
+    documentPath: null,
+    pendingDocuments: selectedPath ? [selectedPath] : [],
+    openingPath: null,
+    savingPath: null,
+    openCandidates: new Set(),
+    fileOperations: Promise.resolve(),
+    closeConfirmationEnabled: false,
+    closeRequested: false,
+    closeApproved: false,
+    commandAvailability: {},
+    ai: null,
+  };
+  const contents = window.webContents;
+  editorWindows.set(contents, editor);
+  focusedEditor = editor;
+  window.on("focus", () => {
+    focusedEditor = editor;
+    syncEditorMenu(editor);
+  });
+  protectTextComposition(window.webContents);
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    const role = presentationWindowRole(url, devUrl);
+    if (!role) return { action: "deny" };
+    const audience = role === "audience" ? getAudienceDisplay(window) : null;
+    if (role === "audience" && !audience) return { action: "deny" };
     return {
       action: "allow",
       overrideBrowserWindowOptions: {
-        title: "SciSlide · Presenter display",
-        width: 1100,
-        height: 800,
-        minWidth: 620,
-        minHeight: 550,
+        ...(audience
+          ? {
+              ...audience.bounds,
+              title: "SciSlide · Slide show",
+              backgroundColor: "#000000",
+              frame: false,
+              fullscreen: true,
+              ...(process.platform === "darwin"
+                ? { simpleFullscreen: true }
+                : {}),
+              show: false,
+            }
+          : {
+              title: "SciSlide · Presenter display",
+              width: 1100,
+              height: 800,
+              minWidth: 620,
+              minHeight: 550,
+            }),
         autoHideMenuBar: true,
         webPreferences: {
           contextIsolation: true,
@@ -610,48 +786,105 @@ async function createMainWindow() {
       },
     };
   });
-  mainWindow.webContents.on("did-create-window", (presenterWindow) => {
-    presenterWindow.setMenu(null);
-    presenterWindow.webContents.setWindowOpenHandler(() => ({
+  window.webContents.on("did-create-window", (child, details) => {
+    child.setMenu(null);
+    child.webContents.setWindowOpenHandler(() => ({
       action: "deny",
     }));
-    presenterWindow.webContents.on("will-navigate", (event) =>
+    // window.open dispatches its first navigation after did-create-window.
+    let initialNavigation = true;
+    const guardNavigation = (event) => {
+      if (!initialNavigation || !event.isMainFrame || event.url !== details.url)
+        event.preventDefault();
+    };
+    child.webContents.once("did-navigate", () => {
+      initialNavigation = false;
+    });
+    child.webContents.on("will-frame-navigate", guardNavigation);
+    child.webContents.on("will-navigate", guardNavigation);
+    child.webContents.on("will-attach-webview", (event) =>
       event.preventDefault(),
     );
-    presenterWindow.webContents.on("will-frame-navigate", (event) =>
-      event.preventDefault(),
-    );
-    presenterWindow.webContents.on("will-attach-webview", (event) =>
-      event.preventDefault(),
-    );
-    mainWindow.once("closed", () => {
-      if (!presenterWindow.isDestroyed()) presenterWindow.close();
+    const closeChild = () => {
+      if (!child.isDestroyed()) child.close();
+    };
+    window.once("closed", closeChild);
+    child.once("closed", () => window.removeListener("closed", closeChild));
+    if (presentationWindowRole(details.url, devUrl) !== "audience") return;
+
+    const { x, y } = details.options;
+    const target = screen
+      .getAllDisplays()
+      .find((display) => display.bounds.x === x && display.bounds.y === y);
+    const presenter = screen.getDisplayMatching(window.getBounds());
+    if (!target || target.id === presenter.id) {
+      closeChild();
+      return;
+    }
+    const checkDisplays = () => {
+      const displays = screen.getAllDisplays();
+      const source = displays.find((display) => display.id === presenter.id);
+      const audience = displays.find((display) => display.id === target.id);
+      if (
+        !source ||
+        !audience ||
+        (source.bounds.x === audience.bounds.x &&
+          source.bounds.y === audience.bounds.y)
+      )
+        closeChild();
+    };
+    screen.on("display-removed", checkDisplays);
+    screen.on("display-metrics-changed", checkDisplays);
+    child.once("closed", () => {
+      screen.removeListener("display-removed", checkDisplays);
+      screen.removeListener("display-metrics-changed", checkDisplays);
+    });
+    child.once("ready-to-show", () => {
+      if (child.isDestroyed()) return;
+      child.showInactive();
+      // Native Wayland compositors may not support showing an inactive window.
+      if (!child.isVisible()) child.show();
     });
   });
-  mainWindow.webContents.on("will-navigate", (event) => event.preventDefault());
-  mainWindow.webContents.on("will-frame-navigate", (event) =>
+  window.webContents.on("will-navigate", (event) => event.preventDefault());
+  window.webContents.on("will-frame-navigate", (event) =>
     event.preventDefault(),
   );
-  mainWindow.webContents.on("will-attach-webview", (event) =>
+  window.webContents.on("will-attach-webview", (event) =>
     event.preventDefault(),
   );
-  mainWindow.once("ready-to-show", () => mainWindow?.show());
-  mainWindow.on("close", (event) => {
-    if (!closeConfirmationEnabled || closeApproved) return;
+  window.once("ready-to-show", () => window.show());
+  window.on("close", (event) => {
+    if (!editor.closeConfirmationEnabled || editor.closeApproved) return;
     event.preventDefault();
-    closeRequested = true;
-    mainWindow.webContents.send("scislide:close-document-requested");
+    editor.closeRequested = true;
+    window.webContents.send("scislide:close-document-requested");
   });
-  mainWindow.on("closed", () => {
-    aiModule?.then((module) => module.cancelAllAi()).catch(() => undefined);
-    mainWindow = null;
-    documentPath = null;
-    openCandidates.clear();
-    closeConfirmationEnabled = false;
-    closeRequested = false;
-    closeApproved = false;
+  window.on("closed", () => {
+    // Electron has already destroyed the BrowserWindow by the closed event.
+    editorWindows.delete(contents);
+    if (focusedEditor === editor)
+      focusedEditor = [...editorWindows.values()].at(-1) || null;
+    syncEditorMenu();
+    const cleanup = Promise.allSettled([
+      ...(editor.ai ? [editor.ai.cancelAllAi()] : []),
+      ...[...runningJobs]
+        .filter(([, owner]) => owner === editor)
+        .map(([jobId]) =>
+          compiler().then((module) => module.cancelCompile(jobId)),
+        ),
+    ]);
+    closingJobs.add(cleanup);
+    cleanup.finally(() => closingJobs.delete(cleanup));
   });
-  await mainWindow.loadURL(appUrl);
+  try {
+    await window.loadURL(appUrl);
+    return editor;
+  } catch (error) {
+    editor.closeApproved = true;
+    window.close();
+    throw error;
+  }
 }
 
 const cliArguments = (process.argv ?? []).slice(app.isPackaged ? 1 : 2);
@@ -707,12 +940,26 @@ else {
   app.on("open-file", (event, filename) => {
     event.preventDefault();
     queueDocuments([filename]);
-    if (desktopInitialized) void focusEditor().catch(console.error);
+    if (desktopInitialized) void openQueuedDocuments().catch(console.error);
   });
   queueDocuments(cliArguments);
   app.on("second-instance", (_event, arguments_, workingDirectory) => {
     queueDocuments(arguments_.slice(app.isPackaged ? 1 : 2), workingDirectory);
-    if (desktopInitialized) void focusEditor().catch(console.error);
+    if (desktopInitialized)
+      void openQueuedDocuments(true)
+        .then(() => {
+          if (
+            !arguments_
+              .slice(app.isPackaged ? 1 : 2)
+              .some(
+                (value) =>
+                  typeof value === "string" &&
+                  /\.(?:scislide|pptx)$/i.test(value),
+              )
+          )
+            return focusEditor();
+        })
+        .catch(console.error);
   });
   app
     .whenReady()
@@ -721,7 +968,7 @@ else {
       registerIpc();
       installMenu();
       desktopInitialized = true;
-      await createMainWindow();
+      await openQueuedDocuments(true);
     })
     .catch((error) => {
       console.error("SciSlide desktop could not start:", error);
@@ -732,27 +979,40 @@ else {
       app.quit();
     });
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0)
+    if (!editorWindows.size)
       createMainWindow().catch((error) => console.error(error));
   });
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();
   });
   app.on("before-quit", (event) => {
-    if (quittingAfterCleanup || (!aiModule && !runningJobs.size)) return;
+    if (quittingAfterCleanup) {
+      // A later Quit must still clean up jobs if a renderer cancels this attempt.
+      quittingAfterCleanup = false;
+      return;
+    }
+    if (!aiModule && !runningJobs.size && !closingJobs.size) return;
     event.preventDefault();
-    Promise.allSettled([
+    if (quitCleanup) return;
+    quitCleanup = Promise.allSettled([
       ...(aiModule ? [aiModule.then((module) => module.cancelAllAi())] : []),
+      ...[...editorWindows.values()]
+        .filter((editor) => editor.ai)
+        .map((editor) => editor.ai.cancelAllAi()),
+      ...closingJobs,
       ...(runningJobs.size
         ? [
             compiler().then((module) =>
               Promise.allSettled(
-                Array.from(runningJobs, (jobId) => module.cancelCompile(jobId)),
+                Array.from(runningJobs.keys(), (jobId) =>
+                  module.cancelCompile(jobId),
+                ),
               ),
             ),
           ]
         : []),
     ]).finally(() => {
+      quitCleanup = null;
       quittingAfterCleanup = true;
       app.quit();
     });

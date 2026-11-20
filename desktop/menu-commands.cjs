@@ -23,7 +23,7 @@ const PRESENT_FULLSCREEN_SCRIPT = `(() => {
   const editing = Boolean(active && (field || active.isContentEditable) && !objectControl);
   const blocked = Array.from(document.querySelectorAll('[role="dialog"], .theme-chooser, .app-shell[aria-busy="true"], .recovery-loading'))
     .some(element => element.getClientRects().length > 0);
-  if (editing || blocked || document.fullscreenElement) return;
+  if (editing || blocked || document.fullscreenElement || window.scislideDesktop?.hasAudienceDisplay?.()) return;
   return document.documentElement.requestFullscreen();
 })()`;
 

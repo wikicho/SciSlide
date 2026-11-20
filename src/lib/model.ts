@@ -119,6 +119,8 @@ export interface ShapeObject extends BaseSlideObject {
   stroke: string;
   strokeWidth: number;
   strokeStyle?: "solid" | "dashed" | "dotted";
+  /** Rectangle radius in slide pixels. Older shapes use the original 12px. */
+  cornerRadius?: number;
   /** Endpoints relative to the object's unrotated frame, between zero and one. */
   line?: {
     start: { x: number; y: number };
@@ -672,6 +674,8 @@ export function validateDeck(value: unknown): Deck {
           color(object.fill, "Shape fill");
           color(object.stroke, "Shape stroke");
           number(object.strokeWidth, "Shape stroke width", 0, 1000);
+          if (object.cornerRadius !== undefined)
+            number(object.cornerRadius, "Rectangle corner radius", 0);
           if (
             object.strokeStyle !== undefined &&
             !["solid", "dashed", "dotted"].includes(

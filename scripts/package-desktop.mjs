@@ -13,6 +13,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { linuxDisplayArguments } from "./launch-desktop.mjs";
 import {
   assertReleaseVersion,
   assertNoSymlinkParents,
@@ -40,7 +41,7 @@ done
 scislide_dir=$(CDPATH= cd -P -- "$(dirname "$scislide_launcher")" && pwd)
 `;
 
-function unixLaunchBody(binary, entry) {
+function unixLaunchBody(binary, entry, platform) {
   return `scislide_binary=${binary}
 scislide_entry=${entry}
 case "\${1:-}" in
@@ -55,7 +56,7 @@ for scislide_argument in "$@"; do
       ;;
   esac
 done
-exec "$scislide_binary" "$@"
+${platform === "linux" ? linuxDisplayArguments : ""}exec "$scislide_binary" "$@"
 `;
 }
 
@@ -63,7 +64,7 @@ exec "$scislide_binary" "$@"
 export function linuxInstalledLauncher() {
   return `#!/bin/sh
 set -eu
-${unixLaunchBody('"/opt/scislide/scislide"', '"/opt/scislide/resources/scislide-cli/desktop/update-cli.mjs"')}`;
+${unixLaunchBody('"/opt/scislide/scislide"', '"/opt/scislide/resources/scislide-cli/desktop/update-cli.mjs"', "linux")}`;
 }
 
 function unixPortableLauncher(platform, installed = false) {
@@ -81,7 +82,7 @@ function unixPortableLauncher(platform, installed = false) {
       : '"$scislide_dir/../resources/scislide-cli/desktop/update-cli.mjs"';
   return `#!/bin/sh
 set -eu
-${unixResolveLauncher}${unixLaunchBody(binary, entry)}`;
+${unixResolveLauncher}${unixLaunchBody(binary, entry, platform)}`;
 }
 
 const windowsLauncher = [

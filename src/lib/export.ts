@@ -1,5 +1,4 @@
-import { jsPDF } from "jspdf";
-import { svg2pdf } from "svg2pdf.js";
+import type { jsPDF } from "jspdf";
 import type { AnySlideObject, Asset, Deck, Slide } from "./model";
 import { figureViewport } from "./figure-editing";
 import { renderObjectEquation } from "./equation-renderer";
@@ -759,7 +758,12 @@ export async function exportDeckPdf(
   deck: Deck,
   options: PdfExportOptions = {},
 ): Promise<Blob> {
-  const fonts: ExportFontFiles = { inter: await loadInterFonts() };
+  const [{ jsPDF }, { svg2pdf }, inter] = await Promise.all([
+    import("jspdf"),
+    import("svg2pdf.js"),
+    loadInterFonts(),
+  ]);
+  const fonts: ExportFontFiles = { inter };
   const { width, height } = deck.slideSize;
   const pdf = new jsPDF({
     unit: "px",

@@ -19,6 +19,11 @@ export function presenterToken(hash: string): string | null {
   return match?.[1] ?? null;
 }
 
+export function audienceToken(hash: string): string | null {
+  const match = /^#audience=([a-zA-Z0-9-]{20,100})$/.exec(hash);
+  return match?.[1] ?? null;
+}
+
 export function isPresenterAction(value: unknown): value is PresenterAction {
   return ["next", "previous", "first", "last", "exit"].includes(
     value as string,

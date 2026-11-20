@@ -49,6 +49,11 @@ const commands = new Set([
 
 contextBridge.exposeInMainWorld("scislideDesktop", {
   platform: process.platform,
+  hasAudienceDisplay: () =>
+    ipcRenderer.sendSync("scislide:has-audience-display"),
+  workspaceId: process.argv
+    ?.find((argument) => argument.startsWith("--scislide-workspace="))
+    ?.slice("--scislide-workspace=".length),
   setCommandAvailability: (states) => {
     if (!states || typeof states !== "object" || Array.isArray(states))
       throw new TypeError("Command availability must be an object.");

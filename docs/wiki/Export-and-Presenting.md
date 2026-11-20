@@ -2,6 +2,12 @@
 
 SciSlide exports **all slides as PowerPoint (.pptx) or PDF**, or **the current slide as SVG**. Save a `.scislide` file as well to preserve LaTeX sources, assets and all native editing settings.
 
+## Import PowerPoint
+
+Choose **Open presentation** or **File → Open** and select a `.pptx` file. You can also drop one PowerPoint file onto the slide canvas. SciSlide imports locally and preserves slide size, order, speaker notes, editable text and basic shapes, and embedded PNG, JPEG, and SVG images. Save the imported presentation as a `.scislide` file to keep editing it.
+
+When elements are skipped or simplified, **PowerPoint import details** lists them by slide number. Office equations, charts, tables, animations, and custom shapes may be omitted. Fonts and layout can differ, especially where the source mixes text formatting or uses complex themes.
+
 ## Export formats
 
 Open **Export** in the toolbar, then choose **PowerPoint (.pptx)**, **PDF presentation** or the current-slide SVG option. The desktop **File** menu offers the same formats. Electron uses a native save dialog; the browser starts a download. A desktop save completes only after the native file write succeeds.
@@ -20,7 +26,7 @@ The built web app in `dist/` is the editor application; it is not a standalone H
 
 PowerPoint export preserves slide order, deck dimensions, object position/rotation and the final click-build state. Text and shapes remain editable in PowerPoint. Inline mathematics is split into editable prose and separate equation graphics. Standalone equations and scientific figures are also exported as graphics; equation graphics are not editable Office equations. Speaker notes are included.
 
-PPTX references editable body-text fonts without embedding them. Install those fonts on the computer opening the presentation to avoid substitution and text-layout changes. Validated fonts already embedded inside an imported SVG figure remain inside that figure's SVG graphic. Native PowerPoint text uses regular or bold weights: SciSlide weights 400/500 export as regular and 600/700 as bold. Equation and figure graphics include a raster fallback for viewers without SVG support. Videos become labeled static placeholders, and click builds do not become PowerPoint animations. PPTX import and round-trip preservation of SciSlide editing settings are not implemented.
+PPTX references editable body-text fonts without embedding them. Install those fonts on the computer opening the presentation to avoid substitution and text-layout changes. Validated fonts already embedded inside an imported SVG figure remain inside that figure's SVG graphic. Native PowerPoint text uses regular or bold weights: SciSlide weights 400/500 export as regular and 600/700 as bold. Equation and figure graphics include a raster fallback for viewers without SVG support. Videos become labeled static placeholders, and click builds do not become PowerPoint animations. Keep the native `.scislide` source to preserve SciSlide-specific editing settings across saves.
 
 ## What PDF and SVG preserve
 
@@ -64,9 +70,9 @@ Editor and thumbnail views always show the complete layout. A timeline, exit eff
 
 ## Presenter display
 
-Choose **Presenter display** to start the audience slideshow and open a separate presenter window. Move that window to your presenter screen manually. It shows the current build, next slide, speaker notes, navigation and an elapsed/remaining-time display. Set **Target minutes** and use **Pause / Resume / Reset timer** as needed.
+Set your displays to **Extend**, open SciSlide on the presenter’s monitor and choose **Present**. The desktop app opens the slides fullscreen on the other display. The presenter sees the current build, next slide, speaker notes, navigation and elapsed/remaining time. Set **Target minutes** and use **Pause / Resume / Reset timer** as needed.
 
-Allow the presenter popup if the browser blocks it. Closing the presenter window leaves the audience slideshow running; ending the presentation closes the presenter window. Automatic monitor placement is not implemented, and fullscreen behavior depends on the environment. Video previews in the presenter window stay static; playback occurs in the audience slideshow.
+In a supported browser, allow window management and pop-ups. Double-click the audience slide to enter fullscreen. With a single display, **Present** plays the slideshow in the editor window. **Presenter display** can also open a separate notes window for manual placement. Videos play on the audience display. **End presentation** closes the separate window.
 
 ## Video playback
 

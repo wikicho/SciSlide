@@ -1,6 +1,6 @@
 {
   "name": "scislide",
-  "version": "0.6.10",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,7 +13,7 @@
     "test": "vitest run",
     "test:release": "node --test --test-isolation=none tests/release-publish.test.mjs",
     "format": "prettier --write src tests desktop scripts index.html vite.config.ts vitest.config.ts tsconfig.json package.json README.md",
-    "desktop": "pnpm build && electron .",
+    "desktop": "pnpm build && node scripts/launch-desktop.mjs",
     "desktop:dev": "node scripts/desktop-dev.mjs",
     "desktop:package": "pnpm build && node scripts/package-desktop.mjs",
     "test:desktop": "node --test --test-isolation=none desktop/host-utils.test.cjs desktop/update-cli.test.mjs tests/desktop-update.test.mjs tests/desktop-tex.test.mjs tests/desktop-tex-macos.test.mjs tests/desktop-tex-discovery.test.mjs tests/desktop-file-open.test.mjs tests/desktop-package.test.mjs tests/windows-package.test.mjs tests/linux-package.test.mjs tests/desktop-ai.test.mjs tests/desktop-pdf-policy.test.mjs tests/macos-package.test.mjs tests/release-layout.test.mjs tests/release-organization.test.mjs",

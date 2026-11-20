@@ -113,6 +113,9 @@ export interface AiResult {
 
 export interface DesktopApi {
   platform: string;
+  hasAudienceDisplay?(): boolean;
+  /** Stable for this window; separates its active local recovery from other editors. */
+  workspaceId?: string;
   setCommandAvailability?(
     states: Partial<Record<DesktopCommand, boolean>>,
   ): Promise<void>;
