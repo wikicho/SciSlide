@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -19,8 +19,8 @@ async function host(
   t,
   { platform = "linux", launch = [], packaged = true, fsOverrides = {} } = {},
 ) {
-  const directory = await mkdtemp(
-    path.join(os.tmpdir(), "scislide-file-open-"),
+  const directory = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "scislide-file-open-")),
   );
   t.after(() => rm(directory, { recursive: true, force: true }));
   const app = new EventEmitter();
@@ -283,10 +283,10 @@ async function host(
         vm.runInContext("aiModule = Promise.resolve(testAi);", context);
       }
     },
+    waitForDocumentOpens: () => vm.runInContext("launchOperations", context),
     start: async () => {
       ready();
       await menuInstalledPromise;
-      // Wait for queued file opens, including asynchronous realpath lookups.
       await vm.runInContext("launchOperations", context);
     },
     invoke: (channel, args = [], frameUrl = "scislide://app/") => {
@@ -556,7 +556,7 @@ test(
     await started;
     try {
       desktop.app.emit("open-file", { preventDefault() {} }, filename);
-      await flush();
+      await desktop.waitForDocumentOpens();
       assert.equal(desktop.windows.length, 1);
       assert.ok(original.focused > 0);
     } finally {
@@ -893,7 +893,7 @@ test("a second instance opens files in separate editors and focuses an already o
     ["scislide", "First deck.scislide", pathToFileURL(second).href],
     desktop.directory,
   );
-  await flush();
+  await desktop.waitForDocumentOpens();
   assert.equal(desktop.windows.length, 3);
   const [original, firstWindow, secondWindow] = desktop.windows;
   assert.equal(
@@ -922,7 +922,7 @@ test("a second instance opens files in separate editors and focuses an already o
     ["scislide", "First deck.scislide"],
     desktop.directory,
   );
-  await flush();
+  await desktop.waitForDocumentOpens();
   assert.equal(desktop.windows.length, 3);
   assert.ok(firstWindow.restored > 0);
   assert.ok(firstWindow.focused > 0);
@@ -948,7 +948,7 @@ test("Finder events survive cold startup and reopen a closed macOS editor", asyn
   old.destroyed = true;
   old.emit("closed");
   desktop.app.emit("open-file", event, first);
-  await flush();
+  await desktop.waitForDocumentOpens();
   assert.equal(desktop.windows.length, 2);
   assert.equal(
     (await desktop.invoke("scislide:take-open-document")).path,
