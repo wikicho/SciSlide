@@ -6,7 +6,7 @@ SciSlide exports **all slides as PowerPoint (.pptx) or PDF**, or **the current s
 
 Choose **Open presentation** or **File → Open** and select a `.pptx` file. You can also drop one PowerPoint file onto the slide canvas. SciSlide imports locally and preserves slide size, order, speaker notes, editable text and basic shapes, and embedded PNG, JPEG, and SVG images. Save the imported presentation as a `.scislide` file to keep editing it.
 
-When elements are skipped or simplified, **PowerPoint import details** lists them by slide number. Office equations, charts, tables, animations, and custom shapes may be omitted. Fonts and layout can differ, especially where the source mixes text formatting or uses complex themes.
+When elements are skipped or simplified, **PowerPoint import details** lists them by slide number. SciSlide converts supported Office Math formulas to editable inline LaTeX. It uses a supported embedded fallback image when a formula cannot be converted. Charts, tables, animations, and custom shapes may be omitted. Fonts and layout can differ, especially where the source mixes text formatting or uses complex themes.
 
 ## Export formats
 
