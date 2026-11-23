@@ -1,6 +1,6 @@
 # Development
 
-SciSlide uses a shared React/TypeScript editor with an Electron desktop host. This page describes the **0.7.1 development source** and its local release workflow. See [Architecture and roadmap](Architecture-and-Roadmap) for module boundaries and planned work.
+SciSlide uses a shared React/TypeScript editor with an Electron desktop host. This page describes the **0.7.2 development source** and its local release workflow. See [Architecture and roadmap](Architecture-and-Roadmap) for module boundaries and planned work.
 
 ## Prerequisites and setup
 
@@ -61,7 +61,7 @@ Local TeX integration fixtures need Linux with working bubblewrap or macOS with 
 
 ## Headless agent CLI
 
-`pnpm build:cli` builds `dist-cli/agent.cjs`, bundled fonts and third-party notices. Use `pnpm cli schema` or run the bundle with Node.js 22 or later. Desktop packaging includes the same CLI and bundled runtime. The [agent CLI guide](https://github.com/wikicho/SciSlide/blob/v0.7.1/docs/AGENT_CLI.md) describes structured edits, native archives and SVG/PDF export.
+`pnpm build:cli` builds `dist-cli/agent.cjs`, bundled fonts and third-party notices. Use `pnpm cli schema` or run the bundle with Node.js 22 or later. Desktop packaging includes the same CLI and bundled runtime. The [agent CLI guide](https://github.com/wikicho/SciSlide/blob/v0.7.2/docs/AGENT_CLI.md) describes structured edits, native archives and SVG/PDF export.
 
 ## Build desktop packages
 
@@ -106,7 +106,7 @@ The macOS, Windows and Linux platform workflows run on relevant `main` source pu
 | `desktop/tex.mjs`, `desktop/tex-macos.mjs`, `desktop/tex-process.mjs` | Installed TeX detection, isolated Linux/macOS workers and process limits. |
 | `scripts/`, `.github/workflows/`, `tests/`                            | Packaging, release automation and regression tests.                       |
 
-Package version **0.7.1** and document format **0.5.0** are separate version numbers. The application and updater support three-part and four-part app versions. P1 shortcuts introduced in v0.6.3 remain available. Native menus receive live focus/selection/busy enabled states from the same availability rules as renderer dispatch. The optional availability bridge accepts only bounded fixed command IDs and booleans from the trusted main editor frame. Focused text retains native clipboard/history; disabled application commands do not dispatch. Physical-platform validation of native application/window roles remains required. Preserve source/archive migrations and saved-result validation when extending the model. Loading or exporting a document must not execute imported TeX source.
+Package version **0.7.2** and document format **0.5.0** are separate version numbers. The application and updater support three-part and four-part app versions. P1 shortcuts introduced in v0.6.3 remain available. Native menus receive live focus/selection/busy enabled states from the same availability rules as renderer dispatch. The optional availability bridge accepts only bounded fixed command IDs and booleans from the trusted main editor frame. Focused text retains native clipboard/history; disabled application commands do not dispatch. Physical-platform validation of native application/window roles remains required. Preserve source/archive migrations and saved-result validation when extending the model. Loading or exporting a document must not execute imported TeX source.
 
 ## Wiki maintenance
 

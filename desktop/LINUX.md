@@ -1,18 +1,18 @@
-# SciSlide 0.7.1 — Linux x64
+# SciSlide 0.7.2 — Linux x64
 
 The Debian package contains SciSlide and its Electron runtime for **x64 (Intel/AMD 64-bit)** Linux. Debian calls this architecture **amd64**. Ubuntu 24.04 x64 is the packaging target; other Debian/Ubuntu releases need separate desktop validation. MathJax editing uses bundled fonts and equation resources without Node.js, TeX or a development server.
 
-Version **0.6.3.1** adds the headless agent CLI and four-part update version support. The canvas object traversal, pane toggles, inline equation editing, Local LaTeX compile shortcut and verified installer downloads introduced in v0.6.3 remain available. LibreOffice Impress-style shortcuts and drag-and-drop slide ordering remain available. The current development source is **0.7.1**. The links below target the 0.7.1 development prerelease; release assets appear after the release workflow completes.
+Version **0.6.3.1** adds the headless agent CLI and four-part update version support. The canvas object traversal, pane toggles, inline equation editing, Local LaTeX compile shortcut and verified installer downloads introduced in v0.6.3 remain available. LibreOffice Impress-style shortcuts and drag-and-drop slide ordering remain available. The current development source is **0.7.2**. The links below target the 0.7.2 development prerelease; release assets appear after the release workflow completes.
 
 ## Install, launch and remove
 
-Download the `.deb` and its matching `.sha256` from the [v0.7.1 development prerelease](https://github.com/wikicho/SciSlide/releases/tag/v0.7.1), or download a Linux workflow artifact and extract it first. Local source builds keep Debian distribution files in `release/v<version>/linux/` and the unpacked application in `release/work/v<version>/`. CI uses an explicit output directory for its upload steps.
+Download the `.deb` and its matching `.sha256` from the [v0.7.2 development prerelease](https://github.com/wikicho/SciSlide/releases/tag/v0.7.2), or download a Linux workflow artifact and extract it first. Local source builds keep Debian distribution files in `release/v<version>/linux/` and the unpacked application in `release/work/v<version>/`. CI uses an explicit output directory for its upload steps.
 
 From the folder containing both files:
 
 ```sh
-sha256sum -c SciSlide-0.7.1-linux-x64.deb.sha256
-sudo apt install ./SciSlide-0.7.1-linux-x64.deb
+sha256sum -c SciSlide-0.7.2-linux-x64.deb.sha256
+sudo apt install ./SciSlide-0.7.2-linux-x64.deb
 scislide
 ```
 
@@ -56,20 +56,20 @@ pnpm desktop:package:linux --arch=x64
 The command builds the editor and creates:
 
 ```text
-release/work/v0.7.1/SciSlide-linux-x64/
-release/v0.7.1/linux/SciSlide-0.7.1-linux-x64.deb
-release/v0.7.1/linux/SciSlide-0.7.1-linux-x64.deb.sha256
-release/v0.7.1/linux/LINUX-INSTALL.md
+release/work/v0.7.2/SciSlide-linux-x64/
+release/v0.7.2/linux/SciSlide-0.7.2-linux-x64.deb
+release/v0.7.2/linux/SciSlide-0.7.2-linux-x64.deb.sha256
+release/v0.7.2/linux/LINUX-INSTALL.md
 ```
 
-Only x64 is supported by this Debian distribution command. `--out` selects another output directory; `--overwrite` replaces recognized generated outputs. The standalone application folder produced by this command can also be launched with `release/work/v0.7.1/SciSlide-linux-x64/scislide`, with all runtime files kept together. Its Chromium sandbox still requires a supported host environment. Do not run the editor as root.
+Only x64 is supported by this Debian distribution command. `--out` selects another output directory; `--overwrite` replaces recognized generated outputs. The standalone application folder produced by this command can also be launched with `release/work/v0.7.2/SciSlide-linux-x64/scislide`, with all runtime files kept together. Its Chromium sandbox still requires a supported host environment. Do not run the editor as root.
 
 Verify and install a current local build with:
 
 ```sh
-cd release/v0.7.1/linux
-sha256sum -c SciSlide-0.7.1-linux-x64.deb.sha256
-sudo apt install ./SciSlide-0.7.1-linux-x64.deb
+cd release/v0.7.2/linux
+sha256sum -c SciSlide-0.7.2-linux-x64.deb.sha256
+sudo apt install ./SciSlide-0.7.2-linux-x64.deb
 scislide
 ```
 
