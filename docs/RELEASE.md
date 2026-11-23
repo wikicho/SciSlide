@@ -8,12 +8,12 @@ Local generated outputs are ignored by Git. Packaging and organization do not pu
 release/
   README.md                 Generated local index after organization
   inventory.json            Generated file sizes and symlinks
-  v0.7.0/
+  v0.7.1/
     linux/                  .deb, .sha256, LINUX-INSTALL.md
     windows/                setup/portable, .sha256, WINDOWS-INSTALL.md
     macos/                  arm64/x64 .pkg, .sha256, MACOS-INSTALL.md
   work/
-    v0.7.0/
+    v0.7.1/
       SciSlide-linux-x64/   Complete unpacked app for inspection or execution
       SciSlide-win32-x64/
   archive/
@@ -23,7 +23,7 @@ release/
     organization-*.json     Move/rollback journals
 ```
 
-The version is read from `package.json`; the names above illustrate the current development version. Version 0.7.0 packages include dual-display presentation, PowerPoint import and responsiveness improvements described in [the release notes](releases/v0.7.0.md). Keep earlier v0.6.10, v0.6.9, v0.6.8, v0.6.7 and v0.6.6 packages and their validation records separately; the historical records below retain their original versions. Direct `desktop:package` builds use `work/v<version>/` for any supported platform. macOS installer builds remove their temporary app trees after creating all requested installers. Windows/Linux retain the complete app separately in `work/v<version>/`.
+The version is read from `package.json`; the names above illustrate the current development version. Version 0.7.1 packages include the macOS audience window placement fix described in [the release notes](releases/v0.7.1.md). Keep earlier v0.7.0, v0.6.10, v0.6.9, v0.6.8, v0.6.7 and v0.6.6 packages and their validation records separately; the historical records below retain their original versions. Direct `desktop:package` builds use `work/v<version>/` for any supported platform. macOS installer builds remove their temporary app trees after creating all requested installers. Windows/Linux retain the complete app separately in `work/v<version>/`.
 
 An explicit `--out=path` selects that exact output folder. For Windows/Linux, the complete app also remains in the explicit folder, preserving existing scripts and CI verification paths. The CI workflows pass explicit output directories so their checksum, extraction and upload steps keep the same contract.
 

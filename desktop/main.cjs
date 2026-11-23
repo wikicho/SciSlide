@@ -751,6 +751,7 @@ async function createMainWindow(selectedPath = null) {
     if (!role) return { action: "deny" };
     const audience = role === "audience" ? getAudienceDisplay(window) : null;
     if (role === "audience" && !audience) return { action: "deny" };
+    const macAudience = Boolean(audience && process.platform === "darwin");
     return {
       action: "allow",
       overrideBrowserWindowOptions: {
@@ -760,10 +761,7 @@ async function createMainWindow(selectedPath = null) {
               title: "SciSlide · Slide show",
               backgroundColor: "#000000",
               frame: false,
-              fullscreen: true,
-              ...(process.platform === "darwin"
-                ? { simpleFullscreen: true }
-                : {}),
+              fullscreen: !macAudience,
               show: false,
             }
           : {
@@ -782,6 +780,13 @@ async function createMainWindow(selectedPath = null) {
           webSecurity: true,
           allowRunningInsecureContent: false,
           webviewTag: false,
+          ...(macAudience
+            ? {
+                // Video and slide fullscreen stay inside the audience window.
+                disableHtmlFullscreenWindowResize: true,
+                focusOnNavigation: false,
+              }
+            : {}),
         },
       },
     };
@@ -830,8 +835,11 @@ async function createMainWindow(selectedPath = null) {
         !audience ||
         (source.bounds.x === audience.bounds.x &&
           source.bounds.y === audience.bounds.y)
-      )
+      ) {
         closeChild();
+        return;
+      }
+      return audience;
     };
     screen.on("display-removed", checkDisplays);
     screen.on("display-metrics-changed", checkDisplays);
@@ -839,11 +847,32 @@ async function createMainWindow(selectedPath = null) {
       screen.removeListener("display-removed", checkDisplays);
       screen.removeListener("display-metrics-changed", checkDisplays);
     });
+    const macAudience = process.platform === "darwin";
+    if (macAudience) {
+      child.on("close", () => {
+        // Simple fullscreen changes app-wide menu and Dock visibility.
+        if (child.isSimpleFullScreen()) child.setSimpleFullScreen(false);
+      });
+    }
     child.once("ready-to-show", () => {
       if (child.isDestroyed()) return;
+      const display = checkDisplays();
+      if (!display) return;
+      if (macAudience) {
+        // AppKit chooses the fullscreen frame from the window's current screen.
+        // Give the inactive window an on-screen frame before entering fullscreen.
+        child.setBounds(display.workArea);
+      }
       child.showInactive();
       // Native Wayland compositors may not support showing an inactive window.
       if (!child.isVisible()) child.show();
+      if (macAudience) {
+        if (screen.getDisplayMatching(child.getBounds()).id !== display.id) {
+          closeChild();
+          return;
+        }
+        child.setSimpleFullScreen(true);
+      }
     });
   });
   window.webContents.on("will-navigate", (event) => event.preventDefault());
