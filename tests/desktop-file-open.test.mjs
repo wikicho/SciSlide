@@ -115,6 +115,15 @@ async function host(
     showInactive() {
       this.shownInactive = true;
     }
+    setBounds(bounds) {
+      this.bounds = bounds;
+    }
+    setSimpleFullScreen(enabled) {
+      this.simpleFullscreen = enabled;
+    }
+    isSimpleFullScreen() {
+      return this.simpleFullscreen === true;
+    }
     isVisible() {
       return Boolean(this.shownInactive);
     }
@@ -694,6 +703,68 @@ test("presenter windows stay attached to their owning editor and cannot use edit
   assert.equal(presenterB.destroyed, false);
   windowB.close();
   assert.equal(presenterB.destroyed, true);
+});
+
+test("macOS positions and shows the audience on its display before entering simple fullscreen", async (t) => {
+  const desktop = await host(t, { platform: "darwin" });
+  await desktop.start();
+  const [editor] = desktop.windows;
+  const [internal] = desktop.screen.displays;
+  const external = {
+    id: 2,
+    internal: false,
+    bounds: { x: -1920, y: -80, width: 1920, height: 1080 },
+    workArea: { x: -1920, y: -56, width: 1920, height: 1008 },
+  };
+  desktop.screen.displays = [internal, external];
+  assert.equal(desktop.hasAudienceDisplay(editor), true);
+  const url = "scislide://app/#audience=9b244a24-6546-491a-a341-fbe6e34c6052";
+  const { action, overrideBrowserWindowOptions: options } =
+    editor.windowOpenHandler({ url });
+  assert.equal(action, "allow");
+  assert.equal(options.fullscreen, false);
+  assert.equal(options.show, false);
+  assert.equal(options.webPreferences.disableHtmlFullscreenWindowResize, true);
+  assert.equal(options.webPreferences.focusOnNavigation, false);
+
+  const audience = new desktop.BrowserWindow(options);
+  const actions = [];
+  const setBounds = audience.setBounds.bind(audience);
+  const showInactive = audience.showInactive.bind(audience);
+  const setSimpleFullScreen = audience.setSimpleFullScreen.bind(audience);
+  audience.setBounds = (bounds) => {
+    actions.push("position");
+    setBounds(bounds);
+  };
+  audience.showInactive = () => {
+    actions.push("show");
+    showInactive();
+  };
+  audience.setSimpleFullScreen = (enabled) => {
+    actions.push(enabled ? "fullscreen" : "restore");
+    if (enabled) {
+      assert.equal(audience.isVisible(), true);
+      assert.equal(
+        desktop.screen.getDisplayMatching(audience.getBounds()).id,
+        2,
+      );
+    }
+    setSimpleFullScreen(enabled);
+  };
+  editor.webContents.emit("did-create-window", audience, { url, options });
+  assert.deepEqual(actions, []);
+  // Refresh the target's usable area in case the Dock moved while it loaded.
+  external.workArea = { x: -1856, y: -56, width: 1856, height: 1056 };
+  audience.emit("ready-to-show");
+  assert.deepEqual(actions, ["position", "show", "fullscreen"]);
+  assert.deepEqual(audience.getBounds(), external.workArea);
+  assert.equal(audience.focused, 0);
+
+  desktop.screen.displays = [internal];
+  desktop.screen.emit("display-removed", {}, external);
+  assert.deepEqual(actions, ["position", "show", "fullscreen", "restore"]);
+  assert.equal(audience.isDestroyed(), true);
+  assert.equal(editor.isDestroyed(), false);
 });
 
 test("audience windows open fullscreen on an extended display and close when it is unplugged", async (t) => {
