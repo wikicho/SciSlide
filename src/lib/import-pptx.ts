@@ -12,6 +12,8 @@ import {
   type Transform,
 } from "./model";
 import { importFigure, MAX_FIGURE_BYTES } from "./persistence";
+import { MAX_INLINE_MATH_SPANS } from "./inline-math";
+import { isOfficeMath, officeEquations, officeMathToLatex } from "./pptx-math";
 import {
   PptxPackage,
   attr,
@@ -182,20 +184,30 @@ function base(
   };
 }
 
-function textNodes(paragraph: Element) {
-  return children(paragraph).flatMap<{ text: string; properties?: Element }>(
-    (node) => {
-      if (node.localName === "br")
-        return [{ text: "\n", properties: undefined }];
-      if (node.localName !== "r" && node.localName !== "fld") return [];
-      return [
-        {
-          text: child(node, "t")?.textContent ?? "",
-          properties: child(node, "rPr"),
-        },
-      ];
-    },
-  );
+function textNodes(paragraph: Element, warn?: Warn) {
+  return children(paragraph).flatMap<{
+    text: string;
+    properties?: Element;
+    latex?: string;
+  }>((node) => {
+    if (node.localName === "br") return [{ text: "\n", properties: undefined }];
+    if (warn && isOfficeMath(node)) {
+      const latex = officeMathToLatex(node);
+      if (!latex) warn("A PowerPoint equation could not be converted.");
+      const properties = node.getElementsByTagNameNS(
+        paragraph.namespaceURI,
+        "rPr",
+      )[0];
+      return [{ text: latex ?? "[Equation unavailable]", latex, properties }];
+    }
+    if (node.localName !== "r" && node.localName !== "fld") return [];
+    return [
+      {
+        text: child(node, "t")?.textContent ?? "",
+        properties: child(node, "rPr"),
+      },
+    ];
+  });
 }
 
 function textValue(body: Element | undefined) {
@@ -234,6 +246,7 @@ function addText(
     | undefined;
   const textStyles: NonNullable<TextObject["textStyles"]> = [];
   let text = "";
+  let mathCount = 0;
   for (const [index, paragraph] of paragraphs.entries()) {
     if (index) text += "\n";
     const direct = child(paragraph, "pPr");
@@ -267,7 +280,7 @@ function addText(
     }
     if (children(paragraph, "fld").length)
       warn("Text fields were imported as their saved text.");
-    for (const run of textNodes(paragraph)) {
+    for (const run of textNodes(paragraph, warn)) {
       if (!run.text) continue;
       const props = [
         run.properties,
@@ -292,7 +305,7 @@ function addText(
       const color = style.paint(
         props,
         warn,
-        style.color(children(fontRef)[0], warn) ?? "#000000",
+        style.color(children(fontRef)[0], warn) ?? style.textColor,
       );
       if (run.text !== "\n") {
         first ??= { fontFamily, fontSize, fontWeight, color, align };
@@ -318,7 +331,16 @@ function addText(
           warn("Text hyperlinks were omitted.");
       }
       // Dollar signs in a PowerPoint text run are literal in the source.
-      const literal = run.text.replace(/(?<!\\)\$/g, "\\$");
+      let literal: string;
+      if (!run.latex) literal = run.text.replace(/(?<!\\)\$/g, "\\$");
+      else if (++mathCount <= MAX_INLINE_MATH_SPANS)
+        literal = `\\(${run.latex}\\)`;
+      else {
+        warn(
+          "Some PowerPoint equations exceeded the text box's equation limit.",
+        );
+        literal = "[Equation unavailable]";
+      }
       const start = text.length;
       text += literal;
       if (first && color !== first.color && literal !== "\n") {
@@ -398,6 +420,7 @@ function addShape(
   frame: Frame,
   style: Style,
   warn: Warn,
+  hasPictureFill: boolean,
 ) {
   if (sources.some((properties) => child(properties, "custGeom"))) {
     warn("A custom shape or path was omitted.");
@@ -432,9 +455,10 @@ function addShape(
     lineColor ?? (line ? "#000000" : "none"),
     lineColor,
   );
-  const fill = line
-    ? "none"
-    : style.paint(sources, warn, style.themeFill(fills, warn, "none"));
+  const fill =
+    line || hasPictureFill
+      ? "none"
+      : style.paint(sources, warn, style.themeFill(fills, warn, "none"));
   if (stroke === "none" && fill === "none" && shape && preset === "rect")
     return;
   if (!shape) {
@@ -666,8 +690,12 @@ export async function importPptx(
       "slide master",
     );
     const theme = await readRelated(master.part, "theme", "theme");
+    const [layoutTheme, slideTheme] = await Promise.all([
+      readRelated(layout.part, "themeOverride", "layout theme override"),
+      readRelated(part, "themeOverride", "slide theme override"),
+    ]);
     const style = slideStyle(
-      readTheme(theme.element),
+      readTheme(warn, theme.element, layoutTheme.element, slideTheme.element),
       master.element,
       layout.element,
       xml,
@@ -761,20 +789,45 @@ export async function importPptx(
           continue;
         }
         if (kind === "AlternateContent") {
-          const math =
-            node.getElementsByTagNameNS("*", "oMath").length ||
-            node.getElementsByTagNameNS("*", "oMathPara").length;
+          if (depth >= 16) {
+            warn(unsupported(node));
+            continue;
+          }
+          const mathChoices = children(node, "Choice").filter(
+            (choice) =>
+              children(choice).every((item) =>
+                ["sp", "pic", "grpSp"].includes(item.localName),
+              ) && officeEquations(choice).length,
+          );
+          const editable = mathChoices.find((choice) =>
+            officeEquations(choice).every((equation) =>
+              officeMathToLatex(equation),
+            ),
+          );
+          const before = slide.objects.length;
+          if (editable) {
+            await addObjects(editable, group, depth + 1);
+            if (slide.objects.length > before) continue;
+          }
           const fallback = child(node, "Fallback");
-          if (fallback?.childElementCount && depth < 16) {
+          if (fallback?.childElementCount) {
             await addObjects(fallback, group, depth + 1);
+            if (slide.objects.length > before) {
+              warn(
+                mathChoices.length
+                  ? "A PowerPoint equation used its fallback representation."
+                  : "An alternate PowerPoint element used its fallback representation.",
+              );
+              continue;
+            }
+          }
+          if (!editable && mathChoices.length)
+            await addObjects(mathChoices[0], group, depth + 1);
+          if (slide.objects.length === before)
             warn(
-              math
-                ? "A PowerPoint equation used its fallback representation."
-                : "An alternate PowerPoint element used its fallback representation.",
-            );
-          } else
-            warn(
-              math ? "A PowerPoint equation was omitted." : unsupported(node),
+              mathChoices.length
+                ? "A PowerPoint equation was omitted."
+                : unsupported(node),
             );
           continue;
         }
@@ -804,7 +857,7 @@ export async function importPptx(
           kind === "sp" &&
           !rawText.trim() &&
           !child(shapeProps[0], "xfrm") &&
-          !body?.getElementsByTagNameNS("*", "oMath").length
+          !officeEquations(body).length
         )
           continue;
         const shapeFrame = shapeProps
@@ -825,12 +878,28 @@ export async function importPptx(
           metadata,
         );
         if (kind === "pic") {
-          await addImage(node, baseObject, frame, warnObject);
+          await addImage(
+            node,
+            child(node, "blipFill"),
+            baseObject,
+            frame,
+            warnObject,
+          );
           continue;
         }
         const reference = objects
           .map((item) => child(item, "style"))
           .find(Boolean);
+        const pictureFill = child(shapeProps[0], "blipFill");
+        const hasPictureFill = pictureFill
+          ? await addImage(
+              node,
+              pictureFill,
+              { ...baseObject, id: newId() },
+              frame,
+              warnObject,
+            )
+          : false;
         addShape(
           slide,
           node,
@@ -840,13 +909,9 @@ export async function importPptx(
           frame,
           style,
           warnObject,
+          hasPictureFill,
         );
         if (body) {
-          if (
-            body.getElementsByTagNameNS("*", "oMath").length ||
-            body.getElementsByTagNameNS("*", "oMathPara").length
-          )
-            warnObject("An editable PowerPoint equation was omitted.");
           if (rawText && (frame.flipH || frame.flipV))
             warnObject("Mirrored text was imported without mirroring.");
           const title = primaryTitle(
@@ -881,11 +946,11 @@ export async function importPptx(
 
     async function addImage(
       node: Element,
+      fill: Element | undefined,
       source: Omit<BaseSlideObject, "type">,
       frame: Frame,
       warn: Warn,
     ) {
-      const fill = child(node, "blipFill");
       const blip = child(fill, "blip");
       const svg = blip?.getElementsByTagNameNS("*", "svgBlip")[0];
       const metadata = drawingMetadata(node);
@@ -950,7 +1015,7 @@ export async function importPptx(
             ).slice(0, 10_000),
             ...(crop ? { crop } : {}),
           });
-          return;
+          return true;
         } catch {
           // A PowerPoint SVG can include a separately stored PNG fallback.
         }
@@ -958,6 +1023,7 @@ export async function importPptx(
       warn(
         "An image was omitted because it was linked, unreadable, or in an unsupported format.",
       );
+      return false;
     }
   }
 }

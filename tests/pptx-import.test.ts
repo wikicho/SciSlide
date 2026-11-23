@@ -4,7 +4,8 @@ import PptxGenJS from "pptxgenjs";
 import { describe, expect, it } from "vitest";
 import { importPptx } from "../src/lib/import-pptx";
 import { buildDeckArchive, readDeckArchive } from "../src/lib/persistence";
-import { inlinePlainText } from "../src/lib/inline-math";
+import { getInlineMathSpans, inlinePlainText } from "../src/lib/inline-math";
+import { renderEquation } from "../src/lib/equations";
 
 const office =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
@@ -31,7 +32,7 @@ const emptyTransforms = "<p:nvGrpSpPr/><p:grpSpPr/>";
 const slideTree = (items: string) =>
   `<p:cSld><p:spTree>${emptyTransforms}${items}</p:spTree></p:cSld>`;
 
-async function fixture(
+function packageFixture(
   options: { invalidSlide?: boolean; invalidRoot?: boolean } = {},
 ) {
   const zip = new JSZip();
@@ -138,7 +139,11 @@ async function fixture(
       ["remote", "image", "https://example.invalid/figure.png", "External"],
     ]),
   );
-  const bytes = await zip.generateAsync({
+  return zip;
+}
+
+async function fixture(options?: Parameters<typeof packageFixture>[0]) {
+  const bytes = await packageFixture(options).generateAsync({
     type: "arraybuffer",
     compression: "DEFLATE",
   });
@@ -146,6 +151,155 @@ async function fixture(
 }
 
 describe("PowerPoint import", () => {
+  it("keeps theme overrides, mapped text colors, and DrawingML color transforms", async () => {
+    const zip = packageFixture();
+    zip.file(
+      "deck/pages/slide2.xml",
+      xml(
+        "sld",
+        `<p:cSld><p:bg><p:bgPr><a:solidFill><a:schemeClr val="bg1"/></a:solidFill></p:bgPr></p:bg><p:spTree>
+        <p:sp><p:spPr>${transform}</p:spPr><p:txBody><a:p>
+          <a:r><a:t>Light text</a:t></a:r>
+          <a:r><a:rPr><a:solidFill><a:schemeClr val="accent1"><a:lumMod val="50%"/><a:lumOff val="25000"/><a:alpha val="50%"/><a:alphaMod val="50000"/><a:alphaOff val="-5000"/></a:schemeClr></a:solidFill></a:rPr><a:t> accent</a:t></a:r>
+        </a:p></p:txBody></p:sp>
+        <p:sp><p:spPr>${transform}<a:solidFill><a:scrgbClr r="50000" g="50%" b="50000"/></a:solidFill>
+          <a:ln><a:solidFill><a:hslClr hue="7200000" sat="100000" lum="50000"/></a:solidFill></a:ln>
+        </p:spPr></p:sp>
+        <p:sp><p:spPr>${transform}</p:spPr><p:style><a:fillRef idx="1"><a:schemeClr val="accent1"><a:alpha val="50000"/></a:schemeClr></a:fillRef></p:style></p:sp>
+        </p:spTree></p:cSld>`,
+      ),
+    );
+    zip.file(
+      "deck/pages/_rels/slide2.xml.rels",
+      relationships([
+        ["layout", "slideLayout", "../layouts/layout.xml"],
+        ["override", "themeOverride", "../override.xml"],
+      ]),
+    );
+    zip.file(
+      "deck/master.xml",
+      xml(
+        "sldMaster",
+        slideTree("") + '<p:clrMap bg1="dk1" tx1="lt1" accent1="accent2"/>',
+      ),
+    );
+    zip.file(
+      "deck/override.xml",
+      `<a:themeOverride xmlns:a="${a}"><a:clrScheme><a:accent2><a:srgbClr val="000080"/></a:accent2></a:clrScheme><a:fmtScheme>
+        <a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"><a:alphaMod val="50000"/></a:schemeClr></a:solidFill></a:fillStyleLst>
+      </a:fmtScheme></a:themeOverride>`,
+    );
+    const { deck, warnings } = await importPptx(
+      new Blob([await zip.generateAsync({ type: "arraybuffer" })]),
+      "Dark theme.pptx",
+    );
+    expect(deck.slides[0].background).toBe("#000000");
+    expect(deck.slides[0].objects).toMatchObject([
+      {
+        type: "text",
+        color: "#ffffff",
+        textStyles: [{ start: 10, end: 17, color: "rgba(0,0,192,0.2)" }],
+      },
+      { type: "shape", fill: "#bcbcbc", stroke: "#00ff00" },
+      { type: "shape", fill: "rgba(0,0,128,0.25)" },
+    ]);
+    expect(warnings.some((warning) => warning.slide === 1)).toBe(false);
+  });
+
+  it("imports editable Office equations and keeps picture-filled fallback shapes", async () => {
+    const zip = packageFixture();
+    const math = "http://schemas.openxmlformats.org/officeDocument/2006/math";
+    const shape = (id: number, name: string, content: string) =>
+      `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="${name}"/></p:nvSpPr>
+        <p:spPr>${transform}</p:spPr><p:txBody><a:bodyPr/><a:p>${content}</a:p></p:txBody></p:sp>`;
+    const equation = (content: string) =>
+      `<a14:m><m:oMath>${content}</m:oMath></a14:m>`;
+    const fraction = `<m:f><m:num><m:sSup><m:e><m:r><m:t>x</m:t></m:r></m:e><m:sup><m:r><m:t>2</m:t></m:r></m:sup></m:sSup></m:num><m:den>
+      <m:rad><m:deg/><m:e><m:r><m:t>𝜋</m:t></m:r></m:e></m:rad></m:den></m:f>`;
+    const alternate = (editable: string, fallback = "") =>
+      `<mc:AlternateContent><mc:Choice Requires="a14">${editable}</mc:Choice>${fallback ? `<mc:Fallback>${fallback}</mc:Fallback>` : ""}</mc:AlternateContent>`;
+    const picture = (id: number, name: string) =>
+      `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="${name}"/></p:nvSpPr>
+        <p:spPr>${transform}<a:blipFill><a:blip r:embed="img"/><a:stretch><a:fillRect/></a:stretch></a:blipFill></p:spPr></p:sp>`;
+    zip.file(
+      "deck/pages/slide2.xml",
+      xml(
+        "sld",
+        slideTree(
+          [
+            alternate(
+              shape(2, "Fraction", equation(fraction)),
+              picture(3, "Unused"),
+            ),
+            shape(
+              4,
+              "Inline",
+              "<a:r><a:t>Energy </a:t></a:r>" +
+                equation(
+                  '<m:r><a:rPr><a:solidFill><a:srgbClr val="D02030"/></a:solidFill></a:rPr><m:t>E=mc</m:t></m:r>',
+                ) +
+                "<a:r><a:t> here</a:t></a:r>",
+            ),
+            alternate(
+              shape(
+                5,
+                "Unsupported equation",
+                equation(
+                  "<m:phant><m:e><m:r><m:t>x</m:t></m:r></m:e></m:phant>",
+                ),
+              ),
+              picture(6, "Fallback"),
+            ),
+            picture(7, "Picture-filled shape"),
+          ].join(""),
+        ),
+      ).replace(
+        "<p:sld ",
+        `<p:sld xmlns:m="${math}" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" `,
+      ),
+    );
+    const { deck, warnings } = await importPptx(
+      new Blob([await zip.generateAsync({ type: "arraybuffer" })]),
+      "Equation export.pptx",
+    );
+    const [standalone, inline, fallback, pictureFill] = deck.slides[0].objects;
+    expect(standalone).toMatchObject({ type: "text", name: "Fraction" });
+    expect(inline).toMatchObject({
+      type: "text",
+      name: "Inline",
+      text: "Energy \\(E=mc\\) here",
+      textStyles: [{ start: 7, end: 15, color: "#d02030" }],
+    });
+    expect(fallback).toMatchObject({
+      type: "figure",
+      name: "Fallback",
+      assetId: deck.assets[0].id,
+    });
+    expect(pictureFill).toMatchObject({
+      type: "figure",
+      name: "Picture-filled shape",
+      assetId: deck.assets[0].id,
+    });
+    expect(deck.assets).toHaveLength(1);
+    expect(warnings[0]).toEqual({
+      slide: 1,
+      messages: ["A PowerPoint equation used its fallback representation."],
+    });
+    if (standalone.type !== "text")
+      throw new Error("Missing editable equation");
+    const [expression] = getInlineMathSpans(standalone.text);
+    expect(expression.latex).toBe("\\frac{{x}^{2}}{\\sqrt{π}}");
+    const rendered = await renderEquation(
+      expression.latex,
+      "mathjax-stix2",
+      24,
+      "#111111",
+      false,
+    );
+    expect(rendered.svg).toContain("<svg");
+    expect(await readDeckArchive(await buildDeckArchive(deck))).toEqual(deck);
+  });
+
   it("uses presentation order, follows relationships, and preserves editable objects and notes", async () => {
     const file = await fixture();
     const { deck, warnings } = await importPptx(file, file.name);
